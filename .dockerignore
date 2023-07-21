@@ -1,0 +1,7 @@
+.git
+.coverage
+.coverage.*
+.env
+.vscode
+
+manifests/
