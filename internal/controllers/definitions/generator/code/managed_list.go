@@ -22,7 +22,7 @@ func GenerateManagedList(workdir string, res *Resource) error {
 
 	kind := text.ToGolangName(res.Kind)
 
-	g := jen.NewFile(res.Version)
+	g := jen.NewFile(normalizeVersion(res.Version))
 	g.ImportAlias(pkgResource, pkgResourceAlias)
 
 	g.Add(

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/dave/jennifer/jen"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
@@ -23,10 +22,10 @@ func CreateGroupVersionInfoDotGo(workdir string, res *Resource) error {
 		return err
 	}
 
-	g := jen.NewFile(res.Version)
+	g := jen.NewFile(normalizeVersion(res.Version))
 	g.PackageComment("+kubebuilder:object:generate=true")
 	g.PackageComment(fmt.Sprintf("+groupName=%s", res.Group))
-	g.PackageComment(fmt.Sprintf("+versionName=%s", strings.ReplaceAll(res.Version, "_", "-")))
+	g.PackageComment(fmt.Sprintf("+versionName=%s", res.Version))
 
 	g.ImportAlias(pkgRuntimeSchema, pkgRuntimeSchemaAlias)
 	g.ImportAlias(pkgControllerRuntimeScheme, pkgControllerRuntimeSchemeAlias)
@@ -52,7 +51,7 @@ func CreateGroupVersionInfoDotGo(workdir string, res *Resource) error {
 func generateConsts(res *Resource) jen.Code {
 	return jen.Const().Defs(
 		jen.Id("Group").Op("=").Lit(res.Group),
-		jen.Id("Version").Op("=").Lit(strings.ReplaceAll(res.Version, "_", "-")),
+		jen.Id("Version").Op("=").Lit(res.Version),
 	)
 }
 

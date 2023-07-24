@@ -14,7 +14,7 @@ func GenerateManaged(workdir string, res *Resource) error {
 		return err
 	}
 
-	g := jen.NewFile(res.Version)
+	g := jen.NewFile(normalizeVersion(res.Version))
 	g.ImportAlias(pkgCommon, pkgCommonAlias)
 
 	g.Add(generateConditionFuncs(res))

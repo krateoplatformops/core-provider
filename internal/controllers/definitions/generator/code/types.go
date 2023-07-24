@@ -36,7 +36,7 @@ func CreateTypesDotGo(workdir string, res *Resource) error {
 
 	kind := text.ToGolangName(res.Kind)
 
-	g := jen.NewFile(res.Version)
+	g := jen.NewFile(normalizeVersion(res.Version))
 	g.ImportAlias(pkgCommon, pkgCommonAlias)
 	g.ImportAlias(pkgMeta, pkgMetaAlias)
 
@@ -221,7 +221,9 @@ func createFailedObjectRef() jen.Code {
 }
 
 func createSourceDir(workdir string, res *Resource) (string, error) {
-	srcdir := filepath.Join(workdir, "apis", strings.ToLower(res.Kind), res.Version)
+	srcdir := filepath.Join(workdir, "apis",
+		strings.ToLower(res.Kind),
+		normalizeVersion(res.Version))
 	err := os.MkdirAll(srcdir, os.ModePerm)
 	return srcdir, err
 }

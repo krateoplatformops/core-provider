@@ -139,7 +139,7 @@ func (g *defaultCRDGenerator) GVK() (schema.GroupVersionKind, error) {
 
 	return schema.GroupVersionKind{
 		Group:   defaultGroup,
-		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "_")),
+		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-")),
 		Kind:    flect.Pascalize(text.ToGolangName(name)),
 	}, nil
 }

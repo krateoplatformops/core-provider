@@ -17,8 +17,8 @@ func CreateApisDotGo(el *Resource, cfg Options) error {
 	g := jen.NewFile("apis")
 	g.ImportName(pkgApiMachineryRuntime, "runtime")
 
-	alias := fmt.Sprintf("%s%s", strings.ToLower(el.Kind), el.Version)
-	pkg := fmt.Sprintf("%s/apis/%s/%s", cfg.Module, strings.ToLower(el.Kind), el.Version)
+	alias := fmt.Sprintf("%s%s", strings.ToLower(el.Kind), normalizeVersion(el.Version))
+	pkg := fmt.Sprintf("%s/apis/%s/%s", cfg.Module, strings.ToLower(el.Kind), normalizeVersion(el.Version))
 	g.ImportAlias(pkg, alias)
 
 	g.Line()
@@ -50,6 +50,6 @@ func CreateApisDotGo(el *Resource, cfg Options) error {
 
 func generateAddToScheme(res *Resource, cfg Options) *jen.Statement {
 	kind := strings.ToLower(res.Kind)
-	pkg := fmt.Sprintf("%s/apis/%s/%s", cfg.Module, kind, res.Version)
+	pkg := fmt.Sprintf("%s/apis/%s/%s", cfg.Module, kind, normalizeVersion(res.Version))
 	return jen.Qual(pkg, "SchemeBuilder").Dot("AddToScheme")
 }
