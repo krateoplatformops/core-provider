@@ -107,15 +107,14 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	if exists {
-		labels := cr.Labels
-		if len(labels) > 0 {
-			if cr.Labels == nil {
-				cr.Labels = make(map[string]string)
-			}
-			cr.Labels["krateo.io/crd-group-version"] = gvk.GroupVersion().String()
-			cr.Labels["krateo.io/crd-kind"] = gvk.Kind
-			cr.Labels["krateo.io/crd-resource"] = strings.ToLower(flect.Pluralize(gvk.Kind))
+		if cr.Labels == nil {
+			cr.Labels = make(map[string]string)
 		}
+
+		cr.Labels["krateo.io/crd-group"] = gvk.Group
+		cr.Labels["krateo.io/crd-version"] = gvk.Version
+		cr.Labels["krateo.io/crd-kind"] = gvk.Kind
+		cr.Labels["krateo.io/crd-resource"] = strings.ToLower(flect.Pluralize(gvk.Kind))
 
 		if meta.ExternalCreateIncomplete(cr) {
 			e.log.Info("Generating CRD", "gvk", gvk.String())
@@ -131,7 +130,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: true,
-	}, nil //e.kube.Status().Update(ctx, cr)
+	}, e.kube.Update(ctx, cr)
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {

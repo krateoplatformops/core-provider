@@ -21,11 +21,11 @@ spec:
           name: tmp-dir
       containers:
         - name: krateo-core-provider
-          image: ghcr.io/krateoplatformops/core-provider:0.1.0
+          image: ghcr.io/krateoplatformops/core-provider:0.1.1
           imagePullPolicy: IfNotPresent
           args:
-            - -debug=true
-            - -poll=2m
+            - --debug
+            - --poll=2m
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false

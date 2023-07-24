@@ -4,6 +4,13 @@ metadata:
   name: krateo-core-provider
 rules:
 - apiGroups:
+  - core.krateo.io
+  resources:
+  - definitions
+  - definitions/status
+  verbs:
+  - '*'
+- apiGroups:
   - apiextensions.k8s.io
   resources:
   - customresourcedefinitions
@@ -13,9 +20,10 @@ rules:
   - create
   - delete
 - apiGroups:
-  - core.krateo.io
+  - ""
   resources:
-  - definitions
-  - definitions/status
+  - events
   verbs:
-  - '*'
+  - create
+  - patch
+  - update
