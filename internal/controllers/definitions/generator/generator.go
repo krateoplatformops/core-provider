@@ -72,14 +72,6 @@ func GroupVersionKindFromTarGzipURL(ctx context.Context, url string) (schema.Gro
 	}, nil
 }
 
-func ToGroupVersionResource(gvk schema.GroupVersionKind) schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    gvk.Group,
-		Version:  gvk.Version,
-		Resource: strings.ToLower(flect.Pluralize(gvk.Kind)),
-	}
-}
-
 type CRDGenerator interface {
 	GVK() (schema.GroupVersionKind, error)
 	Generate(ctx context.Context) ([]byte, error)

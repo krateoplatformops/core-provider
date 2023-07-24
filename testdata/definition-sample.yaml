@@ -1,4 +1,4 @@
-apiVersion: krateo.io/v1alpha1
+apiVersion: core.krateo.io/v1alpha1
 kind: Definition
 metadata:
   name: sample

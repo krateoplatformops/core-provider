@@ -26,16 +26,6 @@ func TestGroupVersionKindFromTarGzipURL(t *testing.T) {
 	if !cmp.Equal(expGVK, gotGVK) {
 		t.Fatalf("invalid GVK - expected: %s, got: %s", expGVK.String(), gotGVK.String())
 	}
-
-	expGVR := schema.GroupVersionResource{
-		Group:    "composition.krateo.io",
-		Version:  "v0-2-0",
-		Resource: "dummycharts",
-	}
-	gotGVR := ToGroupVersionResource(expGVK)
-	if !cmp.Equal(expGVR, gotGVR) {
-		t.Fatalf("invalid GVR - expected: %s, got: %s", expGVR.String(), gotGVR.String())
-	}
 }
 
 func TestGenerator(t *testing.T) {

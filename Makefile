@@ -43,6 +43,7 @@ generate: tidy ## Generate all CRDs.
 
 .PHONY: dev
 dev: generate ## Run the controller in debug mode.
+	$(KUBECTL) create namespace krateo-system || true
 	$(KUBECTL) apply -f crds/ -R
 	go run cmd/main.go -d
 
@@ -53,12 +54,6 @@ kind-up: ## Starts a KinD cluster for local development.
 .PHONY: kind-down
 kind-down: ## Shuts down the KinD cluster.
 	@$(KIND) delete cluster --name=$(KIND_CLUSTER_NAME)
-
-
-.PHONY: demo
-demo: ## Run the demo examples
-	@$(KUBECTL) create namespace krateo-system || true
-	@$(KUBECTL) apply -f testdata/definition-sample.yaml
 
 
 .PHONY: help

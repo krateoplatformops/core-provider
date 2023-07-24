@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/tgzfs"
+	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
 )
 
 func ExampleFetch() {
