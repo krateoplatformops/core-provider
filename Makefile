@@ -47,6 +47,14 @@ dev: generate ## Run the controller in debug mode.
 	$(KUBECTL) apply -f crds/ -R
 	go run cmd/main.go -d
 
+
+.PHONY: demo
+demo: generate ## Run the controller in debug mode.
+	$(KUBECTL) create namespace krateo-system || true
+	$(KUBECTL) apply -f crds/ -R
+	$(KIND) load docker-image ghcr.io/krateoplatformops/core-provider:$(VERSION) -n $(KIND_CLUSTER_NAME)
+
+
 .PHONY: kind-up
 kind-up: ## Starts a KinD cluster for local development.
 	@$(KIND) get kubeconfig --name $(KIND_CLUSTER_NAME) >/dev/null 2>&1 || $(KIND) create cluster --name=$(KIND_CLUSTER_NAME)

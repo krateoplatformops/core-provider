@@ -35,7 +35,7 @@ func main() {
 				Default("1h").
 				Duration()
 		pollInterval = app.Flag("poll", "Poll interval controls how often an individual resource should be checked for drift.").
-				Default("2m").
+				Default("3m").
 				OverrideDefaultFromEnvar(fmt.Sprintf("%s_POLL_INTERVAL", envVarPrefix)).
 				Duration()
 		maxReconcileRate = app.Flag("max-reconcile-rate", "The global maximum rate per second at which resources may checked for drift from the desired state.").

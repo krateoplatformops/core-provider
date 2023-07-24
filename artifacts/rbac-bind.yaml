@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: krateo-core-provider
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: krateo-core-provider
+subjects:
+- kind: ServiceAccount
+  name: krateo-core-provider
+  namespace: krateo-system

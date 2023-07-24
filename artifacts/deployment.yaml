@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: krateo-core-provider
+  namespace: krateo-system
+  labels:
+    k8s-app: krateo-core-provider
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      k8s-app: krateo-core-provider
+  template:
+    metadata:
+      labels:
+        k8s-app: krateo-core-provider
+    spec:
+      serviceAccountName: krateo-core-provider
+      volumes:
+        - emptyDir: {}
+          name: tmp-dir
+      containers:
+        - name: krateo-core-provider
+          image: ghcr.io/krateoplatformops/core-provider:0.1.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - -debug=true
+            - -poll=2m
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - mountPath: /tmp
+              name: tmp-dir
