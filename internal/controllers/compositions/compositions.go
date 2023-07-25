@@ -1,8 +1,7 @@
-package definitions
+package compositions
 
 import (
 	"context"
-	"strings"
 
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -11,11 +10,9 @@ import (
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/gobuffalo/flect"
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator"
 	"github.com/krateoplatformops/core-provider/internal/tools"
-	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
 	"github.com/krateoplatformops/provider-runtime/pkg/event"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
@@ -99,39 +96,21 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	if !exists {
-		cr.SetConditions(rtv1.Unavailable())
+	if !exists { // NOOP
 		return reconciler.ExternalObservation{
-			ResourceExists:   false,
+			ResourceExists:   true,
 			ResourceUpToDate: true,
-		}, e.kube.Status().Update(ctx, cr)
+		}, nil
 	}
 
-	if exists {
-		if cr.Labels == nil {
-			cr.Labels = make(map[string]string)
-		}
-
-		cr.Labels["krateo.io/crd-group"] = gvk.Group
-		cr.Labels["krateo.io/crd-version"] = gvk.Version
-		cr.Labels["krateo.io/crd-kind"] = gvk.Kind
-		cr.Labels["krateo.io/crd-resource"] = strings.ToLower(flect.Pluralize(gvk.Kind))
-
-		if meta.ExternalCreateIncomplete(cr) {
-			e.log.Info("Generating CRD", "gvk", gvk.String())
-			return reconciler.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: true,
-			}, nil
-		}
-	}
-
-	cr.SetConditions(rtv1.Available())
-
+	// TODO: derivare il Deployment
+	// TODO: verificare se è già installato
+	// TODO: si -> NOOP
+	// TODO: no -> Create(....)
 	return reconciler.ExternalObservation{
-		ResourceExists:   true,
+		ResourceExists:   false,
 		ResourceUpToDate: true,
-	}, e.kube.Update(ctx, cr)
+	}, nil
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {
@@ -145,28 +124,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	cr.SetConditions(rtv1.Creating())
+	// TODO: recupere le labels
+	// TODO: se non esistono return nil - NOOP
+	// TODO: se esistono creare i manifests e installarli
+	// cr.SetConditions(rtv1.Creating())
 
-	gen, err := generator.ForTarGzipURL(ctx, cr.Spec.ChartUrl)
-	if err != nil {
-		return err
-	}
-
-	dat, err := gen.Generate(ctx)
-	if err != nil {
-		return err
-	}
-
-	crd, err := tools.UnmarshalCRD(dat)
-	if err != nil {
-		return err
-	}
-
-	if err := tools.InstallCRD(ctx, e.kube, crd); err != nil {
-		return err
-	}
-
-	return e.kube.Status().Update(ctx, cr)
+	return nil
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {

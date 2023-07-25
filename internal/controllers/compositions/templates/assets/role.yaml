@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+rules:
+- apiGroups: 
+  - {{ .apiGroup }}
+  verbs:
+  - '*'
+  resources:
+  - {{ .resource }}
+  - {{ .resource }}/status
+- apiGroups: 
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+  - update

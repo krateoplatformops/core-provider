@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .name }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      name: {{ .name }}
+      namespace: {{ .namespace }}
+      labels:
+        app.kubernetes.io/name: {{ .name }}
+    spec:
+      containers:
+      - name: {{ .name }}
+        image: ghcr.io/krateoplatformops/composition-dynamic-controller:{{ or .tag "0.2.2" }}
+        imagePullPolicy: IfNotPresent
+        args:
+          - -debug
+          - -group={{ .apiGroup }}
+          - -version={{ .apiVersion }}
+          - -resource={{ .resource }}
+          - -namespace={{ .namespace }}
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          privileged: false
+          runAsGroup: 2000
+          runAsNonRoot: true
+          runAsUser: 2000
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        runAsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 2000
+      serviceAccount: {{ .name }}
+      serviceAccountName: {{ .name }}
+      terminationGracePeriodSeconds: 30
