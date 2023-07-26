@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositions/templates"
+	"github.com/krateoplatformops/core-provider/internal/templates"
 )
 
 func Test_InstallCRD(t *testing.T) {

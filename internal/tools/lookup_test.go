@@ -28,7 +28,7 @@ func Test_toGroupVersionResource(t *testing.T) {
 		Version:  "v0-2-0",
 		Resource: "dummycharts",
 	}
-	gotGVR := toGroupVersionResource(gvk)
+	gotGVR := ToGroupVersionResource(gvk)
 	if !cmp.Equal(expGVR, gotGVR) {
 		t.Fatalf("invalid GVR - expected: %s, got: %s", expGVR.String(), gotGVR.String())
 	}
@@ -43,7 +43,7 @@ func Test_lookupCRD(t *testing.T) {
 		Kind:    "DummyChart",
 	}
 
-	ok, err := LookupCRD(context.Background(), cli, gvk)
+	ok, err := LookupCRD(context.Background(), cli, ToGroupVersionResource(gvk))
 	if err != nil {
 		t.Fatal(err)
 	}

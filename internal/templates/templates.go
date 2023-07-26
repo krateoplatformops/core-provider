@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"os"
 	"text/template"
 )
 
@@ -35,24 +36,31 @@ type Renderoptions struct {
 	Version   string
 	Resource  string
 	Namespace string
+	Name      string
 	Tag       string
 }
 
 func Values(opts Renderoptions) map[string]string {
-	res := map[string]string{
+	if len(opts.Name) == 0 {
+		opts.Name = fmt.Sprintf("%s-controller", opts.Resource)
+	}
+
+	if len(opts.Namespace) == 0 {
+		opts.Namespace = "default"
+	}
+
+	if len(opts.Tag) == 0 {
+		opts.Tag = os.Getenv("COMPOSITION_CONTROLLER_IMAGE_TAG")
+	}
+
+	return map[string]string{
 		"apiGroup":   opts.Group,
 		"apiVersion": opts.Version,
 		"resource":   opts.Resource,
-		"name":       fmt.Sprintf("%s-controller", opts.Resource),
+		"name":       opts.Name,
 		"namespace":  opts.Namespace,
 		"tag":        opts.Tag,
 	}
-
-	if len(res["namespace"]) == 0 {
-		res["namespace"] = "default"
-	}
-
-	return res
 }
 
 func Render(tt TemplateType, values map[string]string) ([]byte, error) {

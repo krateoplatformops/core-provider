@@ -2,6 +2,7 @@ package definitions
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"k8s.io/client-go/tools/record"
@@ -14,6 +15,7 @@ import (
 	"github.com/gobuffalo/flect"
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator"
+	"github.com/krateoplatformops/core-provider/internal/templates"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -28,6 +30,11 @@ import (
 
 const (
 	errNotCR = "managed resource is not a Definition custom resource"
+
+	labelKeyGroup    = "krateo.io/crd-group"
+	labelKeyVersion  = "krateo.io/crd-version"
+	labelKeyKind     = "krateo.io/crd-kind"
+	labelKeyResource = "krateo.io/crd-resource"
 )
 
 func Setup(mgr ctrl.Manager, o controller.Options) error {
@@ -94,13 +101,14 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	exists, err := tools.LookupCRD(ctx, e.kube, gvk)
+	exists, err := tools.LookupCRD(ctx, e.kube, tools.ToGroupVersionResource(gvk))
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
 	if !exists {
-		cr.SetConditions(rtv1.Unavailable())
+		cr.SetConditions(rtv1.Unavailable().
+			WithMessage(fmt.Sprintf("CRD for %s does not exists yet", gvk.String())))
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
@@ -112,17 +120,46 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			cr.Labels = make(map[string]string)
 		}
 
-		cr.Labels["krateo.io/crd-group"] = gvk.Group
-		cr.Labels["krateo.io/crd-version"] = gvk.Version
-		cr.Labels["krateo.io/crd-kind"] = gvk.Kind
-		cr.Labels["krateo.io/crd-resource"] = strings.ToLower(flect.Pluralize(gvk.Kind))
+		cr.Labels[labelKeyGroup] = gvk.Group
+		cr.Labels[labelKeyVersion] = gvk.Version
+		cr.Labels[labelKeyKind] = gvk.Kind
+		cr.Labels[labelKeyResource] = strings.ToLower(flect.Pluralize(gvk.Kind))
 
 		if meta.ExternalCreateIncomplete(cr) {
-			e.log.Info("Generating CRD", "gvk", gvk.String())
+			e.log.Info("CRD generation pending.", "gvk", gvk.String())
 			return reconciler.ExternalObservation{
 				ResourceExists:   true,
 				ResourceUpToDate: true,
 			}, nil
+		}
+
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Searching for Dynamic Controller", "gvk", gvk.String())
+		}
+
+		deployed, err := tools.Lookup(ctx, e.kube, tools.LookupOptions{
+			ObjectType: templates.Deployment,
+			Group:      cr.Labels[labelKeyGroup],
+			Version:    cr.Labels[labelKeyVersion],
+			Resource:   cr.Labels[labelKeyResource],
+			Namespace:  cr.Namespace,
+		})
+		if err != nil {
+			return reconciler.ExternalObservation{
+				ResourceExists:   true,
+				ResourceUpToDate: true,
+			}, err
+		}
+
+		if !deployed {
+			return reconciler.ExternalObservation{
+				ResourceExists:   true,
+				ResourceUpToDate: false,
+			}, e.kube.Update(ctx, cr)
+		}
+
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Dynamic Controller already deployed", "gvk", gvk.String())
 		}
 	}
 
@@ -170,7 +207,41 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
-	return nil // NOOP
+	cr, ok := mg.(*definitionsv1alpha1.Definition)
+	if !ok {
+		return errors.New(errNotCR)
+	}
+
+	opts := tools.DeployOptions{
+		Group:     cr.Labels[labelKeyGroup],
+		Version:   cr.Labels[labelKeyVersion],
+		Resource:  cr.Labels[labelKeyResource],
+		Namespace: cr.Namespace,
+	}
+
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Deploying Dynamic Controller",
+			"group", opts.Group,
+			"version", opts.Version,
+			"resource", opts.Resource,
+			"namespace", opts.Namespace,
+		)
+	}
+
+	if err := tools.Deploy(ctx, e.kube, opts); err != nil {
+		return err
+	}
+
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Dynamic Controller successfully deployed",
+			"group", opts.Group,
+			"version", opts.Version,
+			"resource", opts.Resource,
+			"namespace", opts.Namespace,
+		)
+	}
+
+	return nil
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {

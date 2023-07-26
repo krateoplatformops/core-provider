@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositions/templates"
+	"github.com/krateoplatformops/core-provider/internal/templates"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

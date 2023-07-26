@@ -22,7 +22,7 @@ spec:
     spec:
       containers:
       - name: {{ .name }}
-        image: ghcr.io/krateoplatformops/composition-dynamic-controller:{{ or .tag "0.2.2" }}
+        image: ghcr.io/krateoplatformops/composition-dynamic-controller:{{ or .tag "0.2.3" }}
         imagePullPolicy: IfNotPresent
         args:
           - -debug
