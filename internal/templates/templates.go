@@ -9,26 +9,8 @@ import (
 )
 
 var (
-	//go:embed assets/sa.yaml
-	saTpl string
-
-	//go:embed assets/role.yaml
-	roleTpl string
-
-	//go:embed assets/binding.yaml
-	bindingTpl string
-
 	//go:embed assets/deployment.yaml
 	deploymentTpl string
-)
-
-type TemplateType string
-
-const (
-	ServiceAccount TemplateType = "sa"
-	Role           TemplateType = "role"
-	RoleBinding    TemplateType = "binding"
-	Deployment     TemplateType = "deployment"
 )
 
 type Renderoptions struct {
@@ -63,29 +45,14 @@ func Values(opts Renderoptions) map[string]string {
 	}
 }
 
-func Render(tt TemplateType, values map[string]string) ([]byte, error) {
-	switch tt {
-	case ServiceAccount:
-		return execute(string(tt), saTpl, values)
-	case Role:
-		return execute(string(tt), roleTpl, values)
-	case RoleBinding:
-		return execute(string(tt), bindingTpl, values)
-	case Deployment:
-		return execute(string(tt), deploymentTpl, values)
-	default:
-		return nil, fmt.Errorf("unable to find template for type: %s", string(tt))
-	}
-}
-
-func execute(name string, content string, data map[string]string) ([]byte, error) {
-	tpl, err := template.New(name).Funcs(TxtFuncMap()).Parse(content)
+func RenderDeployment(values map[string]string) ([]byte, error) {
+	tpl, err := template.New("deployment").Funcs(TxtFuncMap()).Parse(deploymentTpl)
 	if err != nil {
 		return nil, err
 	}
 
 	buf := bytes.Buffer{}
-	if err := tpl.Execute(&buf, data); err != nil {
+	if err := tpl.Execute(&buf, values); err != nil {
 		return nil, err
 	}
 

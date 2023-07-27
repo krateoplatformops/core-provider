@@ -2,63 +2,59 @@ package tools
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/fs"
 	"path"
 	"strings"
 
+	"github.com/avast/retry-go"
 	"github.com/gobuffalo/flect"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgz"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
-	"gopkg.in/yaml.v2"
+	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func RoleForChartURL(ctx context.Context, url string) (*rbacv1.Role, error) {
-	bin, err := tgz.Fetch(ctx, url)
-	if err != nil {
-		return nil, err
-	}
+func InstallRole(ctx context.Context, kube client.Client, obj *rbacv1.Role) error {
+	return retry.Do(
+		func() error {
+			tmp := rbacv1.Role{}
+			err := kube.Get(ctx, client.ObjectKeyFromObject(obj), &tmp)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return kube.Create(ctx, obj)
+				}
 
-	pkg, err := tgzfs.New(bytes.NewReader(bin))
-	if err != nil {
-		return nil, err
-	}
+				return err
+			}
 
-	all, err := fs.ReadDir(pkg, ".")
-	if err != nil {
-		return nil, err
-	}
+			return nil
+		},
+	)
+}
 
-	if len(all) != 1 {
-		return nil, fmt.Errorf("archive '%s' should contain only one root dir", url)
-	}
-
-	rootDir := all[0].Name()
-	entries, err := fs.ReadDir(pkg, path.Join(rootDir, "templates"))
+func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName) (rbacv1.Role, error) {
+	entries, err := fs.ReadDir(pkg, path.Join(pkg.RootDir(), "templates"))
 	if err != nil {
-		return nil, err
+		return rbacv1.Role{}, err
 	}
 
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("empty 'templates' folder")
+		return rbacv1.Role{}, fmt.Errorf("empty 'templates' folder in chart")
 	}
 
-	resource, err := deriveResourceName(pkg, rootDir)
-	if err != nil {
-		return nil, err
-	}
-
-	role := &rbacv1.Role{
+	role := rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
 			Kind:       "Role",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      opts.Name,
+			Namespace: opts.Namespace,
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -80,9 +76,9 @@ func RoleForChartURL(ctx context.Context, url string) (*rbacv1.Role, error) {
 			continue
 		}
 
-		nfo, err := createPolicyInfo(pkg, path.Join(rootDir, "templates", el.Name()))
+		nfo, err := createPolicyInfo(pkg, path.Join(pkg.RootDir(), "templates", el.Name()))
 		if err != nil {
-			return nil, err
+			return rbacv1.Role{}, err
 		}
 
 		lst, ok := pols[nfo.group]
@@ -103,29 +99,6 @@ func RoleForChartURL(ctx context.Context, url string) (*rbacv1.Role, error) {
 	}
 
 	return role, nil
-}
-
-func deriveResourceName(fs fs.FS, rootDir string) (string, error) {
-	fin, err := fs.Open(rootDir + "/Chart.yaml")
-	if err != nil {
-		return "", err
-	}
-	defer fin.Close()
-
-	din, err := io.ReadAll(fin)
-	if err != nil {
-		return "", err
-	}
-
-	res := map[string]any{}
-	if err := yaml.Unmarshal(din, &res); err != nil {
-		return "", err
-	}
-
-	name := res["name"].(string)
-	kind := flect.Pascalize(text.ToGolangName(name))
-	resource := strings.ToLower(flect.Pluralize(kind))
-	return resource, nil
 }
 
 func createPolicyInfo(fs fs.FS, filename string) (nfo policytInfo, err error) {

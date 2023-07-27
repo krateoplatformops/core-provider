@@ -17,7 +17,9 @@ const (
 )
 
 func TestRoleForChartURL(t *testing.T) {
-	role, err := RoleForChartURL(context.TODO(), testChartUrl)
+	role, err := CreateRole(context.TODO(), CreateRoleOptions{
+		ChartURL: testChartUrl,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
