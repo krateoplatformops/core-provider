@@ -45,7 +45,7 @@ func CreateRoleBinding(opts types.NamespacedName) rbacv1.RoleBinding {
 			Name:     opts.Name,
 		},
 		Subjects: []rbacv1.Subject{
-			rbacv1.Subject{
+			{
 				Kind:      "ServiceAccount",
 				Name:      opts.Name,
 				Namespace: opts.Namespace,
