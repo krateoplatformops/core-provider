@@ -24,10 +24,10 @@ func TestServiceAccountManifest(t *testing.T) {
 
 func TestRoleManifest(t *testing.T) {
 	values := Values(Renderoptions{
-		Group:     "dummy-charts.core.krateo.io",
+		Group:     "composition.krateo.io",
 		Version:   "v0-2-0",
 		Resource:  "dummycharts",
-		Namespace: "default",
+		Namespace: "krateo-system",
 	})
 	bin, err := Render(Role, values)
 	if err != nil {

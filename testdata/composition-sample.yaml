@@ -1,0 +1,10 @@
+apiVersion: composition.krateo.io/v0-2-0
+kind: DummyChart
+metadata:
+  name: sample
+  namespace: krateo-system
+spec:
+  data:
+    like: false
+    greeting: "Hello World!"
+    counter: 1

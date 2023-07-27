@@ -1,16 +1,16 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ .name }}
-  namespace: {{ .namespace }}
+  name: dummycharts-controller
+  namespace: krateo-system
 rules:
-- apiGroups: 
-  - {{ .apiGroup }}
+- apiGroups:
+  - composition.krateo.io
   verbs:
   - '*'
   resources:
-  - {{ .resource }}
-  - {{ .resource }}/status
+  - dummycharts
+  - dummycharts/status
 - apiGroups:
   - core.krateo.io
   resources:
@@ -18,7 +18,7 @@ rules:
   - definitions/status
   verbs:
   - '*'
-- apiGroups: 
+- apiGroups:
   - ""
   resources:
   - '*'
