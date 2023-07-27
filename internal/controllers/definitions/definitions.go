@@ -31,7 +31,6 @@ const (
 
 	labelKeyGroup    = "krateo.io/crd-group"
 	labelKeyVersion  = "krateo.io/crd-version"
-	labelKeyKind     = "krateo.io/crd-kind"
 	labelKeyResource = "krateo.io/crd-resource"
 )
 
