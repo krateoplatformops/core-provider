@@ -26,52 +26,6 @@ const (
 	defaultGroup  = "composition.krateo.io"
 )
 
-func GroupVersionKindFromTarGzipURL(ctx context.Context, url string) (schema.GroupVersionKind, error) {
-	bin, err := tgz.Fetch(ctx, url)
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	pkg, err := tgzfs.New(bytes.NewReader(bin))
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	all, err := fs.ReadDir(pkg, ".")
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	if len(all) != 1 {
-		return schema.GroupVersionKind{}, fmt.Errorf("archive '%s' should contain only one root dir", url)
-	}
-
-	rootDir := all[0].Name()
-	fin, err := pkg.Open(rootDir + "/Chart.yaml")
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-	defer fin.Close()
-
-	din, err := io.ReadAll(fin)
-	if err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	res := map[string]any{}
-	if err := yaml.Unmarshal(din, &res); err != nil {
-		return schema.GroupVersionKind{}, err
-	}
-
-	name := res["name"].(string)
-
-	return schema.GroupVersionKind{
-		Group:   defaultGroup,
-		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-")),
-		Kind:    flect.Pascalize(text.ToGolangName(name)),
-	}, nil
-}
-
 type CRDGenerator interface {
 	GVK() (schema.GroupVersionKind, error)
 	Generate(ctx context.Context) ([]byte, error)

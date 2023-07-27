@@ -2,32 +2,36 @@ package tools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 type DeployOptions struct {
-	GVR            schema.GroupVersionResource
-	NamespacedName types.NamespacedName
-	Tag            string
-	ChartURL       string
+	Namespace string
+	Tag       string
+	ChartFS   *chartfs.ChartFS
 }
 
 func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
-	sa := CreateServiceAccount(opts.NamespacedName)
-	if err := InstallServiceAccount(ctx, kube, &sa); err != nil {
-		return err
-	}
-
-	pkg, err := chartfs.FromURL(opts.ChartURL)
+	gvr, err := GroupVersionResource(opts.ChartFS)
 	if err != nil {
 		return err
 	}
 
-	role, err := CreateRole(pkg, opts.GVR.Resource, opts.NamespacedName)
+	nn := types.NamespacedName{
+		Name:      fmt.Sprintf("%s-controller", gvr.Resource),
+		Namespace: opts.Namespace,
+	}
+
+	sa := CreateServiceAccount(nn)
+	if err := InstallServiceAccount(ctx, kube, &sa); err != nil {
+		return err
+	}
+
+	role, err := CreateRole(opts.ChartFS, gvr.Resource, nn)
 	if err != nil {
 		return err
 	}
@@ -35,12 +39,12 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 		return err
 	}
 
-	rb := CreateRoleBinding(opts.NamespacedName)
+	rb := CreateRoleBinding(nn)
 	if err := InstallRoleBinding(ctx, kube, &rb); err != nil {
 		return err
 	}
 
-	dep, err := CreateDeployment(opts.GVR, opts.NamespacedName)
+	dep, err := CreateDeployment(gvr, nn.Namespace)
 	if err != nil {
 		return err
 	}

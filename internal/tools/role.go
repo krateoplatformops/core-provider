@@ -70,7 +70,10 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 		},
 	}
 
-	pols := map[string][]string{}
+	pols := map[string][]string{
+		"": {"secrets"},
+	}
+
 	for _, el := range entries {
 		if strings.HasPrefix(el.Name(), "_") {
 			continue

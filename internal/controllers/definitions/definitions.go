@@ -3,7 +3,6 @@ package definitions
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -12,11 +11,10 @@ import (
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/gobuffalo/flect"
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator"
-	"github.com/krateoplatformops/core-provider/internal/templates"
 	"github.com/krateoplatformops/core-provider/internal/tools"
+	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
 	"github.com/krateoplatformops/provider-runtime/pkg/event"
@@ -96,19 +94,24 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
 
-	gvk, err := generator.GroupVersionKindFromTarGzipURL(ctx, cr.Spec.ChartUrl)
+	pkg, err := chartfs.FromURL(cr.Spec.ChartUrl)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
-	exists, err := tools.LookupCRD(ctx, e.kube, tools.ToGroupVersionResource(gvk))
+	gvr, err := tools.GroupVersionResource(pkg)
+	if err != nil {
+		return reconciler.ExternalObservation{}, err
+	}
+
+	exists, err := tools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
 	if !exists {
 		cr.SetConditions(rtv1.Unavailable().
-			WithMessage(fmt.Sprintf("CRD for %s does not exists yet", gvk.String())))
+			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
@@ -120,13 +123,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			cr.Labels = make(map[string]string)
 		}
 
-		cr.Labels[labelKeyGroup] = gvk.Group
-		cr.Labels[labelKeyVersion] = gvk.Version
-		cr.Labels[labelKeyKind] = gvk.Kind
-		cr.Labels[labelKeyResource] = strings.ToLower(flect.Pluralize(gvk.Kind))
+		cr.Labels[labelKeyGroup] = gvr.Group
+		cr.Labels[labelKeyVersion] = gvr.Version
+		cr.Labels[labelKeyResource] = gvr.Resource
 
 		if meta.ExternalCreateIncomplete(cr) {
-			e.log.Info("CRD generation pending.", "gvk", gvk.String())
+			e.log.Info("CRD generation pending.", "gvr", gvr.String())
 			return reconciler.ExternalObservation{
 				ResourceExists:   true,
 				ResourceUpToDate: true,
@@ -134,16 +136,18 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}
 
 		if meta.IsVerbose(cr) {
-			e.log.Debug("Searching for Dynamic Controller", "gvk", gvk.String())
+			e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
 		}
 
-		deployed, err := tools.Lookup(ctx, e.kube, tools.LookupOptions{
-			ObjectType: templates.Deployment,
-			Group:      cr.Labels[labelKeyGroup],
-			Version:    cr.Labels[labelKeyVersion],
-			Resource:   cr.Labels[labelKeyResource],
-			Namespace:  cr.Namespace,
-		})
+		obj, err := tools.CreateDeployment(gvr, cr.Namespace)
+		if err != nil {
+			return reconciler.ExternalObservation{
+				ResourceExists:   true,
+				ResourceUpToDate: true,
+			}, err
+		}
+
+		deployed, err := tools.LookupDeployment(ctx, e.kube, &obj)
 		if err != nil {
 			return reconciler.ExternalObservation{
 				ResourceExists:   true,
@@ -159,7 +163,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}
 
 		if meta.IsVerbose(cr) {
-			e.log.Debug("Dynamic Controller already deployed", "gvk", gvk.String())
+			e.log.Debug("Dynamic Controller already deployed", "gvr", gvr.String())
 		}
 	}
 
@@ -212,32 +216,35 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	opts := tools.DeployOptions{
-		Group:     cr.Labels[labelKeyGroup],
-		Version:   cr.Labels[labelKeyVersion],
-		Resource:  cr.Labels[labelKeyResource],
-		Namespace: cr.Namespace,
+	pkg, err := chartfs.FromURL(cr.Spec.ChartUrl)
+	if err != nil {
+		return err
+	}
+
+	gvr, err := tools.GroupVersionResource(pkg)
+	if err != nil {
+		return err
 	}
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Deploying Dynamic Controller",
-			"group", opts.Group,
-			"version", opts.Version,
-			"resource", opts.Resource,
-			"namespace", opts.Namespace,
+			"gvr", gvr.String(),
+			"namespace", cr.Namespace,
 		)
 	}
 
-	if err := tools.Deploy(ctx, e.kube, opts); err != nil {
+	err = tools.Deploy(ctx, e.kube, tools.DeployOptions{
+		Namespace: cr.Namespace,
+		ChartFS:   pkg,
+	})
+	if err != nil {
 		return err
 	}
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Dynamic Controller successfully deployed",
-			"group", opts.Group,
-			"version", opts.Version,
-			"resource", opts.Resource,
-			"namespace", opts.Namespace,
+			"gvr", gvr.String(),
+			"namespace", cr.Namespace,
 		)
 	}
 

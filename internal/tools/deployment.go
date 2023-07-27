@@ -9,7 +9,6 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
@@ -33,13 +32,12 @@ func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Depl
 	)
 }
 
-func CreateDeployment(gvr schema.GroupVersionResource, opts types.NamespacedName) (appsv1.Deployment, error) {
+func CreateDeployment(gvr schema.GroupVersionResource, namespace string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
-		Name:      opts.Name,
-		Namespace: opts.Namespace,
+		Namespace: namespace,
 	})
 
 	dat, err := templates.RenderDeployment(values)
