@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"os"
 
 	"github.com/avast/retry-go"
 	"github.com/krateoplatformops/core-provider/internal/templates"
@@ -38,6 +39,7 @@ func CreateDeployment(gvr schema.GroupVersionResource, namespace string) (appsv1
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
 		Namespace: namespace,
+		Tag:       os.Getenv("CDC_IMAGE_TAG"),
 	})
 
 	dat, err := templates.RenderDeployment(values)

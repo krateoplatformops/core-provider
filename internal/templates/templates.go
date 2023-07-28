@@ -4,7 +4,6 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
-	"os"
 	"text/template"
 )
 
@@ -29,10 +28,6 @@ func Values(opts Renderoptions) map[string]string {
 
 	if len(opts.Namespace) == 0 {
 		opts.Namespace = "default"
-	}
-
-	if len(opts.Tag) == 0 {
-		opts.Tag = os.Getenv("COMPOSITION_CONTROLLER_IMAGE_TAG")
 	}
 
 	return map[string]string{

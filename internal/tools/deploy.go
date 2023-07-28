@@ -11,7 +11,6 @@ import (
 
 type DeployOptions struct {
 	Namespace string
-	Tag       string
 	ChartFS   *chartfs.ChartFS
 }
 
