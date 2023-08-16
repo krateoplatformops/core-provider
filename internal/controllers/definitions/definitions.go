@@ -117,53 +117,43 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, e.kube.Status().Update(ctx, cr)
 	}
 
-	if exists {
-		if cr.Labels == nil {
-			cr.Labels = make(map[string]string)
-		}
+	if meta.ExternalCreateIncomplete(cr) {
+		e.log.Info("CRD generation pending.", "gvr", gvr.String())
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: true,
+		}, nil
+	}
 
-		cr.Labels[labelKeyGroup] = gvr.Group
-		cr.Labels[labelKeyVersion] = gvr.Version
-		cr.Labels[labelKeyResource] = gvr.Resource
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
+	}
 
-		if meta.ExternalCreateIncomplete(cr) {
-			e.log.Info("CRD generation pending.", "gvr", gvr.String())
-			return reconciler.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: true,
-			}, nil
-		}
+	obj, err := tools.CreateDeployment(gvr, cr.Namespace)
+	if err != nil {
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: true,
+		}, err
+	}
 
-		if meta.IsVerbose(cr) {
-			e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
-		}
+	deployed, err := tools.LookupDeployment(ctx, e.kube, &obj)
+	if err != nil {
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: true,
+		}, err
+	}
 
-		obj, err := tools.CreateDeployment(gvr, cr.Namespace)
-		if err != nil {
-			return reconciler.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: true,
-			}, err
-		}
+	if !deployed {
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil // e.kube.Update(ctx, cr)
+	}
 
-		deployed, err := tools.LookupDeployment(ctx, e.kube, &obj)
-		if err != nil {
-			return reconciler.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: true,
-			}, err
-		}
-
-		if !deployed {
-			return reconciler.ExternalObservation{
-				ResourceExists:   true,
-				ResourceUpToDate: false,
-			}, e.kube.Update(ctx, cr)
-		}
-
-		if meta.IsVerbose(cr) {
-			e.log.Debug("Dynamic Controller already deployed", "gvr", gvr.String())
-		}
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Dynamic Controller already deployed", "gvr", gvr.String())
 	}
 
 	cr.SetConditions(rtv1.Available())
@@ -171,7 +161,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: true,
-	}, e.kube.Update(ctx, cr)
+	}, nil // e.kube.Update(ctx, cr)
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {
@@ -206,7 +196,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	return e.kube.Status().Update(ctx, cr)
+	return nil // e.kube.Status().Update(ctx, cr)
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
@@ -222,6 +212,18 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	gvr, err := tools.GroupVersionResource(pkg)
 	if err != nil {
+		return err
+	}
+
+	if cr.Labels == nil {
+		cr.Labels = make(map[string]string)
+	}
+
+	cr.Labels[labelKeyGroup] = gvr.Group
+	cr.Labels[labelKeyVersion] = gvr.Version
+	cr.Labels[labelKeyResource] = gvr.Resource
+
+	if err := e.kube.Update(ctx, cr, &client.UpdateOptions{}); err != nil {
 		return err
 	}
 
