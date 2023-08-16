@@ -83,7 +83,7 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 		if err != nil {
 			return rbacv1.Role{}, err
 		}
-
+		fmt.Println(nfo)
 		lst, ok := pols[nfo.group]
 		if ok {
 			lst = append(lst, nfo.resource)
@@ -118,7 +118,7 @@ func createPolicyInfo(fs fs.FS, filename string) (nfo policytInfo, err error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
-		if strings.HasPrefix(line, "apiGroup") {
+		if strings.HasPrefix(line, "apiVersion") {
 			idx := strings.IndexRune(line, ':')
 			if idx != -1 {
 				gv, err := schema.ParseGroupVersion(strings.TrimSpace(line[idx+1:]))
