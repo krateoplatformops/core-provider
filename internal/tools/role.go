@@ -71,7 +71,7 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 	}
 
 	pols := map[string][]string{
-		"": {"secrets"},
+		"": {"secrets", "namespaces"},
 	}
 
 	for _, el := range entries {
