@@ -58,8 +58,7 @@ func CreateTypesDotGo(workdir string, res *Resource) error {
 	} else {
 		g.Add(jen.Comment("+kubebuilder:resource:scope=Namespaced"))
 	}
-	g.Add(jen.Comment(`+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"`).Line())
-	g.Add(jen.Line())
+	g.Add(jen.Comment(`+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"`))
 	g.Add(jen.Comment(`+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"`).Line())
 	g.Add(jen.Line())
 
