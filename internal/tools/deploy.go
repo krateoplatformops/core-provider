@@ -43,6 +43,11 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 		return err
 	}
 
+	crb := CreateClusterRoleBinding(nn)
+	if err := InstallClusterRoleBinding(ctx, kube, &crb); err != nil {
+		return err
+	}
+
 	dep, err := CreateDeployment(gvr, nn.Namespace)
 	if err != nil {
 		return err

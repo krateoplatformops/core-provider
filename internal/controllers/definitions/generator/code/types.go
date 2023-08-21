@@ -60,6 +60,8 @@ func CreateTypesDotGo(workdir string, res *Resource) error {
 	}
 	g.Add(jen.Comment(`+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"`).Line())
 	g.Add(jen.Line())
+	g.Add(jen.Comment(`+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"`).Line())
+	g.Add(jen.Line())
 
 	g.Add(jen.Type().Id(kind).Struct(
 		jen.Qual(pkgMeta, "TypeMeta").Tag(map[string]string{"json": ",inline"}),
