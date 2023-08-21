@@ -3,6 +3,7 @@ package definitions
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -32,6 +33,9 @@ const (
 	labelKeyGroup    = "krateo.io/crd-group"
 	labelKeyVersion  = "krateo.io/crd-version"
 	labelKeyResource = "krateo.io/crd-resource"
+
+	reconcileGracePeriod = 1 * time.Minute
+	reconcileTimeout     = 4 * time.Minute
 )
 
 func Setup(mgr ctrl.Manager, o controller.Options) error {
@@ -50,6 +54,8 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 			log:      log,
 			recorder: recorder,
 		}),
+		reconciler.WithTimeout(reconcileTimeout),
+		reconciler.WithCreationGracePeriod(reconcileGracePeriod),
 		reconciler.WithPollInterval(o.PollInterval),
 		reconciler.WithLogger(log),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
@@ -161,7 +167,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: true,
-	}, nil // e.kube.Update(ctx, cr)
+	}, nil
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {
@@ -196,7 +202,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	return nil // e.kube.Status().Update(ctx, cr)
+	return nil
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
