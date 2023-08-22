@@ -31,6 +31,33 @@ type CRDGenerator interface {
 	Generate(ctx context.Context) ([]byte, error)
 }
 
+func ForTarGzipFile(ctx context.Context, filename string) (CRDGenerator, error) {
+	fin, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer fin.Close()
+
+	pkg, err := tgzfs.New(fin)
+	if err != nil {
+		return nil, err
+	}
+
+	all, err := fs.ReadDir(pkg, ".")
+	if err != nil {
+		return nil, err
+	}
+
+	if len(all) != 1 {
+		return nil, fmt.Errorf("archive '%s' should contain only one root dir", filename)
+	}
+
+	return &defaultCRDGenerator{
+		tgzFS:   pkg,
+		rootDir: all[0].Name(),
+	}, nil
+}
+
 func ForTarGzipURL(ctx context.Context, url string) (CRDGenerator, error) {
 	bin, err := tgz.Fetch(ctx, url)
 	if err != nil {

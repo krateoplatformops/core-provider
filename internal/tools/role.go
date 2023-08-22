@@ -3,19 +3,22 @@ package tools
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
-	"io/fs"
-	"path"
+	"io"
 	"strings"
 
 	"github.com/avast/retry-go"
 	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"sigs.k8s.io/yaml"
+
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -38,13 +41,13 @@ func InstallRole(ctx context.Context, kube client.Client, obj *rbacv1.Role) erro
 }
 
 func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName) (rbacv1.Role, error) {
-	entries, err := fs.ReadDir(pkg, path.Join(pkg.RootDir(), "templates"))
+	rend, err := RenderChartTemplates(pkg)
 	if err != nil {
 		return rbacv1.Role{}, err
 	}
 
-	if len(entries) == 0 {
-		return rbacv1.Role{}, fmt.Errorf("empty 'templates' folder in chart")
+	if len(rend) == 0 {
+		return rbacv1.Role{}, fmt.Errorf("no entries in manifest")
 	}
 
 	role := rbacv1.Role{
@@ -70,33 +73,42 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 		},
 	}
 
-	pols := map[string][]string{
-		"": {"secrets", "namespaces"},
+	pols := map[string]map[string]bool{
+		"": {"secrets": true, "namespaces": true},
 	}
 
-	for _, el := range entries {
-		if strings.HasPrefix(el.Name(), "_") {
+	mdr := utilyaml.NewYAMLReader(bufio.NewReader(strings.NewReader(rend)))
+	for {
+		nfo, err := createPolicyInfo(mdr)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return role, err
+		}
+		if len(nfo.resource) == 0 {
 			continue
 		}
 
-		nfo, err := createPolicyInfo(pkg, path.Join(pkg.RootDir(), "templates", el.Name()))
-		if err != nil {
-			return rbacv1.Role{}, err
-		}
-		fmt.Println(nfo)
 		lst, ok := pols[nfo.group]
-		if ok {
-			lst = append(lst, nfo.resource)
+		if !ok {
+			lst = map[string]bool{}
 			pols[nfo.group] = lst
-		} else {
-			pols[nfo.group] = []string{nfo.resource}
+		}
+		if _, exists := lst[nfo.resource]; !exists {
+			lst[nfo.resource] = true
 		}
 	}
 
 	for grp, res := range pols {
+		keys := make([]string, 0, len(res))
+		for k := range res {
+			keys = append(keys, k)
+		}
+
 		role.Rules = append(role.Rules, rbacv1.PolicyRule{
 			APIGroups: []string{grp},
-			Resources: res,
+			Resources: keys,
 			Verbs:     []string{"*"},
 		})
 	}
@@ -104,47 +116,27 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 	return role, nil
 }
 
-func createPolicyInfo(fs fs.FS, filename string) (nfo policytInfo, err error) {
-	fin, err := fs.Open(filename)
+func createPolicyInfo(dec *utilyaml.YAMLReader) (nfo policytInfo, err error) {
+	buf, err := dec.Read()
 	if err != nil {
 		return nfo, err
 	}
-	defer fin.Close()
 
-	scanner := bufio.NewScanner(fin)
-
-	groupOK := false
-	resourceOK := false
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if strings.HasPrefix(line, "apiVersion") {
-			idx := strings.IndexRune(line, ':')
-			if idx != -1 {
-				gv, err := schema.ParseGroupVersion(strings.TrimSpace(line[idx+1:]))
-				if err != nil {
-					return nfo, err
-				}
-				nfo.group = gv.Group
-				groupOK = true
-			}
-		}
-
-		if strings.HasPrefix(line, "kind") {
-			idx := strings.IndexRune(line, ':')
-			if idx != -1 {
-				kind := strings.TrimSpace(line[idx+1:])
-				nfo.resource = strings.ToLower(flect.Pluralize(kind))
-				resourceOK = true
-			}
-		}
-
-		if groupOK && resourceOK {
-			break // don't read all yaml
-		}
+	tm := metav1.TypeMeta{}
+	if err := yaml.Unmarshal(buf, &tm); err != nil {
+		return nfo, err
+	}
+	if tm.Kind == "" {
+		return nfo, err
 	}
 
-	err = scanner.Err()
+	gv, err := schema.ParseGroupVersion(tm.APIVersion)
+	if err != nil {
+		return nfo, err
+	}
+
+	nfo.group = gv.Group
+	nfo.resource = strings.ToLower(flect.Pluralize(tm.Kind))
 	return nfo, err
 }
 

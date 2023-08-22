@@ -1,7 +1,7 @@
 apiVersion: composition.krateo.io/v0-2-0
 kind: DummyChart
 metadata:
-  name: sample
+  name: dummychart
   namespace: krateo-system
 spec:
   data:

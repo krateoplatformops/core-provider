@@ -5,10 +5,45 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"os"
 
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgz"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
 )
+
+func FromFile(filename string) (*ChartFS, error) {
+	fin, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer fin.Close()
+
+	pkg, err := tgzfs.New(fin)
+	if err != nil {
+		return nil, err
+	}
+
+	all, err := fs.ReadDir(pkg, ".")
+	if err != nil {
+		return nil, err
+	}
+
+	dirs := []string{}
+	for _, el := range all {
+		if el.IsDir() {
+			dirs = append(dirs, el.Name())
+		}
+	}
+
+	if len(dirs) != 1 {
+		return nil, fmt.Errorf("archive '%s' should contain only one root dir", filename)
+	}
+
+	return &ChartFS{
+		rootdir: dirs[0],
+		fs:      pkg,
+	}, nil
+}
 
 func FromURL(url string) (*ChartFS, error) {
 	bin, err := tgz.Fetch(context.Background(), url)
@@ -26,12 +61,19 @@ func FromURL(url string) (*ChartFS, error) {
 		return nil, err
 	}
 
-	if len(all) != 1 {
+	dirs := []string{}
+	for _, el := range all {
+		if el.IsDir() {
+			dirs = append(dirs, el.Name())
+		}
+	}
+
+	if len(dirs) != 1 {
 		return nil, fmt.Errorf("archive '%s' should contain only one root dir", url)
 	}
 
 	return &ChartFS{
-		rootdir: all[0].Name(),
+		rootdir: dirs[0],
 		fs:      pkg,
 	}, nil
 }
