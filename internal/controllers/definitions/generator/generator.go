@@ -15,8 +15,9 @@ import (
 	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/code"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgz"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
 )
@@ -31,40 +32,31 @@ type CRDGenerator interface {
 	Generate(ctx context.Context) ([]byte, error)
 }
 
-func ForTarGzipFile(ctx context.Context, filename string) (CRDGenerator, error) {
-	fin, err := os.Open(filename)
+func ForURL(ctx context.Context, url string) (CRDGenerator, error) {
+	if registry.IsOCI(url) {
+		g, err := getter.NewOCIGetter()
+		if err != nil {
+			return nil, err
+		}
+
+		buf, err := g.Get(url)
+		if err != nil {
+			return nil, err
+		}
+
+		return ForData(ctx, buf)
+	}
+
+	buf, err := getter.NewHTTPGetter().Get(url)
 	if err != nil {
 		return nil, err
 	}
-	defer fin.Close()
 
-	pkg, err := tgzfs.New(fin)
-	if err != nil {
-		return nil, err
-	}
-
-	all, err := fs.ReadDir(pkg, ".")
-	if err != nil {
-		return nil, err
-	}
-
-	if len(all) != 1 {
-		return nil, fmt.Errorf("archive '%s' should contain only one root dir", filename)
-	}
-
-	return &defaultCRDGenerator{
-		tgzFS:   pkg,
-		rootDir: all[0].Name(),
-	}, nil
+	return ForData(ctx, buf)
 }
 
-func ForTarGzipURL(ctx context.Context, url string) (CRDGenerator, error) {
-	bin, err := tgz.Fetch(ctx, url)
-	if err != nil {
-		return nil, err
-	}
-
-	pkg, err := tgzfs.New(bytes.NewReader(bin))
+func ForData(ctx context.Context, bin *bytes.Buffer) (CRDGenerator, error) {
+	pkg, err := tgzfs.New(bin)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +67,7 @@ func ForTarGzipURL(ctx context.Context, url string) (CRDGenerator, error) {
 	}
 
 	if len(all) != 1 {
-		return nil, fmt.Errorf("archive '%s' should contain only one root dir", url)
+		return nil, fmt.Errorf("tgz archive should contain only one root dir")
 	}
 
 	return &defaultCRDGenerator{

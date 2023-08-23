@@ -4,9 +4,14 @@
 package generator
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"testing"
+
+	"github.com/krateoplatformops/core-provider/internal/tools/getter"
 )
 
 const (
@@ -15,7 +20,12 @@ const (
 )
 
 func TestGeneratorFromURL(t *testing.T) {
-	gen, err := ForTarGzipURL(context.Background(), testChartUrl)
+	buf, err := getter.NewHTTPGetter().Get(testChartUrl)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gen, err := ForData(context.Background(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,7 +39,18 @@ func TestGeneratorFromURL(t *testing.T) {
 }
 
 func TestGeneratorFromFile(t *testing.T) {
-	gen, err := ForTarGzipFile(context.Background(), testChartFile)
+	fin, err := os.Open(testChartFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fin.Close()
+
+	all, err := io.ReadAll(fin)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gen, err := ForData(context.Background(), bytes.NewBuffer(all))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,4 +6,4 @@ metadata:
   name: postgresql
   namespace: krateo-system
 spec:
-  chartUrl: https://github.com/krateoplatformops/postgresql-demo-chart/releases/download/12.8.3/postgresql-12.8.3.tgz
+  chartUrl: oci://registry-1.docker.io/bitnamicharts/postgresql

@@ -183,7 +183,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	cr.SetConditions(rtv1.Creating())
 
-	gen, err := generator.ForTarGzipURL(ctx, cr.Spec.ChartUrl)
+	gen, err := generator.ForURL(ctx, cr.Spec.ChartUrl)
 	if err != nil {
 		return err
 	}
