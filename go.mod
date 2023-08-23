@@ -3,6 +3,7 @@ module github.com/krateoplatformops/core-provider
 go 1.20
 
 require (
+	github.com/Masterminds/semver v1.5.0
 	github.com/alecthomas/kingpin/v2 v2.3.1
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/dave/jennifer v1.6.1
