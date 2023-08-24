@@ -61,6 +61,10 @@ func (g *ociGetter) Get(uri string, opts ...Option) (*bytes.Buffer, error) {
 	}
 
 	ref := strings.TrimPrefix(uri, fmt.Sprintf("%s://", registry.OCIScheme))
+	if idx := strings.LastIndex(ref, ":"); idx > 0 {
+		g.opts.version = ref[idx+1:]
+		ref = ref[0:idx]
+	}
 
 	u, err := url.Parse(ref)
 	if err != nil {
