@@ -58,7 +58,8 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, error) {
 		return nil, fmt.Errorf("uri '%s' is not a valid OCI ref", opts.URI)
 	}
 
-	u, err := g.resolveURI(opts.URI, opts.Version)
+	ref := strings.TrimPrefix(opts.URI, "oci://")
+	u, err := g.resolveURI(ref, opts.Version)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/yaml"
@@ -19,7 +20,9 @@ const (
 )
 
 func TestCreateRoleFromURL(t *testing.T) {
-	pkg, err := chartfs.FromURL(testChartUrl)
+	pkg, err := chartfs.ForSpec(&v1alpha1.ChartInfo{
+		Url: testChartUrl,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

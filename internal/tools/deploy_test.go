@@ -7,11 +7,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 )
 
 func Test_Deploy(t *testing.T) {
-	pkg, err := chartfs.FromURL(testChartUrl)
+	pkg, err := chartfs.ForSpec(&v1alpha1.ChartInfo{
+		Url: testChartUrl,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
