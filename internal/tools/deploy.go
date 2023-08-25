@@ -21,7 +21,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 	}
 
 	nn := types.NamespacedName{
-		Name:      fmt.Sprintf("%s-controller", gvr.Resource),
+		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
 		Namespace: opts.Namespace,
 	}
 
@@ -48,7 +48,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 		return err
 	}
 
-	dep, err := CreateDeployment(gvr, nn.Namespace)
+	dep, err := CreateDeployment(gvr, nn)
 	if err != nil {
 		return err
 	}

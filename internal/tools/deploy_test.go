@@ -13,7 +13,9 @@ import (
 
 func Test_Deploy(t *testing.T) {
 	pkg, err := chartfs.ForSpec(&v1alpha1.ChartInfo{
-		Url: testChartUrl,
+		Url:     "oci://registry-1.docker.io/bitnamicharts",
+		Version: "12.8.3",
+		Name:    "postgresql",
 	})
 	if err != nil {
 		t.Fatal(err)
