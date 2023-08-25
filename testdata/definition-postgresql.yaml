@@ -6,4 +6,7 @@ metadata:
   name: postgresql
   namespace: krateo-system
 spec:
-  chartUrl: oci://registry-1.docker.io/bitnamicharts/postgresql
+  chart:
+    url: oci://registry-1.docker.io/bitnamicharts
+    version: "12.8.3"
+    name: postgresql
