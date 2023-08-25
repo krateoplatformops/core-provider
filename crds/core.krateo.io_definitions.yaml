@@ -10,7 +10,7 @@ spec:
   names:
     categories:
     - krateo
-    - composition
+    - definition
     - core
     kind: Definition
     listKind: DefinitionList

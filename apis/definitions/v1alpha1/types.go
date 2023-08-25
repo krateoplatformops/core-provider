@@ -35,7 +35,7 @@ type DefinitionStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Namespaced,categories={krateo,composition,core}
+//+kubebuilder:resource:scope=Namespaced,categories={krateo,definition,core}
 //+kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.chart.url"
 //+kubebuilder:printcolumn:name="VERSION",type="string",JSONPath=".spec.chart.version"
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
