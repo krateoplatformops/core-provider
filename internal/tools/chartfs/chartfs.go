@@ -1,13 +1,14 @@
 package chartfs
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 
+	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
-	"github.com/krateoplatformops/core-provider/internal/tools/getter"
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 )
 
 func FromReader(in io.Reader) (*ChartFS, error) {
@@ -38,27 +39,21 @@ func FromReader(in io.Reader) (*ChartFS, error) {
 	}, nil
 }
 
-func FromURL(url string) (*ChartFS, error) {
-	if registry.IsOCI(url) {
-		g, err := getter.NewOCIGetter()
-		if err != nil {
-			return nil, err
-		}
-
-		buf, err := g.Get(url)
-		if err != nil {
-			return nil, err
-		}
-
-		return FromReader(buf)
+func ForSpec(nfo *v1alpha1.ChartInfo) (*ChartFS, error) {
+	if nfo == nil {
+		return nil, fmt.Errorf("chart infos cannot be nil")
 	}
 
-	buf, err := getter.NewHTTPGetter().Get(url)
+	dat, err := getter.Get(getter.GetOptions{
+		URI:     nfo.Url,
+		Version: nfo.Version,
+		Name:    nfo.Name,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return FromReader(buf)
+	return FromReader(bytes.NewBuffer(dat))
 }
 
 var _ fs.FS = (*ChartFS)(nil)

@@ -19,8 +19,11 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.chartUrl
-      name: CHART_URL
+    - jsonPath: .spec.chart.url
+      name: URL
+      type: string
+    - jsonPath: .spec.chart.version
+      name: VERSION
       type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: READY
@@ -49,8 +52,19 @@ spec:
           spec:
             description: DefinitionSpec is the specification of a Definition.
             properties:
-              chartUrl:
-                type: string
+              chart:
+                properties:
+                  name:
+                    type: string
+                  url:
+                    type: string
+                  version:
+                    type: string
+                required:
+                - name
+                - url
+                - version
+                type: object
               deletionPolicy:
                 default: Delete
                 description: DeletionPolicy specifies what will happen to the underlying

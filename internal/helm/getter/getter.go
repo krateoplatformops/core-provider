@@ -25,29 +25,27 @@ type Getter interface {
 	Get(opts GetOptions) ([]byte, error)
 }
 
-/*
-func Get(uri string, opts ...Option) ([]byte, error) {
-	nfo, err := ParseChartURL(uri)
-	if err != nil {
-		return nil, err
-	}
-
-	switch nfo.Type() {
-	case TGZ:
-		return NewTgzGetter().Get(uri, opts...)
-	case OCI:
-		g, err := NewOCIGetter()
+func Get(opts GetOptions) ([]byte, error) {
+	if isOCI(opts.URI) {
+		g, err := newOCIGetter()
 		if err != nil {
 			return nil, err
 		}
-		return g.Get(uri, opts...)
-	case REPO:
-		return NewRepoGetter().Get(uri, opts...)
-	default:
-		return nil, fmt.Errorf("unable to handle uri: '%s'", uri)
+		return g.Get(opts)
 	}
+
+	if isTGZ(opts.URI) {
+		g := &tgzGetter{}
+		return g.Get(opts)
+	}
+
+	if isHTTP(opts.URI) {
+		g := &repoGetter{}
+		return g.Get(opts)
+	}
+
+	return nil, fmt.Errorf("no handler found for url: %s", opts.URI)
 }
-*/
 
 func fetch(opts GetOptions) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, opts.URI, nil)
@@ -100,9 +98,9 @@ func newHTTPClient(opts GetOptions) *http.Client {
 	return &http.Client{
 		Transport: transport,
 		Timeout:   1 * time.Minute,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			fmt.Printf("redir: %v\n", via)
-			return nil
-		},
+		// CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		// 	fmt.Printf("redir: %v\n", via)
+		// 	return nil
+		// },
 	}
 }

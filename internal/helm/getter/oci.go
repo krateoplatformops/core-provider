@@ -54,7 +54,7 @@ type ociGetter struct {
 }
 
 func (g *ociGetter) Get(opts GetOptions) ([]byte, error) {
-	if !strings.HasPrefix(opts.URI, "oci://") {
+	if !isOCI(opts.URI) {
 		return nil, fmt.Errorf("uri '%s' is not a valid OCI ref", opts.URI)
 	}
 
@@ -111,4 +111,8 @@ func (g *ociGetter) resolveURI(ref, version string) (*url.URL, error) {
 	u.Path = fmt.Sprintf("%s:%s", u.Path, tag)
 
 	return u, err
+}
+
+func isOCI(url string) bool {
+	return strings.HasPrefix(url, "oci://")
 }

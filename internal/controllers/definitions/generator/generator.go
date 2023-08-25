@@ -13,11 +13,11 @@ import (
 	"strings"
 
 	"github.com/gobuffalo/flect"
+	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/code"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
-	"github.com/krateoplatformops/core-provider/internal/tools/getter"
-	"helm.sh/helm/v3/pkg/registry"
+	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
 )
@@ -32,31 +32,25 @@ type CRDGenerator interface {
 	Generate(ctx context.Context) ([]byte, error)
 }
 
-func ForURL(ctx context.Context, url string) (CRDGenerator, error) {
-	if registry.IsOCI(url) {
-		g, err := getter.NewOCIGetter()
-		if err != nil {
-			return nil, err
-		}
-
-		buf, err := g.Get(url)
-		if err != nil {
-			return nil, err
-		}
-
-		return ForData(ctx, buf)
+func ForSpec(ctx context.Context, nfo *v1alpha1.ChartInfo) (CRDGenerator, error) {
+	if nfo == nil {
+		return nil, fmt.Errorf("chart infos cannot be nil")
 	}
 
-	buf, err := getter.NewHTTPGetter().Get(url)
+	dat, err := getter.Get(getter.GetOptions{
+		URI:     nfo.Url,
+		Version: nfo.Version,
+		Name:    nfo.Name,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return ForData(ctx, buf)
+	return ForData(ctx, dat)
 }
 
-func ForData(ctx context.Context, bin *bytes.Buffer) (CRDGenerator, error) {
-	pkg, err := tgzfs.New(bin)
+func ForData(ctx context.Context, bin []byte) (CRDGenerator, error) {
+	pkg, err := tgzfs.New(bytes.NewBuffer(bin))
 	if err != nil {
 		return nil, err
 	}

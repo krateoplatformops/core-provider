@@ -15,11 +15,17 @@ type DefinitionList struct {
 	Items []Definition `json:"items"`
 }
 
+type ChartInfo struct {
+	Url     string `json:"url"`
+	Version string `json:"version"`
+	Name    string `json:"name"`
+}
+
 // DefinitionSpec is the specification of a Definition.
 type DefinitionSpec struct {
 	rtv1.ManagedSpec `json:",inline"`
 
-	ChartUrl string `json:"chartUrl,omitempty"`
+	Chart *ChartInfo `json:"chart,omitempty"`
 }
 
 // DefinitionStatus is the status of a Definition.
@@ -30,7 +36,8 @@ type DefinitionStatus struct {
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,composition,core}
-//+kubebuilder:printcolumn:name="CHART_URL",type="string",JSONPath=".spec.chartUrl"
+//+kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.chart.url"
+//+kubebuilder:printcolumn:name="VERSION",type="string",JSONPath=".spec.chart.version"
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 //+kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status",priority=10
 

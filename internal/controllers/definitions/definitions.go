@@ -99,7 +99,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
 
-	pkg, err := chartfs.FromURL(cr.Spec.ChartUrl)
+	pkg, err := chartfs.ForSpec(cr.Spec.Chart)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -183,7 +183,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	cr.SetConditions(rtv1.Creating())
 
-	gen, err := generator.ForURL(ctx, cr.Spec.ChartUrl)
+	gen, err := generator.ForSpec(ctx, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
@@ -211,7 +211,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	pkg, err := chartfs.FromURL(cr.Spec.ChartUrl)
+	pkg, err := chartfs.ForSpec(cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
