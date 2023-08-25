@@ -59,6 +59,9 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, error) {
 	}
 
 	ref := strings.TrimPrefix(opts.URI, "oci://")
+	if len(opts.Name) > 0 {
+		ref = fmt.Sprintf("%s/%s", ref, opts.Name)
+	}
 	u, err := g.resolveURI(ref, opts.Version)
 	if err != nil {
 		return nil, err

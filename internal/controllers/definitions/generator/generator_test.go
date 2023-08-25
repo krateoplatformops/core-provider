@@ -40,7 +40,7 @@ func TestGeneratorTGZ(t *testing.T) {
 
 func TestGeneratorOCI(t *testing.T) {
 	buf, err := getter.Get(getter.GetOptions{
-		URI:     "oci://registry-1.docker.io/bitnamicharts/postgresql",
+		URI:     "oci://registry-1.docker.io/bitnamicharts",
 		Version: "12.8.3",
 		Name:    "postgresql",
 	})
