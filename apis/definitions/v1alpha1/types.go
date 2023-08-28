@@ -31,15 +31,20 @@ type DefinitionSpec struct {
 // DefinitionStatus is the status of a Definition.
 type DefinitionStatus struct {
 	rtv1.ManagedStatus `json:",inline"`
+
+	// Resource: the generated custom resource
+	// +optional
+	Resource string `json:"resource,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,definition,core}
-//+kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.chart.url"
 //+kubebuilder:printcolumn:name="VERSION",type="string",JSONPath=".spec.chart.version"
+//+kubebuilder:printcolumn:name="RESOURCE",type="string",JSONPath=".status.resource"
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-//+kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status",priority=10
+//+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp",priority=10
+//+kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.chart.url",priority=10
 
 // Definition is a definition type with a spec and a status.
 type Definition struct {

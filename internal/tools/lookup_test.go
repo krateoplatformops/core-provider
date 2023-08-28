@@ -38,9 +38,9 @@ func Test_lookupCRD(t *testing.T) {
 	cli := setupKubeClient(t)
 
 	gvk := schema.GroupVersionKind{
-		Group:   "core.krateo.io",
-		Version: "v0-2-0",
-		Kind:    "DummyChart",
+		Group:   "composition.krateo.io",
+		Version: "v12-8-3",
+		Kind:    "Postgresql",
 	}
 
 	ok, err := LookupCRD(context.Background(), cli, ToGroupVersionResource(gvk))

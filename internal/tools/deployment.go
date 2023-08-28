@@ -40,8 +40,8 @@ func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName) 
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
 		Namespace: nn.Namespace,
-		Name:      nn.Name,
-		Tag:       os.Getenv("CDC_IMAGE_TAG"),
+		//Name:      nn.Name,
+		Tag: os.Getenv("CDC_IMAGE_TAG"),
 	})
 
 	dat, err := templates.RenderDeployment(values)
@@ -62,15 +62,17 @@ func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName) 
 	return res, err
 }
 
-func LookupDeployment(ctx context.Context, kube client.Client, obj *appsv1.Deployment) (bool, error) {
+func LookupDeployment(ctx context.Context, kube client.Client, obj *appsv1.Deployment) (bool, bool, error) {
 	err := kube.Get(ctx, client.ObjectKeyFromObject(obj), obj)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return false, nil
+			return false, false, nil
 		}
 
-		return false, err
+		return false, false, err
 	}
 
-	return true, nil
+	ready := obj.Spec.Replicas != nil && *obj.Spec.Replicas == obj.Status.ReadyReplicas
+
+	return true, ready, nil
 }

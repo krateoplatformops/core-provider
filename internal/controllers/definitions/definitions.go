@@ -121,7 +121,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
-		}, e.kube.Status().Update(ctx, cr)
+		}, nil //e.kube.Status().Update(ctx, cr)
 	}
 
 	if meta.ExternalCreateIncomplete(cr) {
@@ -147,7 +147,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, err
 	}
 
-	deployed, err := tools.LookupDeployment(ctx, e.kube, &obj)
+	deployExists, _, err := tools.LookupDeployment(ctx, e.kube, &obj)
 	if err != nil {
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
@@ -155,7 +155,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, err
 	}
 
-	if !deployed {
+	if !deployExists {
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Dynamic Controller not deployed yet",
+				"name", obj.Name, "namespace", obj.Namespace, "gvr", gvr.String())
+		}
+
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
 			ResourceUpToDate: false,
@@ -163,10 +168,13 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	if meta.IsVerbose(cr) {
-		e.log.Debug("Dynamic Controller already deployed", "gvr", gvr.String())
+		e.log.Debug("Dynamic Controller already deployed",
+			"name", obj.Name, "namespace", obj.Namespace,
+			"gvr", gvr.String())
 	}
 
 	cr.SetConditions(rtv1.Available())
+	cr.Status.Resource = fmt.Sprintf("%s.%s", gvr.Resource, gvr.GroupVersion().String())
 
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
@@ -263,5 +271,5 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
-	return nil // NOOP
+	return nil // TODO(@lucasepe): should be the related dynamic controlled removed?
 }

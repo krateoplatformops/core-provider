@@ -19,17 +19,21 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.chart.url
-      name: URL
-      type: string
     - jsonPath: .spec.chart.version
       name: VERSION
+      type: string
+    - jsonPath: .status.resource
+      name: RESOURCE
       type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: READY
       type: string
-    - jsonPath: .status.conditions[?(@.type=='Synced')].status
-      name: SYNCED
+    - jsonPath: .metadata.creationTimestamp
+      name: AGE
+      priority: 10
+      type: date
+    - jsonPath: .spec.chart.url
+      name: URL
       priority: 10
       type: string
     name: v1alpha1
@@ -111,6 +115,9 @@ spec:
                   - type
                   type: object
                 type: array
+              resource:
+                description: 'Resource: the generated custom resource'
+                type: string
             type: object
         type: object
     served: true
