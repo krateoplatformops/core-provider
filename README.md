@@ -32,10 +32,11 @@ $ helm install krateo-core-provider krateo/core-provider
 
 A `Definition` defines a Krateo Composition Archive URL.
 
-| Spec               | Description                | Required |
-|:-------------------|:---------------------------|:---------|
-| chartUrl           | krateo composition url     | true     |
-
+| Spec               | Description                                     | Required |
+|:-------------------|:------------------------------------------------|:---------|
+| chart.url          | krateo composition url                          | true     |
+| chart.version      | krateo composition version                      | false    |
+| chart.repo         | helm chart repo name (only for helm repos urls) | false    |
 
 example:
 
@@ -43,9 +44,13 @@ example:
 apiVersion: core.krateo.io/v1alpha1
 kind: Definition
 metadata:
-  name: sample
+  annotations:
+     "krateo.io/connector-verbose": "true"
+  name: postgresql
   namespace: krateo-system
 spec:
-  chartUrl: https://github.com/lucasepe/busybox-chart/releases/download/v0.2.0/dummy-chart-0.2.0.tgz
+  chart:
+    url: oci://registry-1.docker.io/bitnamicharts/postgresql
+    version: "12.8.3"
 ```
 
