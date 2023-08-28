@@ -16,9 +16,14 @@ type DefinitionList struct {
 }
 
 type ChartInfo struct {
-	Url     string `json:"url"`
+	// Url: oci or tgz full url
+	Url string `json:"url"`
+	// Version: desired chart version
+	// +optional
 	Version string `json:"version"`
-	Name    string `json:"name"`
+	// Repo: helm repo name (for helm repo urls only)
+	// +optional
+	Repo string `json:"repo"`
 }
 
 // DefinitionSpec is the specification of a Definition.
@@ -35,16 +40,19 @@ type DefinitionStatus struct {
 	// Resource: the generated custom resource
 	// +optional
 	Resource string `json:"resource,omitempty"`
+
+	// PackageURL: .tgz or oci chart direct url
+	// +optional
+	PackageURL string `json:"packageUrl,omitempty"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,definition,core}
-//+kubebuilder:printcolumn:name="VERSION",type="string",JSONPath=".spec.chart.version"
 //+kubebuilder:printcolumn:name="RESOURCE",type="string",JSONPath=".status.resource"
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+//+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp",priority=10
-//+kubebuilder:printcolumn:name="URL",type="string",JSONPath=".spec.chart.url",priority=10
 
 // Definition is a definition type with a spec and a status.
 type Definition struct {

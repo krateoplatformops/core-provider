@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -11,11 +12,16 @@ import (
 
 type DeployOptions struct {
 	Namespace string
-	ChartFS   *chartfs.ChartFS
+	Spec      *definitionsv1alpha1.ChartInfo
 }
 
 func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
-	gvr, err := GroupVersionResource(opts.ChartFS)
+	pkg, err := chartfs.ForSpec(opts.Spec)
+	if err != nil {
+		return err
+	}
+
+	gvr, err := GroupVersionResource(pkg)
 	if err != nil {
 		return err
 	}
@@ -30,7 +36,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 		return err
 	}
 
-	role, err := CreateRole(opts.ChartFS, gvr.Resource, nn)
+	role, err := CreateRole(pkg, gvr.Resource, nn)
 	if err != nil {
 		return err
 	}

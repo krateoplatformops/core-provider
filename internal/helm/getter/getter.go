@@ -12,7 +12,7 @@ import (
 type GetOptions struct {
 	URI                   string
 	Version               string
-	Name                  string
+	Repo                  string
 	InsecureSkipVerifyTLS bool
 	Username              string
 	Password              string
@@ -22,14 +22,14 @@ type GetOptions struct {
 // Getter is an interface to support GET to the specified URI.
 type Getter interface {
 	// Get file content by url string
-	Get(opts GetOptions) ([]byte, error)
+	Get(opts GetOptions) ([]byte, string, error)
 }
 
-func Get(opts GetOptions) ([]byte, error) {
+func Get(opts GetOptions) ([]byte, string, error) {
 	if isOCI(opts.URI) {
 		g, err := newOCIGetter()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		return g.Get(opts)
 	}
@@ -44,7 +44,7 @@ func Get(opts GetOptions) ([]byte, error) {
 		return g.Get(opts)
 	}
 
-	return nil, fmt.Errorf("no handler found for url: %s", opts.URI)
+	return nil, "", fmt.Errorf("no handler found for url: %s", opts.URI)
 }
 
 func fetch(opts GetOptions) ([]byte, error) {

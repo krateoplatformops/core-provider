@@ -37,10 +37,10 @@ func ForSpec(ctx context.Context, nfo *v1alpha1.ChartInfo) (CRDGenerator, error)
 		return nil, fmt.Errorf("chart infos cannot be nil")
 	}
 
-	dat, err := getter.Get(getter.GetOptions{
+	dat, _, err := getter.Get(getter.GetOptions{
 		URI:     nfo.Url,
 		Version: nfo.Version,
-		Name:    nfo.Name,
+		Repo:    nfo.Repo,
 	})
 	if err != nil {
 		return nil, err

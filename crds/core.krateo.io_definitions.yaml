@@ -19,23 +19,19 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .spec.chart.version
-      name: VERSION
-      type: string
     - jsonPath: .status.resource
       name: RESOURCE
       type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: READY
       type: string
+    - jsonPath: .status.packageUrl
+      name: PACKAGE URL
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       priority: 10
       type: date
-    - jsonPath: .spec.chart.url
-      name: URL
-      priority: 10
-      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -58,16 +54,17 @@ spec:
             properties:
               chart:
                 properties:
-                  name:
+                  repo:
+                    description: 'Repo: helm repo name (for helm repo urls only)'
                     type: string
                   url:
+                    description: 'Url: oci or tgz full url'
                     type: string
                   version:
+                    description: 'Version: desired chart version'
                     type: string
                 required:
-                - name
                 - url
-                - version
                 type: object
               deletionPolicy:
                 default: Delete
@@ -115,6 +112,9 @@ spec:
                   - type
                   type: object
                 type: array
+              packageUrl:
+                description: 'PackageURL: .tgz or oci chart direct url'
+                type: string
               resource:
                 description: 'Resource: the generated custom resource'
                 type: string

@@ -11,7 +11,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 )
 
-func FromReader(in io.Reader) (*ChartFS, error) {
+func FromReader(in io.Reader, pkgurl string) (*ChartFS, error) {
 	pkg, err := tgzfs.New(in)
 	if err != nil {
 		return nil, err
@@ -34,8 +34,9 @@ func FromReader(in io.Reader) (*ChartFS, error) {
 	}
 
 	return &ChartFS{
-		rootdir: dirs[0],
-		fs:      pkg,
+		packageURL: pkgurl,
+		rootdir:    dirs[0],
+		fs:         pkg,
 	}, nil
 }
 
@@ -44,23 +45,28 @@ func ForSpec(nfo *v1alpha1.ChartInfo) (*ChartFS, error) {
 		return nil, fmt.Errorf("chart infos cannot be nil")
 	}
 
-	dat, err := getter.Get(getter.GetOptions{
+	dat, url, err := getter.Get(getter.GetOptions{
 		URI:     nfo.Url,
 		Version: nfo.Version,
-		Name:    nfo.Name,
+		Repo:    nfo.Repo,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return FromReader(bytes.NewBuffer(dat))
+	return FromReader(bytes.NewBuffer(dat), url)
 }
 
 var _ fs.FS = (*ChartFS)(nil)
 
 type ChartFS struct {
-	rootdir string
-	fs      fs.FS
+	packageURL string
+	rootdir    string
+	fs         fs.FS
+}
+
+func (c *ChartFS) PackageURL() string {
+	return c.packageURL
 }
 
 func (c *ChartFS) Open(name string) (fs.File, error) {

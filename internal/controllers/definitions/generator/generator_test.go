@@ -18,7 +18,7 @@ const (
 )
 
 func TestGeneratorTGZ(t *testing.T) {
-	buf, err := getter.Get(getter.GetOptions{
+	buf, _, err := getter.Get(getter.GetOptions{
 		URI: "https://github.com/lucasepe/busybox-chart/releases/download/v0.2.0/dummy-chart-0.2.0.tgz",
 	})
 	if err != nil {
@@ -39,10 +39,10 @@ func TestGeneratorTGZ(t *testing.T) {
 }
 
 func TestGeneratorOCI(t *testing.T) {
-	buf, err := getter.Get(getter.GetOptions{
-		URI:     "oci://registry-1.docker.io/bitnamicharts",
+	buf, _, err := getter.Get(getter.GetOptions{
+		URI:     "oci://registry-1.docker.io/bitnamicharts/postgresql",
 		Version: "12.8.3",
-		Name:    "postgresql",
+		Repo:    "",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,14 +62,16 @@ func TestGeneratorOCI(t *testing.T) {
 }
 
 func TestGeneratorREPO(t *testing.T) {
-	buf, err := getter.Get(getter.GetOptions{
+	buf, url, err := getter.Get(getter.GetOptions{
 		URI:     "https://charts.bitnami.com/bitnami",
 		Version: "12.8.3",
-		Name:    "postgresql",
+		Repo:    "postgresql",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	fmt.Println(url)
 
 	gen, err := ForData(context.Background(), buf)
 	if err != nil {

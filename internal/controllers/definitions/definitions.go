@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
@@ -110,27 +111,29 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	exists, err := tools.LookupCRD(ctx, e.kube, gvr)
+	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
-	if !exists {
+	if !crdOk {
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
-		}, nil //e.kube.Status().Update(ctx, cr)
-	}
-
-	if meta.ExternalCreateIncomplete(cr) {
-		e.log.Info("CRD generation pending.", "gvr", gvr.String())
-		return reconciler.ExternalObservation{
-			ResourceExists:   true,
-			ResourceUpToDate: true,
 		}, nil
 	}
+
+	cr.Status.Resource = fmt.Sprintf("%s.%s", gvr.Resource, gvr.GroupVersion().String())
+
+	// if meta.ExternalCreateIncomplete(cr) {
+	// 	e.log.Info("CRD generation pending.", "gvr", gvr.String())
+	// 	return reconciler.ExternalObservation{
+	// 		ResourceExists:   true,
+	// 		ResourceUpToDate: true,
+	// 	}, nil
+	// }
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
@@ -147,7 +150,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, err
 	}
 
-	deployExists, _, err := tools.LookupDeployment(ctx, e.kube, &obj)
+	deployOk, deployReady, err := tools.LookupDeployment(ctx, e.kube, &obj)
 	if err != nil {
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
@@ -155,16 +158,19 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, err
 	}
 
-	if !deployExists {
+	if !deployOk {
 		if meta.IsVerbose(cr) {
 			e.log.Debug("Dynamic Controller not deployed yet",
 				"name", obj.Name, "namespace", obj.Namespace, "gvr", gvr.String())
 		}
 
+		cr.SetConditions(rtv1.Unavailable().
+			WithMessage(fmt.Sprintf("Dynamic Controller '%s' not deployed yet", obj.Name)))
+
 		return reconciler.ExternalObservation{
-			ResourceExists:   true,
-			ResourceUpToDate: false,
-		}, nil // e.kube.Update(ctx, cr)
+			ResourceExists:   false,
+			ResourceUpToDate: true,
+		}, nil
 	}
 
 	if meta.IsVerbose(cr) {
@@ -173,8 +179,18 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			"gvr", gvr.String())
 	}
 
+	if !deployReady {
+		cr.SetConditions(rtv1.Unavailable().
+			WithMessage(fmt.Sprintf("Dynamic Controller '%s' not ready yet", obj.Name)))
+		cr.Status.PackageURL = pkg.PackageURL()
+
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: true,
+		}, nil
+	}
+
 	cr.SetConditions(rtv1.Available())
-	cr.Status.Resource = fmt.Sprintf("%s.%s", gvr.Resource, gvr.GroupVersion().String())
 
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
@@ -193,56 +209,77 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	cr.SetConditions(rtv1.Creating())
-
 	gen, err := generator.ForSpec(ctx, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	dat, err := gen.Generate(ctx)
+	gvk, err := gen.GVK()
 	if err != nil {
 		return err
 	}
 
-	crd, err := tools.UnmarshalCRD(dat)
+	gvr := tools.ToGroupVersionResource(gvk)
+	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return err
 	}
 
-	if err := tools.InstallCRD(ctx, e.kube, crd); err != nil {
-		return err
+	if !crdOk {
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Generating CRD", "gvr", gvr.String())
+		}
+
+		cr.SetConditions(rtv1.Condition{
+			Type:               rtv1.TypeReady,
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "GeneratingCRD",
+			Message:            fmt.Sprintf("Generating CRD for: %s", gvr),
+		})
+
+		dat, err := gen.Generate(ctx)
+		if err != nil {
+			return err
+		}
+
+		crd, err := tools.UnmarshalCRD(dat)
+		if err != nil {
+			return err
+		}
+
+		return tools.InstallCRD(ctx, e.kube, crd)
 	}
 
-	return nil
-}
-
-func (e *external) Update(ctx context.Context, mg resource.Managed) error {
-	cr, ok := mg.(*definitionsv1alpha1.Definition)
-	if !ok {
-		return errors.New(errNotCR)
-	}
-
-	pkg, err := chartfs.ForSpec(cr.Spec.Chart)
-	if err != nil {
-		return err
-	}
-
-	gvr, err := tools.GroupVersionResource(pkg)
-	if err != nil {
-		return err
+	if meta.IsVerbose(cr) {
+		e.log.Debug("CRD alredy generated", "gvr", gvr.String())
 	}
 
 	if cr.Labels == nil {
 		cr.Labels = make(map[string]string)
 	}
 
-	cr.Labels[labelKeyGroup] = gvr.Group
-	cr.Labels[labelKeyVersion] = gvr.Version
-	cr.Labels[labelKeyResource] = gvr.Resource
+	dirty := false
+	if _, ok := cr.Labels[labelKeyGroup]; !ok {
+		dirty = true
+		cr.Labels[labelKeyGroup] = gvr.Group
+	}
 
-	if err := e.kube.Update(ctx, cr, &client.UpdateOptions{}); err != nil {
-		return err
+	if _, ok := cr.Labels[labelKeyVersion]; !ok {
+		dirty = true
+		cr.Labels[labelKeyVersion] = gvr.Version
+	}
+
+	if _, ok := cr.Labels[labelKeyResource]; !ok {
+		dirty = true
+		cr.Labels[labelKeyResource] = gvr.Resource
+	}
+
+	if dirty {
+		err := e.kube.Update(ctx, cr, &client.UpdateOptions{})
+		if err != nil {
+			return err
+		}
 	}
 
 	if meta.IsVerbose(cr) {
@@ -254,7 +291,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	err = tools.Deploy(ctx, e.kube, tools.DeployOptions{
 		Namespace: cr.Namespace,
-		ChartFS:   pkg,
+		Spec:      cr.Spec.Chart.DeepCopy(),
 	})
 	if err != nil {
 		return err
@@ -266,6 +303,15 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			"namespace", cr.Namespace,
 		)
 	}
+
+	return nil
+}
+
+func (e *external) Update(ctx context.Context, mg resource.Managed) error {
+	// cr, ok := mg.(*definitionsv1alpha1.Definition)
+	// if !ok {
+	// 	return errors.New(errNotCR)
+	// }
 
 	return nil
 }

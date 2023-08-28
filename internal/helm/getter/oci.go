@@ -53,18 +53,18 @@ type ociGetter struct {
 	client *registry.Client
 }
 
-func (g *ociGetter) Get(opts GetOptions) ([]byte, error) {
+func (g *ociGetter) Get(opts GetOptions) ([]byte, string, error) {
 	if !isOCI(opts.URI) {
-		return nil, fmt.Errorf("uri '%s' is not a valid OCI ref", opts.URI)
+		return nil, "", fmt.Errorf("uri '%s' is not a valid OCI ref", opts.URI)
 	}
 
 	ref := strings.TrimPrefix(opts.URI, "oci://")
-	if len(opts.Name) > 0 {
-		ref = fmt.Sprintf("%s/%s", ref, opts.Name)
+	if len(opts.Repo) > 0 {
+		ref = fmt.Sprintf("%s/%s", ref, opts.Repo)
 	}
 	u, err := g.resolveURI(ref, opts.Version)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	pullOpts := []registry.PullOption{
@@ -74,10 +74,10 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, error) {
 
 	result, err := g.client.Pull(u.String(), pullOpts...)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	return result.Chart.Data, nil
+	return result.Chart.Data, opts.URI, nil
 }
 
 func (g *ociGetter) resolveURI(ref, version string) (*url.URL, error) {
