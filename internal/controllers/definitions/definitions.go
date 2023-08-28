@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -135,7 +136,10 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
 	}
 
-	obj, err := tools.CreateDeployment(gvr, cr.Namespace)
+	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
+		Namespace: cr.Namespace,
+		Name:      cr.Name,
+	})
 	if err != nil {
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
