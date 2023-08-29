@@ -40,8 +40,8 @@ func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName) 
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
 		Namespace: nn.Namespace,
-		//Name:      nn.Name,
-		Tag: os.Getenv("CDC_IMAGE_TAG"),
+		Name:      nn.Name,
+		Tag:       os.Getenv("CDC_IMAGE_TAG"),
 	})
 
 	dat, err := templates.RenderDeployment(values)
