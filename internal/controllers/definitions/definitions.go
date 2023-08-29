@@ -141,7 +141,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
-		Name:      cr.Name,
+		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
 	})
 	if err != nil {
 		return reconciler.ExternalObservation{
