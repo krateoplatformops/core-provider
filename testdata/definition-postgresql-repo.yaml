@@ -3,10 +3,11 @@ kind: Definition
 metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
-  name: postgresql-oci
+  name: postgresql-repo
   namespace: krateo-system
 spec:
   chart:
-    url: oci://registry-1.docker.io/bitnamicharts/postgresql
+    url: https://charts.bitnami.com/bitnami
     version: "12.8.3"
+    repo: postgresql
 

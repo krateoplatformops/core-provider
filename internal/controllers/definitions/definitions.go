@@ -179,10 +179,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			"gvr", gvr.String())
 	}
 
+	cr.Status.PackageURL = pkg.PackageURL()
+
 	if !deployReady {
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("Dynamic Controller '%s' not ready yet", obj.Name)))
-		cr.Status.PackageURL = pkg.PackageURL()
 
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
