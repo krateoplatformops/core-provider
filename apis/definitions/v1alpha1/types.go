@@ -17,9 +17,10 @@ type DefinitionList struct {
 
 type ChartInfo struct {
 	// Url: oci or tgz full url
+	// +immutable
 	Url string `json:"url"`
 	// Version: desired chart version
-	// +optional
+	// +immutable
 	Version string `json:"version"`
 	// Repo: helm repo name (for helm repo urls only)
 	// +optional

@@ -127,7 +127,11 @@ func renderField(el transpiler.Field) jen.Code {
 
 	if el.Optional {
 		res.Add(jen.Comment("+optional").Line())
-		res.Add(jen.Id(el.Name).Op("*").Id(el.Type))
+		if !strings.HasPrefix(el.Type, "*") {
+			res.Add(jen.Id(el.Name).Op("*").Id(el.Type))
+		} else {
+			res.Add(jen.Id(el.Name).Id(el.Type))
+		}
 	} else {
 		res.Add(jen.Id(el.Name).Id(el.Type))
 	}
