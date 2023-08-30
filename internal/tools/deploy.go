@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"fmt"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
@@ -13,15 +12,11 @@ import (
 
 type DeployOptions struct {
 	Namespace string
+	Name      string
 	Spec      *definitionsv1alpha1.ChartInfo
 }
 
-func Undeploy(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource, namespace string) error {
-	nn := types.NamespacedName{
-		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
-		Namespace: namespace,
-	}
-
+func Undeploy(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource, nn types.NamespacedName) error {
 	if err := UninstallDeployment(ctx, kube, nn); err != nil {
 		return err
 	}
@@ -61,7 +56,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 	}
 
 	nn := types.NamespacedName{
-		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
+		Name:      opts.Name,
 		Namespace: opts.Namespace,
 	}
 

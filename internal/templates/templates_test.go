@@ -8,9 +8,10 @@ import (
 
 func TestDeploymentManifest(t *testing.T) {
 	values := Values(Renderoptions{
-		Group:     "dummy-charts.core.krateo.io",
-		Version:   "v0-2-0",
-		Resource:  "dummycharts",
+		Group:     "composition.krateo.io",
+		Version:   "v12-8-3",
+		Resource:  "postgresqls",
+		Name:      "postgres-tgz",
 		Namespace: "default",
 	})
 	bin, err := RenderDeployment(values)

@@ -1,8 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .name }}
+  name: {{ .resource }}-{{ .apiVersion }}-controller
   namespace: {{ .namespace }}
+  labels:
+    app.kubernetes.io/name: {{ .name }}
+    app.kubernetes.io/instance: {{ .resource }}-{{ .apiVersion }}
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/part-of: krateoplatformops
+    app.kubernetes.io/managed-by: krateo
 spec:
   replicas: 1
   selector:
@@ -21,7 +27,7 @@ spec:
         app.kubernetes.io/name: {{ .name }}
     spec:
       containers:
-      - name: {{ .name }}
+      - name: {{ .resource }}-{{ .apiVersion }}-controller
         image: ghcr.io/krateoplatformops/composition-dynamic-controller:{{ or .tag "0.5.0" }}
         imagePullPolicy: IfNotPresent
         args:

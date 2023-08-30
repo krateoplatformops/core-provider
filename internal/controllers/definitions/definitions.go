@@ -141,7 +141,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
-		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
+		Name:      cr.Name,
 	})
 	if err != nil {
 		return reconciler.ExternalObservation{
@@ -292,6 +292,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	err = tools.Deploy(ctx, e.kube, tools.DeployOptions{
 		Namespace: cr.Namespace,
+		Name:      cr.Name,
 		Spec:      cr.Spec.Chart.DeepCopy(),
 	})
 	if err != nil {
@@ -335,5 +336,8 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	gvr := tools.ToGroupVersionResource(gvk)
 
-	return tools.Undeploy(ctx, e.kube, gvr, cr.Namespace)
+	return tools.Undeploy(ctx, e.kube, gvr, types.NamespacedName{
+		Name:      cr.Name,
+		Namespace: cr.Namespace,
+	})
 }

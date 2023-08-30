@@ -9,6 +9,7 @@ import (
 
 	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 func TestDeploy(t *testing.T) {
@@ -25,6 +26,7 @@ func TestDeploy(t *testing.T) {
 	err = Deploy(context.TODO(), kube, DeployOptions{
 		Spec:      nfo,
 		Namespace: "default",
+		Name:      "postgresql-repo",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +45,10 @@ func TestUndeploy(t *testing.T) {
 		Resource: "postgresqls",
 	}
 
-	err = Undeploy(context.TODO(), kube, gvr, "default")
+	err = Undeploy(context.TODO(), kube, gvr, types.NamespacedName{
+		Namespace: "default",
+		Name:      "postgresql-repo",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -18,9 +18,9 @@ func TestInstallDeployment(t *testing.T) {
 	}
 
 	obj, err := CreateDeployment(schema.GroupVersionResource{
-		Group:    "core.krateo.io",
-		Version:  "v1-0-0",
-		Resource: "dummies",
+		Group:    "composition.krateo.io",
+		Version:  "v12-8-3",
+		Resource: "postgresqls",
 	}, types.NamespacedName{Name: "demo", Namespace: "default"})
 	if err != nil {
 		t.Fatal(err)
