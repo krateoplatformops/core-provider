@@ -16,8 +16,12 @@ func Test_Deploy(t *testing.T) {
 		Version: "12.8.3",
 	}
 
-	kube := setupKubeClient(t)
-	err := Deploy(context.TODO(), kube, DeployOptions{
+	kube, err := setupKubeClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Deploy(context.TODO(), kube, DeployOptions{
 		Spec:      nfo,
 		Namespace: "krateo-system",
 	})

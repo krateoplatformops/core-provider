@@ -13,6 +13,33 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+func UninstallCRD(ctx context.Context, kube client.Client, gr schema.GroupResource) error {
+	return retry.Do(
+		func() error {
+			obj := apiextensionsv1.CustomResourceDefinition{}
+			err := kube.Get(ctx, client.ObjectKey{Name: gr.String()}, &obj, &client.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			return nil
+		},
+	)
+}
+
 func InstallCRD(ctx context.Context, kube client.Client, obj *apiextensionsv1.CustomResourceDefinition) error {
 	return retry.Do(
 		func() error {

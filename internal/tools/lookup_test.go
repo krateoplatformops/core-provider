@@ -35,7 +35,10 @@ func Test_toGroupVersionResource(t *testing.T) {
 }
 
 func Test_lookupCRD(t *testing.T) {
-	cli := setupKubeClient(t)
+	kube, err := setupKubeClient()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	gvk := schema.GroupVersionKind{
 		Group:   "composition.krateo.io",
@@ -43,7 +46,7 @@ func Test_lookupCRD(t *testing.T) {
 		Kind:    "Postgresql",
 	}
 
-	ok, err := LookupCRD(context.Background(), cli, ToGroupVersionResource(gvk))
+	ok, err := LookupCRD(context.Background(), kube, ToGroupVersionResource(gvk))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,21 +58,16 @@ func Test_lookupCRD(t *testing.T) {
 	}
 }
 
-func setupKubeClient(t *testing.T) client.Client {
+func setupKubeClient() (client.Client, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
 	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(home, ".kube/config"))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
 
-	cli, err := client.New(cfg, client.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return cli
+	return client.New(cfg, client.Options{})
 }

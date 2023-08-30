@@ -29,6 +29,33 @@ func InstallClusterRoleBinding(ctx context.Context, kube client.Client, obj *rba
 	)
 }
 
+func UninstallClusterRoleBinding(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+	return retry.Do(
+		func() error {
+			obj := rbacv1.ClusterRoleBinding{}
+			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			return nil
+		},
+	)
+}
+
 func CreateClusterRoleBinding(opts types.NamespacedName) rbacv1.ClusterRoleBinding {
 	return rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{

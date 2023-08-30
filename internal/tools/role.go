@@ -22,6 +22,33 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+func UninstallRole(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+	return retry.Do(
+		func() error {
+			obj := rbacv1.Role{}
+			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			return nil
+		},
+	)
+}
+
 func InstallRole(ctx context.Context, kube client.Client, obj *rbacv1.Role) error {
 	return retry.Do(
 		func() error {

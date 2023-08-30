@@ -309,14 +309,19 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
-	// cr, ok := mg.(*definitionsv1alpha1.Definition)
-	// if !ok {
-	// 	return errors.New(errNotCR)
-	// }
-
-	return nil
+	return nil // NOOP
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
+	cr, ok := mg.(*definitionsv1alpha1.Definition)
+	if !ok {
+		return errors.New(errNotCR)
+	}
+
+	if !meta.IsActionAllowed(cr, meta.ActionDelete) {
+		e.log.Debug("External resource should not be deleted by provider, skip deleting.")
+		return nil
+	}
+
 	return nil // TODO(@lucasepe): should be the related dynamic controlled removed?
 }

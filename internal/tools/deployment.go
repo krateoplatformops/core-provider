@@ -16,6 +16,33 @@ import (
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
+func UninstallDeployment(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+	return retry.Do(
+		func() error {
+			obj := appsv1.Deployment{}
+			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+
+				return err
+			}
+
+			return nil
+		},
+	)
+}
+
 func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Deployment) error {
 	return retry.Do(
 		func() error {
