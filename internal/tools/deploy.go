@@ -6,6 +6,7 @@ import (
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -13,6 +14,39 @@ import (
 type DeployOptions struct {
 	Namespace string
 	Spec      *definitionsv1alpha1.ChartInfo
+}
+
+func Undeploy(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource, namespace string) error {
+	nn := types.NamespacedName{
+		Name:      fmt.Sprintf("%s-%s-controller", gvr.Resource, gvr.Version),
+		Namespace: namespace,
+	}
+
+	if err := UninstallDeployment(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	if err := UninstallClusterRoleBinding(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	if err := UninstallClusterRole(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	if err := UninstallRoleBinding(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	if err := UninstallRole(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	if err := UninstallServiceAccount(ctx, kube, nn); err != nil {
+		return err
+	}
+
+	return UninstallCRD(ctx, kube, gvr.GroupResource())
 }
 
 func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
@@ -46,6 +80,11 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) error {
 
 	rb := CreateRoleBinding(nn)
 	if err := InstallRoleBinding(ctx, kube, &rb); err != nil {
+		return err
+	}
+
+	cr := CreateClusterRole(nn)
+	if err := InstallClusterRole(ctx, kube, &cr); err != nil {
 		return err
 	}
 

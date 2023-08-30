@@ -20,11 +20,11 @@ type ChartInfo struct {
 	// +immutable
 	Url string `json:"url"`
 	// Version: desired chart version
-	// +immutable
-	Version string `json:"version"`
+	// +optional
+	Version string `json:"version,omitempty"`
 	// Repo: helm repo name (for helm repo urls only)
 	// +optional
-	Repo string `json:"repo"`
+	Repo string `json:"repo,omitempty"`
 }
 
 // DefinitionSpec is the specification of a Definition.

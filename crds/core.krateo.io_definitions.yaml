@@ -65,7 +65,6 @@ spec:
                     type: string
                 required:
                 - url
-                - version
                 type: object
               deletionPolicy:
                 default: Delete

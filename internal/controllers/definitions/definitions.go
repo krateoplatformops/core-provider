@@ -323,5 +323,17 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	return nil // TODO(@lucasepe): should be the related dynamic controlled removed?
+	gen, err := generator.ForSpec(ctx, cr.Spec.Chart)
+	if err != nil {
+		return err
+	}
+
+	gvk, err := gen.GVK()
+	if err != nil {
+		return err
+	}
+
+	gvr := tools.ToGroupVersionResource(gvk)
+
+	return tools.Undeploy(ctx, e.kube, gvr, cr.Namespace)
 }
