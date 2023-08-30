@@ -56,7 +56,11 @@ spec:
                 properties:
                   repo:
                     description: 'Repo: helm repo name (for helm repo urls only)'
+                    maxLength: 256
                     type: string
+                    x-kubernetes-validations:
+                    - message: Repo is immutable
+                      rule: self == oldSelf
                   url:
                     description: 'Url: oci or tgz full url'
                     type: string
@@ -73,6 +77,8 @@ spec:
                 x-kubernetes-validations:
                 - message: Version is required once set
                   rule: '!has(oldSelf.version) || has(self.version)'
+                - message: Repo is required once set
+                  rule: '!has(oldSelf.repo) || has(self.repo)'
               deletionPolicy:
                 default: Delete
                 description: DeletionPolicy specifies what will happen to the underlying

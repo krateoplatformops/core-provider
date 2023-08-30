@@ -16,6 +16,7 @@ type DefinitionList struct {
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.repo) || has(self.repo)", message="Repo is required once set"
 type ChartInfo struct {
 	// Url: oci or tgz full url
 	// +immutable
@@ -26,7 +27,9 @@ type ChartInfo struct {
 	// +kubebuilder:validation:MaxLength=20
 	Version string `json:"version,omitempty"`
 	// Repo: helm repo name (for helm repo urls only)
-	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Repo is immutable"
+	// +kubebuilder:validation:MaxLength=256
 	Repo string `json:"repo,omitempty"`
 }
 
