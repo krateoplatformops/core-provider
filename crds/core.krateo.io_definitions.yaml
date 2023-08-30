@@ -62,10 +62,17 @@ spec:
                     type: string
                   version:
                     description: 'Version: desired chart version'
+                    maxLength: 20
                     type: string
+                    x-kubernetes-validations:
+                    - message: Version is immutable
+                      rule: self == oldSelf
                 required:
                 - url
                 type: object
+                x-kubernetes-validations:
+                - message: Version is required once set
+                  rule: '!has(oldSelf.version) || has(self.version)'
               deletionPolicy:
                 default: Delete
                 description: DeletionPolicy specifies what will happen to the underlying

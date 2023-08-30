@@ -15,12 +15,15 @@ type DefinitionList struct {
 	Items []Definition `json:"items"`
 }
 
+// +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
 type ChartInfo struct {
 	// Url: oci or tgz full url
 	// +immutable
 	Url string `json:"url"`
 	// Version: desired chart version
-	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Version is immutable"
+	// +kubebuilder:validation:MaxLength=20
 	Version string `json:"version,omitempty"`
 	// Repo: helm repo name (for helm repo urls only)
 	// +optional
