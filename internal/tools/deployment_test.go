@@ -41,8 +41,15 @@ func TestUninstallDeployment(t *testing.T) {
 	err = UninstallDeployment(context.TODO(), UninstallOptions{
 		KubeClient: kube,
 		NamespacedName: types.NamespacedName{
-			Name:      "demo",
-			Namespace: "default",
+			Name:      "postgresqls-v12-8-3-controller",
+			Namespace: "krateo-system",
+		},
+		Log: func(msg string, keysAndValues ...any) {
+			fmt.Printf(msg)
+			for _, v := range keysAndValues {
+				fmt.Printf("%s ", v)
+			}
+			fmt.Println()
 		},
 	})
 	if err != nil {

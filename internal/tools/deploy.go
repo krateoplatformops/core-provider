@@ -23,7 +23,7 @@ func Undeploy(ctx context.Context, opts UndeployOptions) error {
 		KubeClient: opts.KubeClient,
 		NamespacedName: types.NamespacedName{
 			Namespace: opts.NamespacedName.Namespace,
-			Name:      fmt.Sprintf("%s-%s-controller", opts.GVR.Resource, opts.GVR.GroupVersion().String()),
+			Name:      fmt.Sprintf("%s-%s-controller", opts.GVR.Resource, opts.GVR.Version),
 		},
 		Log: opts.Log,
 	})
