@@ -23,10 +23,13 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = Deploy(context.TODO(), kube, DeployOptions{
-		Spec:      nfo,
-		Namespace: "default",
-		Name:      "postgresql-repo",
+	err = Deploy(context.TODO(), DeployOptions{
+		KubeClient: kube,
+		Spec:       nfo,
+		NamespacedName: types.NamespacedName{
+			Namespace: "default",
+			Name:      "postgresql-repo",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -45,9 +48,13 @@ func TestUndeploy(t *testing.T) {
 		Resource: "postgresqls",
 	}
 
-	err = Undeploy(context.TODO(), kube, gvr, types.NamespacedName{
-		Namespace: "default",
-		Name:      "postgresql-repo",
+	err = Undeploy(context.TODO(), UndeployOptions{
+		KubeClient: kube,
+		GVR:        gvr,
+		NamespacedName: types.NamespacedName{
+			Namespace: "default",
+			Name:      "postgresql-repo",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

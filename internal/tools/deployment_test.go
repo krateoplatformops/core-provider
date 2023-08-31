@@ -38,9 +38,12 @@ func TestUninstallDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallDeployment(context.TODO(), kube, types.NamespacedName{
-		Name:      "demo",
-		Namespace: "default",
+	err = UninstallDeployment(context.TODO(), UninstallOptions{
+		KubeClient: kube,
+		NamespacedName: types.NamespacedName{
+			Name:      "demo",
+			Namespace: "default",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

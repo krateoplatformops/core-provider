@@ -11,11 +11,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func UninstallServiceAccount(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+func UninstallServiceAccount(ctx context.Context, opts UninstallOptions) error {
 	return retry.Do(
 		func() error {
 			obj := corev1.ServiceAccount{}
-			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			err := opts.KubeClient.Get(ctx, opts.NamespacedName, &obj, &client.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
@@ -24,13 +24,18 @@ func UninstallServiceAccount(ctx context.Context, kube client.Client, nn types.N
 				return err
 			}
 
-			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			err = opts.KubeClient.Delete(ctx, &obj, &client.DeleteOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
 				}
 
 				return err
+			}
+
+			if opts.Log != nil {
+				opts.Log("ServiceAccount successfully uninstalled",
+					"name", obj.GetName(), "namespace", obj.GetNamespace())
 			}
 
 			return nil

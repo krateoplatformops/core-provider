@@ -11,11 +11,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func UninstallRoleBinding(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+func UninstallRoleBinding(ctx context.Context, opts UninstallOptions) error {
 	return retry.Do(
 		func() error {
 			obj := rbacv1.RoleBinding{}
-			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			err := opts.KubeClient.Get(ctx, opts.NamespacedName, &obj, &client.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
@@ -24,13 +24,18 @@ func UninstallRoleBinding(ctx context.Context, kube client.Client, nn types.Name
 				return err
 			}
 
-			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			err = opts.KubeClient.Delete(ctx, &obj, &client.DeleteOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
 				}
 
 				return err
+			}
+
+			if opts.Log != nil {
+				opts.Log("RoleBinding successfully uninstalled",
+					"name", obj.GetName(), "namespace", obj.GetNamespace())
 			}
 
 			return nil

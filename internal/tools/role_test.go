@@ -42,9 +42,12 @@ func TestUninstallRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallRole(context.TODO(), kube, types.NamespacedName{
-		Name:      "postgresqls-controller",
-		Namespace: "default",
+	err = UninstallRole(context.TODO(), UninstallOptions{
+		KubeClient: kube,
+		NamespacedName: types.NamespacedName{
+			Name:      "postgresqls-controller",
+			Namespace: "default",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

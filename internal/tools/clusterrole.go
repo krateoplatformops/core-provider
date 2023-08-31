@@ -29,11 +29,11 @@ func InstallClusterRole(ctx context.Context, kube client.Client, obj *rbacv1.Clu
 	)
 }
 
-func UninstallClusterRole(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+func UninstallClusterRole(ctx context.Context, opts UninstallOptions) error {
 	return retry.Do(
 		func() error {
 			obj := rbacv1.ClusterRole{}
-			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			err := opts.KubeClient.Get(ctx, opts.NamespacedName, &obj, &client.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
@@ -42,13 +42,18 @@ func UninstallClusterRole(ctx context.Context, kube client.Client, nn types.Name
 				return err
 			}
 
-			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			err = opts.KubeClient.Delete(ctx, &obj, &client.DeleteOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
 				}
 
 				return err
+			}
+
+			if opts.Log != nil {
+				opts.Log("ClusterRole successfully uninstalled",
+					"name", obj.GetName(), "namespace", obj.GetNamespace())
 			}
 
 			return nil

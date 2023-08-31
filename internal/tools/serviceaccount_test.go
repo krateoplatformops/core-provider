@@ -30,9 +30,12 @@ func TestUninstallServiceAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallServiceAccount(context.TODO(), kube, types.NamespacedName{
-		Name:      "demo",
-		Namespace: "default",
+	err = UninstallServiceAccount(context.TODO(), UninstallOptions{
+		KubeClient: kube,
+		NamespacedName: types.NamespacedName{
+			Name:      "demo",
+			Namespace: "default",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

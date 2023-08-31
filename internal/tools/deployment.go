@@ -16,11 +16,17 @@ import (
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
-func UninstallDeployment(ctx context.Context, kube client.Client, nn types.NamespacedName) error {
+type UninstallOptions struct {
+	KubeClient     client.Client
+	NamespacedName types.NamespacedName
+	Log            func(msg string, keysAndValues ...any)
+}
+
+func UninstallDeployment(ctx context.Context, opts UninstallOptions) error {
 	return retry.Do(
 		func() error {
 			obj := appsv1.Deployment{}
-			err := kube.Get(ctx, nn, &obj, &client.GetOptions{})
+			err := opts.KubeClient.Get(ctx, opts.NamespacedName, &obj, &client.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
@@ -29,13 +35,18 @@ func UninstallDeployment(ctx context.Context, kube client.Client, nn types.Names
 				return err
 			}
 
-			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+			err = opts.KubeClient.Delete(ctx, &obj, &client.DeleteOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil
 				}
 
 				return err
+			}
+
+			if opts.Log != nil {
+				opts.Log("Deployment successfully uninstalled",
+					"name", obj.GetName(), "namespace", obj.GetNamespace())
 			}
 
 			return nil

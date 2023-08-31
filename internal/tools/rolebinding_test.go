@@ -30,9 +30,12 @@ func TestUninstallRoleBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallRoleBinding(context.TODO(), kube, types.NamespacedName{
-		Name:      "demo",
-		Namespace: "default",
+	err = UninstallRoleBinding(context.TODO(), UninstallOptions{
+		KubeClient: kube,
+		NamespacedName: types.NamespacedName{
+			Name:      "demo",
+			Namespace: "default",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)

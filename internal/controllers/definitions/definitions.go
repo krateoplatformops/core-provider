@@ -290,11 +290,19 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		)
 	}
 
-	err = tools.Deploy(ctx, e.kube, tools.DeployOptions{
-		Namespace: cr.Namespace,
-		Name:      cr.Name,
-		Spec:      cr.Spec.Chart.DeepCopy(),
-	})
+	opts := tools.DeployOptions{
+		KubeClient: e.kube,
+		NamespacedName: types.NamespacedName{
+			Namespace: cr.Namespace,
+			Name:      cr.Name,
+		},
+		Spec: cr.Spec.Chart.DeepCopy(),
+	}
+	if meta.IsVerbose(cr) {
+		opts.Log = e.log.Debug
+	}
+
+	err = tools.Deploy(ctx, opts)
 	if err != nil {
 		return err
 	}
@@ -334,10 +342,17 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvr := tools.ToGroupVersionResource(gvk)
+	opts := tools.UndeployOptions{
+		KubeClient: e.kube,
+		GVR:        tools.ToGroupVersionResource(gvk),
+		NamespacedName: types.NamespacedName{
+			Name:      cr.Name,
+			Namespace: cr.Namespace,
+		},
+	}
+	if meta.IsVerbose(cr) {
+		opts.Log = e.log.Debug
+	}
 
-	return tools.Undeploy(ctx, e.kube, gvr, types.NamespacedName{
-		Name:      cr.Name,
-		Namespace: cr.Namespace,
-	})
+	return tools.Undeploy(ctx, opts)
 }
