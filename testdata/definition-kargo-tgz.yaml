@@ -7,4 +7,4 @@ metadata:
   namespace: krateo-system
 spec:
   chart:
-    url: https://github.com/krateoplatformops/kargo-chart/releases/download/0.1.0/kargo-0.1.0.tgz
+    url: https://github.com/krateoplatformops/kargo-chart/releases/download/0.1.4/kargo-0.1.0.tgz
