@@ -104,12 +104,15 @@ func (g *defaultCRDGenerator) GVK() (schema.GroupVersionKind, error) {
 }
 
 func (g *defaultCRDGenerator) Generate(ctx context.Context) ([]byte, error) {
+	clean := len(os.Getenv("GEN_CLEAN_WORKDIR")) == 0
+
 	cfg, res, err := g.crdInfoFromChart()
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(cfg.Workdir)
-
+	if clean {
+		defer os.RemoveAll(cfg.Workdir)
+	}
 	if err := code.Do(&res, cfg); err != nil {
 		return nil, err
 	}

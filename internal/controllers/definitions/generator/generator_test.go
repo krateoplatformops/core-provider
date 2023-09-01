@@ -38,6 +38,28 @@ func TestGeneratorTGZ(t *testing.T) {
 	fmt.Println(string(dat))
 }
 
+func TestGeneratorTGZIssues(t *testing.T) {
+	buf, _, err := getter.Get(getter.GetOptions{
+		URI: "https://github.com/krateoplatformops/kargo-chart/releases/download/0.1.4/kargo-0.1.0.tgz",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gen, err := ForData(context.Background(), buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//os.Setenv("GEN_CLEAN_WORKDIR", "NO")
+	dat, err := gen.Generate(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(string(dat))
+}
+
 func TestGeneratorOCI(t *testing.T) {
 	buf, _, err := getter.Get(getter.GetOptions{
 		URI:     "oci://registry-1.docker.io/bitnamicharts/postgresql",
