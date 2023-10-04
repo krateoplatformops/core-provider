@@ -1,4 +1,6 @@
 # Krateo Core Provider
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkrateoplatformops%2Fcore-provider.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkrateoplatformops%2Fcore-provider?ref=badge_shield)
+
 
 Manage Krateo PlatformOps Compositions.
 
@@ -54,3 +56,7 @@ spec:
     version: "12.8.3"
 ```
 
+
+
+## License
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Fkrateoplatformops%2Fcore-provider.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Fkrateoplatformops%2Fcore-provider?ref=badge_large)
