@@ -25,12 +25,14 @@ func TestGeneratorTGZ(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gen, err := ForData(context.Background(), buf)
+	pkg, dir, err := ChartInfoFromBytes(context.TODO(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dat, err := gen.Generate(context.Background())
+	dat, err := Generate(context.TODO(), dir,
+		ChartGroupVersionKindGetter(pkg, dir),
+		ChartValuesSchemaGetter(pkg, dir))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,16 +48,15 @@ func TestGeneratorTGZIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gen, err := ForData(context.Background(), buf)
+	//os.Setenv("GEN_CLEAN_WORKDIR", "NO")
+	pkg, dir, err := ChartInfoFromBytes(context.TODO(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	//os.Setenv("GEN_CLEAN_WORKDIR", "NO")
-	dat, err := gen.Generate(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	dat, err := Generate(context.TODO(), dir,
+		ChartGroupVersionKindGetter(pkg, dir),
+		ChartValuesSchemaGetter(pkg, dir))
 
 	fmt.Println(string(dat))
 }
@@ -70,15 +71,14 @@ func TestGeneratorOCI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gen, err := ForData(context.Background(), buf)
+	pkg, dir, err := ChartInfoFromBytes(context.TODO(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dat, err := gen.Generate(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	dat, err := Generate(context.TODO(), dir,
+		ChartGroupVersionKindGetter(pkg, dir),
+		ChartValuesSchemaGetter(pkg, dir))
 
 	fmt.Println(string(dat))
 }
@@ -95,15 +95,14 @@ func TestGeneratorREPO(t *testing.T) {
 
 	fmt.Println(url)
 
-	gen, err := ForData(context.Background(), buf)
+	pkg, dir, err := ChartInfoFromBytes(context.TODO(), buf)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dat, err := gen.Generate(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	dat, err := Generate(context.TODO(), dir,
+		ChartGroupVersionKindGetter(pkg, dir),
+		ChartValuesSchemaGetter(pkg, dir))
 
 	fmt.Println(string(dat))
 }
@@ -120,15 +119,14 @@ func TestGeneratorFromFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gen, err := ForData(context.Background(), all)
+	pkg, dir, err := ChartInfoFromBytes(context.TODO(), all)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	dat, err := gen.Generate(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
+	dat, err := Generate(context.TODO(), dir,
+		ChartGroupVersionKindGetter(pkg, dir),
+		ChartValuesSchemaGetter(pkg, dir))
 
 	fmt.Println(string(dat))
 }

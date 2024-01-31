@@ -210,12 +210,13 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	gen, err := generator.ForSpec(ctx, cr.Spec.Chart)
+	pkg, dir, err := generator.ChartInfoFromSpec(ctx, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	gvk, err := gen.GVK()
+	gvkGetter := generator.ChartGroupVersionKindGetter(pkg, dir)
+	gvk, err := gvkGetter.GVK()
 	if err != nil {
 		return err
 	}
@@ -239,7 +240,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Message:            fmt.Sprintf("Generating CRD for: %s", gvr),
 		})
 
-		dat, err := gen.Generate(ctx)
+		valuesSchemaGetter := generator.ChartValuesSchemaGetter(pkg, dir)
+		dat, err := generator.Generate(ctx, dir, gvkGetter, valuesSchemaGetter)
 		if err != nil {
 			return err
 		}
@@ -332,12 +334,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	gen, err := generator.ForSpec(ctx, cr.Spec.Chart)
+	pkg, dir, err := generator.ChartInfoFromSpec(ctx, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	gvk, err := gen.GVK()
+	gvk, err := generator.ChartGroupVersionKindGetter(pkg, dir).GVK()
 	if err != nil {
 		return err
 	}
