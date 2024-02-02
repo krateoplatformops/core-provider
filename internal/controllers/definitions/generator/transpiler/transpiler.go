@@ -7,17 +7,45 @@ import (
 
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/transpiler/jsonschema"
+	"github.com/krateoplatformops/core-provider/internal/ptr"
 )
 
-// transpiler will produce structs from the JSON schema.
-type transpiler struct {
-	schemas  []*jsonschema.Schema
-	resolver *jsonschema.RefResolver
-	Structs  map[string]Struct
-	Aliases  map[string]Field
-	// cache for reference types; k=url v=type
-	refs      map[string]string
-	anonCount int
+// Field defines the data required to generate a field in Go.
+type Field struct {
+	// The golang name, e.g. "Address1"
+	Name string
+	// The JSON name, e.g. "address1"
+	JSONName string
+	// The golang type of the field, e.g. a built-in type like "string" or the name of a struct generated
+	// from the JSON schema.
+	Type string
+
+	Description string
+
+	// Required is set to true when the field is required.
+	Required bool
+	// Optional
+	Optional *bool
+
+	Minimum, Maximum, MultipleOf *float64
+
+	Pattern *string
+
+	Enum []string
+}
+
+// Struct defines the data required to generate a struct in Go.
+type Struct struct {
+	// The ID within the JSON schema, e.g. #/definitions/address
+	ID string
+	// The golang name, e.g. "Address"
+	Name string
+	// Description of the struct
+	Description string
+	Fields      map[string]Field
+
+	GenerateCode   bool
+	AdditionalType string
 }
 
 // Transpile creates an instance of a generator which will produce structs.
@@ -32,6 +60,50 @@ func Transpile(schemas ...*jsonschema.Schema) (map[string]Struct, error) {
 	err := res.createStructs()
 
 	return res.Structs, err
+}
+
+// transpiler will produce structs from the JSON schema.
+type transpiler struct {
+	schemas  []*jsonschema.Schema
+	resolver *jsonschema.RefResolver
+	Structs  map[string]Struct
+	Aliases  map[string]Field
+	// cache for reference types; k=url v=type
+	refs      map[string]string
+	anonCount int
+}
+
+func (g *transpiler) createField(name, rootType string, schema *jsonschema.Schema) Field {
+	f := Field{
+		Name:        name,
+		JSONName:    "",
+		Type:        rootType,
+		Required:    false,
+		Optional:    ptr.To(ptr.Deref(schema.Optional, false)),
+		Description: schema.Description,
+	}
+
+	if schema.Minimum != nil {
+		f.Minimum = ptr.To(*schema.Minimum)
+	}
+
+	if schema.Maximum != nil {
+		f.Maximum = ptr.To(*schema.Maximum)
+	}
+
+	if schema.MultipleOf != nil {
+		f.MultipleOf = ptr.To(*schema.MultipleOf)
+	}
+
+	if schema.Enum != nil {
+		f.Enum = strslice(schema.Enum)
+	}
+
+	if schema.Pattern != nil {
+		f.Pattern = ptr.To(*schema.Pattern)
+	}
+
+	return f
 }
 
 // createStructs creates types from the JSON schemas, keyed by the golang name.
@@ -49,15 +121,8 @@ func (g *transpiler) createStructs() (err error) {
 		}
 		// ugh: if it was anything but a struct the type will not be the name...
 		if rootType != "*"+name {
-			a := Field{
-				Name:        name,
-				JSONName:    "",
-				Type:        rootType,
-				Required:    false,
-				Optional:    schema.Optional,
-				Description: schema.Description,
-			}
-			g.Aliases[a.Name] = a
+			f := g.createField(name, rootType, schema)
+			g.Aliases[name] = f
 		}
 	}
 	return
@@ -101,8 +166,8 @@ func (g *transpiler) processSchema(schemaName string, schema *jsonschema.Schema)
 		g.processDefinitions(schema)
 	}
 	schema.FixMissingTypeValue()
-	// if we have multiple schema types, the golang type will be interface{}
-	typ = "interface{}"
+	// if we have multiple schema types, the golang type will be string ////any
+	typ = "string" ////"any"
 	types, isMultiType := schema.MultiType()
 	if len(types) > 0 {
 		for _, schemaType := range types {
@@ -142,7 +207,7 @@ func (g *transpiler) processSchema(schemaName string, schema *jsonschema.Schema)
 			return g.processReference(schema)
 		}
 	}
-	return // return interface{}
+	return
 }
 
 // name: name of this array, usually the js key
@@ -161,19 +226,13 @@ func (g *transpiler) processArray(name string, schema *jsonschema.Schema) (typeS
 		}
 		// only alias root arrays
 		if schema.Parent == nil {
-			array := Field{
-				Name:        name,
-				JSONName:    "",
-				Type:        finalType,
-				Required:    contains(schema.Required, name),
-				Optional:    schema.Optional,
-				Description: schema.Description,
-			}
-			g.Aliases[array.Name] = array
+			f := g.createField(name, finalType, schema)
+			f.Required = contains(schema.Required, name)
+			g.Aliases[name] = f
 		}
 		return finalType, nil
 	}
-	return "[]interface{}", nil
+	return "[]any", nil
 }
 
 // name: name of the struct (calculated by caller)
@@ -197,18 +256,13 @@ func (g *transpiler) processObject(name string, schema *jsonschema.Schema) (typ 
 			return "", err
 		}
 
-		f := Field{
-			Name:        fieldName,
-			JSONName:    propKey,
-			Type:        fieldType,
-			Required:    contains(schema.Required, propKey),
-			Optional:    prop.Optional, // TODO
-			Description: prop.Description,
-		}
+		f := g.createField(fieldName, fieldType, prop)
+		f.JSONName = propKey
+		f.Required = contains(schema.Required, propKey)
 		if f.Required {
 			strct.GenerateCode = true
 		}
-		strct.Fields[f.Name] = f
+		strct.Fields[fieldName] = f
 	}
 	// additionalProperties with typed sub-schema
 	if schema.AdditionalProperties != nil && schema.AdditionalProperties.AdditionalPropertiesBool == nil {
@@ -236,7 +290,7 @@ func (g *transpiler) processObject(name string, schema *jsonschema.Schema) (typ 
 			JSONName:    "-",
 			Type:        mapTyp,
 			Required:    false,
-			Optional:    true,
+			Optional:    ptr.To(true),
 			Description: "",
 		}
 		strct.Fields[f.Name] = f
@@ -248,19 +302,19 @@ func (g *transpiler) processObject(name string, schema *jsonschema.Schema) (typ 
 	if schema.AdditionalProperties != nil && schema.AdditionalProperties.AdditionalPropertiesBool != nil {
 		if *schema.AdditionalProperties.AdditionalPropertiesBool {
 			// everything is valid additional
-			subTyp := "map[string]interface{}"
+			subTyp := "map[string]any"
 			f := Field{
 				Name:        "AdditionalProperties",
 				JSONName:    "-",
 				Type:        subTyp,
 				Required:    false,
-				Optional:    true,
+				Optional:    ptr.To(true),
 				Description: "",
 			}
 			strct.Fields[f.Name] = f
 			// setting this will cause marshal code to be emitted in Output()
 			strct.GenerateCode = true
-			strct.AdditionalType = "interface{}"
+			strct.AdditionalType = "any"
 		} else {
 			// nothing
 			strct.GenerateCode = true
@@ -272,13 +326,25 @@ func (g *transpiler) processObject(name string, schema *jsonschema.Schema) (typ 
 	return getPrimitiveTypeName("object", name, true)
 }
 
-func contains(s []string, e string) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
+// return a name for this (sub-)schema.
+func (g *transpiler) getSchemaName(keyName string, schema *jsonschema.Schema) string {
+	if len(schema.Title) > 0 {
+		return text.ToGolangName(schema.Title)
 	}
-	return false
+	if keyName != "" {
+		return text.ToGolangName(keyName)
+	}
+	if schema.Parent == nil {
+		return "Root"
+	}
+	if schema.JSONKey != "" {
+		return text.ToGolangName(schema.JSONKey)
+	}
+	if schema.Parent != nil && schema.Parent.JSONKey != "" {
+		return text.ToGolangName(schema.Parent.JSONKey + "Item")
+	}
+	g.anonCount++
+	return fmt.Sprintf("Anonymous%d", g.anonCount)
 }
 
 func getPrimitiveTypeName(schemaType string, subType string, pointer bool) (name string, err error) {
@@ -310,55 +376,4 @@ func getPrimitiveTypeName(schemaType string, subType string, pointer bool) (name
 
 	return "undefined", fmt.Errorf("failed to get a primitive type for schemaType %s and subtype %s",
 		schemaType, subType)
-}
-
-// return a name for this (sub-)schema.
-func (g *transpiler) getSchemaName(keyName string, schema *jsonschema.Schema) string {
-	if len(schema.Title) > 0 {
-		return text.ToGolangName(schema.Title)
-	}
-	if keyName != "" {
-		return text.ToGolangName(keyName)
-	}
-	if schema.Parent == nil {
-		return "Root"
-	}
-	if schema.JSONKey != "" {
-		return text.ToGolangName(schema.JSONKey)
-	}
-	if schema.Parent != nil && schema.Parent.JSONKey != "" {
-		return text.ToGolangName(schema.Parent.JSONKey + "Item")
-	}
-	g.anonCount++
-	return fmt.Sprintf("Anonymous%d", g.anonCount)
-}
-
-// Struct defines the data required to generate a struct in Go.
-type Struct struct {
-	// The ID within the JSON schema, e.g. #/definitions/address
-	ID string
-	// The golang name, e.g. "Address"
-	Name string
-	// Description of the struct
-	Description string
-	Fields      map[string]Field
-
-	GenerateCode   bool
-	AdditionalType string
-}
-
-// Field defines the data required to generate a field in Go.
-type Field struct {
-	// The golang name, e.g. "Address1"
-	Name string
-	// The JSON name, e.g. "address1"
-	JSONName string
-	// The golang type of the field, e.g. a built-in type like "string" or the name of a struct generated
-	// from the JSON schema.
-	Type string
-	// Required is set to true when the field is required.
-	Required bool
-	// Optional
-	Optional    bool
-	Description string
 }

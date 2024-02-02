@@ -85,7 +85,7 @@ func (g *chartGroupVersionKindGetter) GVK() (schema.GroupVersionKind, error) {
 		return schema.GroupVersionKind{}, err
 	}
 
-	res := map[string]interface{}{}
+	res := map[string]any{}
 	if err := yaml.Unmarshal(din, &res); err != nil {
 		return schema.GroupVersionKind{}, err
 	}

@@ -19,7 +19,8 @@
               "string"
             ],
             "title": "Namespace where ArgoCD has been installed",
-            "default": "argocd"
+            "default": "argocd",
+            "pattern": "^(?![0-9]+$)(?!-)[a-zA-Z0-9-]{,63}(?<!-)$"
           },
           "application": {
             "type": "object",

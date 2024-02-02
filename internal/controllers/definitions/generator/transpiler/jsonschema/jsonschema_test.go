@@ -2,6 +2,8 @@ package jsonschema
 
 import (
 	"testing"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 func TestThatTheRootSchemaCanBeParsed(t *testing.T) {
@@ -114,4 +116,40 @@ func TestThatDefaultsCanBeParsed(t *testing.T) {
 	if defaultValue != "Enrique" {
 		t.Errorf("expected default value of property 'name' type to be 'Enrique', but was '%v'", defaultValue)
 	}
+}
+
+const (
+	sample = `
+{
+	"$id": "https://example.com/person.schema.json",
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"title": "Person",
+	"type": "object",
+	"properties": {
+		"firstName": {
+			"type": "string",
+			"description": "The person's first name."
+		},
+		"lastName": {
+			"type": "string",
+			"description": "The person's last name."
+		},
+		"age": {
+			"description": "Age in years which must be equal to or greater than zero.",
+			"type": "integer",
+			"minimum": 10
+		}
+	}
+}
+`
+)
+
+func TestThatIntegerCanBeParsed(t *testing.T) {
+
+	so, err := Parse([]byte(sample))
+	if err != nil {
+		t.Fatal("It was not possible to unmarshal the schema:", err)
+	}
+
+	spew.Dump(so.Properties["age"].Minimum)
 }

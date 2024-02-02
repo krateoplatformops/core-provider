@@ -489,8 +489,8 @@ func TestThatArraysWithoutDefinedItemTypesAreGeneratedAsEmptyInterfaces(t *testi
 
 	if o, ok := results["ArrayWithoutDefinedItem"]; ok {
 		if f, ok := o.Fields["Repositories"]; ok {
-			if f.Type != "[]interface{}" {
-				t.Errorf("Since the schema doesn't include a type for the array items, the property type should be []interface{}, but was %s.", f.Type)
+			if f.Type != "[]any" {
+				t.Errorf("Since the schema doesn't include a type for the array items, the property type should be []any, but was %s.", f.Type)
 			}
 		} else {
 			t.Errorf("Expected the ArrayWithoutDefinedItem type to have a Repostitories field, but none was found.")
@@ -502,7 +502,7 @@ func TestThatTypesWithMultipleDefinitionsAreGeneratedAsEmptyInterfaces(t *testin
 	root := &jsonschema.Schema{}
 	root.Title = "Multiple possible types"
 	root.Properties = map[string]*jsonschema.Schema{
-		"name": {TypeValue: []interface{}{"string", "integer"}},
+		"name": {TypeValue: []any{"string", "integer"}},
 	}
 
 	root.Init()
@@ -518,8 +518,8 @@ func TestThatTypesWithMultipleDefinitionsAreGeneratedAsEmptyInterfaces(t *testin
 
 	if o, ok := results["MultiplePossibleTypes"]; ok {
 		if f, ok := o.Fields["Name"]; ok {
-			if f.Type != "interface{}" {
-				t.Errorf("Since the schema has multiple types for the item, the property type should be []interface{}, but was %s.", f.Type)
+			if f.Type != "any" {
+				t.Errorf("Since the schema has multiple types for the item, the property type should be []any, but was %s.", f.Type)
 			}
 		} else {
 			t.Errorf("Expected the MultiplePossibleTypes type to have a Name field, but none was found.")
@@ -549,7 +549,7 @@ func TestThatUnmarshallingIsPossible(t *testing.T) {
 			name:  "map",
 			input: `{ "name": { "key": "value" } }`,
 			expected: Root{
-				Name: map[string]interface{}{
+				Name: map[string]any{
 					"key": "value",
 				},
 			},
@@ -558,7 +558,7 @@ func TestThatUnmarshallingIsPossible(t *testing.T) {
 			name:  "array",
 			input: `{ "name": [ "a", "b" ] }`,
 			expected: Root{
-				Name: []interface{}{"a", "b"},
+				Name: []any{"a", "b"},
 			},
 		},
 		{
@@ -587,5 +587,5 @@ func TestThatUnmarshallingIsPossible(t *testing.T) {
 
 // Root is an example of a generated type.
 type Root struct {
-	Name interface{} `json:"name,omitempty"`
+	Name any `json:"name,omitempty"`
 }

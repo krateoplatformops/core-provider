@@ -12,6 +12,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/transpiler"
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/transpiler/jsonschema"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -121,11 +122,39 @@ func renderStruct(key string, el transpiler.Struct, res *Resource) jen.Code {
 func renderField(el transpiler.Field) jen.Code {
 	res := &jen.Statement{}
 	if len(el.Description) > 0 {
-		comment := fmt.Sprintf("%s: %s", el.Name, el.Description)
-		res.Add(jen.Comment(comment).Line())
+		cmt := fmt.Sprintf("%s: %s", el.Name, el.Description)
+		res.Add(jen.Comment(cmt).Line())
 	}
 
-	if el.Optional {
+	if el.Minimum != nil {
+		val := ptr.Deref(el.Minimum, 0)
+		cmt := fmt.Sprintf("+kubebuilder:validation:Minimum:=%d", int(val))
+		res.Add(jen.Comment(cmt).Line())
+	}
+
+	if el.Maximum != nil {
+		val := ptr.Deref(el.Maximum, 0)
+		cmt := fmt.Sprintf("+kubebuilder:validation:Maximum:=%d", int(val))
+		res.Add(jen.Comment(cmt).Line())
+	}
+
+	if el.MultipleOf != nil {
+		val := ptr.Deref(el.MultipleOf, 0)
+		cmt := fmt.Sprintf("+kubebuilder:validation:MultipleOf:=%d", int(val))
+		res.Add(jen.Comment(cmt).Line())
+	}
+
+	if el.Pattern != nil {
+		cmt := fmt.Sprintf("+kubebuilder:validation:Pattern:=`%s`", ptr.Deref(el.Pattern, ""))
+		res.Add(jen.Comment(cmt).Line())
+	}
+
+	if len(el.Enum) > 0 {
+		cmt := fmt.Sprintf("+kubebuilder:validation:Enum:=%s", strings.Join(el.Enum, ";"))
+		res.Add(jen.Comment(cmt).Line())
+	}
+
+	if ptr.Deref(el.Optional, false) {
 		res.Add(jen.Comment("+optional").Line())
 		if !strings.HasPrefix(el.Type, "*") {
 			res.Add(jen.Id(el.Name).Op("*").Id(el.Type))
@@ -168,51 +197,34 @@ func createStatusStruct(kind string) jen.Code {
 		Line()
 }
 
-/*
-func createStatusStruct(res *Resource) jen.Code {
-	kind := text.ToGolangName(res.Kind)
-	key := text.ToGolangName(fmt.Sprintf("%sStatus", kind))
-
-	field1 := jen.Qual(pkgCommon, "ManagedStatus").
-		Tag(map[string]string{
-			"json": ",inline",
-		}).Line()
-
-	comment := fmt.Sprintf(pkgStatusCommentFmt, key, kind)
-	return jen.Comment(comment).Line().
-		Type().Id(key).Struct(field1).
-		Line()
-}
-*/
-
 func createFailedObjectRef() jen.Code {
 	meta := []transpiler.Field{
 		{
 			Name:        "APIVersion",
 			JSONName:    "apiVersion",
 			Description: "API version of the object.",
-			Optional:    false,
+			Optional:    ptr.To(false),
 			Type:        "string",
 		},
 		{
 			Name:        "Kind",
 			JSONName:    "kind",
 			Description: "Kind of the object.",
-			Optional:    false,
+			Optional:    ptr.To(false),
 			Type:        "string",
 		},
 		{
 			Name:        "Name",
 			JSONName:    "name",
 			Description: "Name of the object.",
-			Optional:    false,
+			Optional:    ptr.To(false),
 			Type:        "string",
 		},
 		{
 			Name:        "Namespace",
 			JSONName:    "namespace",
 			Description: "Namespace of the object.",
-			Optional:    false,
+			Optional:    ptr.To(false),
 			Type:        "string",
 		},
 	}

@@ -14,7 +14,8 @@ import (
 )
 
 const (
-	testChartFile = "../../../../testdata/charts/postgresql-12.8.3.tgz"
+	testChartFile        = "../../../../testdata/charts/postgresql-12.8.3.tgz"
+	testValuesSchemaFile = "../../../../testdata/values.schema.json"
 )
 
 func TestGeneratorTGZ(t *testing.T) {
@@ -127,6 +128,24 @@ func TestGeneratorFromFile(t *testing.T) {
 	dat, err := Generate(context.TODO(), dir,
 		ChartGroupVersionKindGetter(pkg, dir),
 		ChartValuesSchemaGetter(pkg, dir))
+
+	fmt.Println(string(dat))
+}
+
+func TestGeneratorStream(t *testing.T) {
+	fin, err := os.Open(testValuesSchemaFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fin.Close()
+
+	//os.Setenv("GEN_CLEAN_WORKDIR", "NO")
+	dat, err := Generate(context.TODO(), "fake",
+		FakeGroupVersionKindGetter("Test"),
+		StreamValuesSchemaGetter(fin))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	fmt.Println(string(dat))
 }
