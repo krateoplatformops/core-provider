@@ -23,5 +23,5 @@ func (g *tgzGetter) Get(opts GetOptions) ([]byte, string, error) {
 }
 
 func isTGZ(url string) bool {
-	return strings.HasSuffix(url, ".tgz")
+	return strings.HasSuffix(url, ".tgz") || strings.HasSuffix(url, ".tar.gz")
 }
