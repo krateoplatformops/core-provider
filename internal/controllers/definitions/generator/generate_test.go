@@ -42,8 +42,11 @@ func TestGeneratorTGZ(t *testing.T) {
 }
 
 func TestGeneratorTGZIssues(t *testing.T) {
+	const (
+		uri = "https://github.com/krateoplatformops/krateo-v2-template-fireworksapp/releases/download/0.0.1/fireworks-app-0.1.0.tgz"
+	)
 	buf, _, err := getter.Get(getter.GetOptions{
-		URI: "https://github.com/krateoplatformops/kargo-chart/releases/download/0.1.4/kargo-0.1.0.tgz",
+		URI: uri,
 	})
 	if err != nil {
 		t.Fatal(err)
