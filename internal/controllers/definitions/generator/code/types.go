@@ -161,13 +161,15 @@ func renderField(el transpiler.Field) jen.Code {
 		} else {
 			res.Add(jen.Id(el.Name).Id(el.Type))
 		}
+		res.Add(jen.Tag(map[string]string{
+			"json": fmt.Sprintf("%s,omitempty", el.JSONName),
+		}).Line())
 	} else {
 		res.Add(jen.Id(el.Name).Id(el.Type))
+		res.Add(jen.Tag(map[string]string{
+			"json": el.JSONName,
+		}).Line())
 	}
-
-	res.Add(jen.Tag(map[string]string{
-		"json": fmt.Sprintf("%s,omitempty", el.JSONName),
-	}).Line())
 
 	return res
 }
