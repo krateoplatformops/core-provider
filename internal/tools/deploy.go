@@ -89,6 +89,7 @@ type DeployOptions struct {
 	KubeClient     client.Client
 	NamespacedName types.NamespacedName
 	Spec           *definitionsv1alpha1.ChartInfo
+	CDCImageTag    string
 	Log            func(msg string, keysAndValues ...any)
 }
 
@@ -151,7 +152,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 			"gvr", gvr.String(), "name", crb.Name, "namespace", crb.Namespace)
 	}
 
-	dep, err := CreateDeployment(gvr, opts.NamespacedName)
+	dep, err := CreateDeployment(gvr, opts.NamespacedName, opts.CDCImageTag)
 	if err != nil {
 		return err
 	}

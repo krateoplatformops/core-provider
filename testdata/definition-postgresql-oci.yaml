@@ -4,7 +4,7 @@ metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
   name: postgresql-oci
-  namespace: krateo-system
+  namespace: demo-system
 spec:
   chart:
     url: oci://registry-1.docker.io/bitnamicharts/postgresql

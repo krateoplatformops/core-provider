@@ -3,41 +3,30 @@ package generator
 import (
 	"io"
 
+	"github.com/krateoplatformops/crdgen"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func FakeGroupVersionKindGetter(kind string) GroupVersionKindGetter {
-	return &fakeGroupVersionKindGetter{
-		kind: kind,
+func FakeGroupVersionKind(kind string) schema.GroupVersionKind {
+	return schema.GroupVersionKind{
+		Group:   defaultGroup,
+		Version: "v0-0-0",
+		Kind:    kind,
 	}
 }
 
-func StreamValuesSchemaGetter(r io.Reader) ValuesSchemaGetter {
-	return &fakeValuesSchemaGetter{
+func StreamJsonSchemaGetter(r io.Reader) crdgen.JsonSchemaGetter {
+	return &fakeJsonSchemaGetter{
 		fin: r,
 	}
 }
 
-var _ GroupVersionKindGetter = (*fakeGroupVersionKindGetter)(nil)
+var _ crdgen.JsonSchemaGetter = (*fakeJsonSchemaGetter)(nil)
 
-type fakeGroupVersionKindGetter struct {
-	kind string
-}
-
-func (g *fakeGroupVersionKindGetter) GVK() (schema.GroupVersionKind, error) {
-	return schema.GroupVersionKind{
-		Group:   defaultGroup,
-		Version: "v0-0-0",
-		Kind:    g.kind,
-	}, nil
-}
-
-var _ ValuesSchemaGetter = (*fakeValuesSchemaGetter)(nil)
-
-type fakeValuesSchemaGetter struct {
+type fakeJsonSchemaGetter struct {
 	fin io.Reader
 }
 
-func (g *fakeValuesSchemaGetter) ValuesSchemaBytes() ([]byte, error) {
+func (g *fakeJsonSchemaGetter) Get() ([]byte, error) {
 	return io.ReadAll(g.fin)
 }

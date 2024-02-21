@@ -10,11 +10,16 @@ import (
 
 	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
+	"github.com/krateoplatformops/core-provider/internal/strutil"
+	"github.com/krateoplatformops/core-provider/internal/tgzfs"
+	"github.com/krateoplatformops/crdgen"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	defaultGroup = "composition.krateo.io"
 )
 
 func ChartInfoFromSpec(ctx context.Context, nfo *v1alpha1.ChartInfo) (pkg fs.FS, rootDir string, err error) {
@@ -54,27 +59,8 @@ func ChartInfoFromBytes(ctx context.Context, bin []byte) (pkg fs.FS, rootDir str
 	return pkg, rootDir, nil
 }
 
-func ChartGroupVersionKindGetter(tgzFS fs.FS, rootDir string) GroupVersionKindGetter {
-	return &chartGroupVersionKindGetter{
-		tgzFS: tgzFS, rootDir: rootDir,
-	}
-}
-
-func ChartValuesSchemaGetter(tgzFS fs.FS, rootDir string) ValuesSchemaGetter {
-	return &chartValuesSchemaGetter{
-		tgzFS: tgzFS, rootDir: rootDir,
-	}
-}
-
-var _ GroupVersionKindGetter = (*chartGroupVersionKindGetter)(nil)
-
-type chartGroupVersionKindGetter struct {
-	tgzFS   fs.FS
-	rootDir string
-}
-
-func (g *chartGroupVersionKindGetter) GVK() (schema.GroupVersionKind, error) {
-	fin, err := g.tgzFS.Open(g.rootDir + "/Chart.yaml")
+func ChartGroupVersionKind(tgzFS fs.FS, rootDir string) (schema.GroupVersionKind, error) {
+	fin, err := tgzFS.Open(rootDir + "/Chart.yaml")
 	if err != nil {
 		return schema.GroupVersionKind{}, err
 	}
@@ -90,23 +76,27 @@ func (g *chartGroupVersionKindGetter) GVK() (schema.GroupVersionKind, error) {
 		return schema.GroupVersionKind{}, err
 	}
 
-	name := res["name"].(string)
-
 	return schema.GroupVersionKind{
 		Group:   defaultGroup,
 		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-")),
-		Kind:    flect.Pascalize(text.ToGolangName(name)),
+		Kind:    flect.Pascalize(strutil.ToGolangName(res["name"].(string))),
 	}, nil
 }
 
-var _ ValuesSchemaGetter = (*chartValuesSchemaGetter)(nil)
+func ChartJsonSchemaGetter(tgzFS fs.FS, rootDir string) crdgen.JsonSchemaGetter {
+	return &chartJsonSchemaGetter{
+		tgzFS: tgzFS, rootDir: rootDir,
+	}
+}
 
-type chartValuesSchemaGetter struct {
+var _ crdgen.JsonSchemaGetter = (*chartJsonSchemaGetter)(nil)
+
+type chartJsonSchemaGetter struct {
 	tgzFS   fs.FS
 	rootDir string
 }
 
-func (g *chartValuesSchemaGetter) ValuesSchemaBytes() ([]byte, error) {
+func (g *chartJsonSchemaGetter) Get() ([]byte, error) {
 	fin, err := g.tgzFS.Open(g.rootDir + "/values.schema.json")
 	if err != nil {
 		return nil, err

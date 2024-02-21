@@ -1,19 +1,10 @@
-package text
+package strutil
 
 import (
 	"bytes"
 	"strings"
 	"unicode"
 )
-
-func CapitaliseFirstLetter(s string) string {
-	if s == "" {
-		return s
-	}
-	prefix := s[0:1]
-	suffix := s[1:]
-	return strings.ToUpper(prefix) + suffix
-}
 
 // ToGolangName strips invalid characters out of golang struct or field names.
 func ToGolangName(s string) string {
@@ -26,6 +17,15 @@ func ToGolangName(s string) string {
 		buf.WriteString(CapitaliseFirstLetter(v))
 	}
 	return buf.String()
+}
+
+func CapitaliseFirstLetter(s string) string {
+	if s == "" {
+		return s
+	}
+	prefix := s[0:1]
+	suffix := s[1:]
+	return strings.ToUpper(prefix) + suffix
 }
 
 func splitOnAll(s string, shouldSplit func(r rune) bool) []string {

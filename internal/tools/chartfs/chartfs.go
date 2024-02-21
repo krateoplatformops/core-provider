@@ -7,8 +7,8 @@ import (
 	"io/fs"
 
 	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/tgzfs"
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
+	"github.com/krateoplatformops/core-provider/internal/tgzfs"
 )
 
 func FromReader(in io.Reader, pkgurl string) (*ChartFS, error) {

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -17,11 +18,15 @@ func TestInstallDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj, err := CreateDeployment(schema.GroupVersionResource{
-		Group:    "composition.krateo.io",
-		Version:  "v12-8-3",
-		Resource: "postgresqls",
-	}, types.NamespacedName{Name: "demo", Namespace: "default"})
+	obj, err := CreateDeployment(
+		schema.GroupVersionResource{
+			Group:    "composition.krateo.io",
+			Version:  "v12-8-3",
+			Resource: "postgresqls",
+		},
+		types.NamespacedName{Name: "demo", Namespace: "default"},
+		os.Getenv("CDC_IMAGE_TAG"),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"os"
 
 	"github.com/avast/retry-go"
 	"github.com/krateoplatformops/core-provider/internal/templates"
@@ -72,14 +71,14 @@ func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Depl
 	)
 }
 
-func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName) (appsv1.Deployment, error) {
+func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, cdcImageTag string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
 		Namespace: nn.Namespace,
 		Name:      nn.Name,
-		Tag:       os.Getenv("CDC_IMAGE_TAG"),
+		Tag:       cdcImageTag,
 	})
 
 	dat, err := templates.RenderDeployment(values)
