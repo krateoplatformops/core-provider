@@ -1,16 +1,15 @@
 module github.com/krateoplatformops/core-provider
 
-go 1.21.4
+go 1.21.6
 
 require (
 	github.com/Masterminds/semver v1.5.0
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/alecthomas/kingpin/v2 v2.4.0
 	github.com/avast/retry-go v3.0.0+incompatible
-	github.com/dave/jennifer v1.7.0
-	github.com/davecgh/go-spew v1.1.1
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/go-cmp v0.6.0
+	github.com/krateoplatformops/crdgen v0.1.0
 	github.com/krateoplatformops/provider-runtime v0.7.0
 	github.com/pkg/errors v0.9.1
 	github.com/stoewer/go-strcase v1.3.0
@@ -18,9 +17,9 @@ require (
 	helm.sh/helm/v3 v3.14.0
 	k8s.io/api v0.29.1
 	k8s.io/apiextensions-apiserver v0.29.1
-	k8s.io/apimachinery v0.29.1
+	k8s.io/apimachinery v0.29.2
 	k8s.io/client-go v0.29.1
-	k8s.io/utils v0.0.0-20240102154912-e7106e64919e
+	k8s.io/gengo v0.0.0-20240129211411-f967bbeff4b4
 	sigs.k8s.io/controller-runtime v0.17.0
 	sigs.k8s.io/controller-tools v0.14.0
 	sigs.k8s.io/yaml v1.4.0
@@ -43,6 +42,8 @@ require (
 	github.com/containerd/containerd v1.7.12 // indirect
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
+	github.com/dave/jennifer v1.7.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/cli v25.0.1+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
@@ -158,6 +159,7 @@ require (
 	k8s.io/klog/v2 v2.120.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240126223410-2919ad4fcfec // indirect
 	k8s.io/kubectl v0.29.1 // indirect
+	k8s.io/utils v0.0.0-20240102154912-e7106e64919e // indirect
 	oras.land/oras-go v1.2.5 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
 	sigs.k8s.io/kustomize/api v0.16.0 // indirect

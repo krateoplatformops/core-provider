@@ -3,6 +3,7 @@ package definitions
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -18,6 +19,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"github.com/krateoplatformops/crdgen"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
 	"github.com/krateoplatformops/provider-runtime/pkg/event"
@@ -38,6 +40,8 @@ const (
 
 	reconcileGracePeriod = 1 * time.Minute
 	reconcileTimeout     = 4 * time.Minute
+
+	cdcImageTagEnvVar = "CDC_IMAGE_TAG"
 )
 
 func Setup(mgr ctrl.Manager, o controller.Options) error {
@@ -127,14 +131,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	cr.Status.Resource = fmt.Sprintf("%s.%s", gvr.Resource, gvr.GroupVersion().String())
 
-	// if meta.ExternalCreateIncomplete(cr) {
-	// 	e.log.Info("CRD generation pending.", "gvr", gvr.String())
-	// 	return reconciler.ExternalObservation{
-	// 		ResourceExists:   true,
-	// 		ResourceUpToDate: true,
-	// 	}, nil
-	// }
-
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
 	}
@@ -142,7 +138,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
-	})
+	}, os.Getenv(cdcImageTagEnvVar))
 	if err != nil {
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
@@ -215,8 +211,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvkGetter := generator.ChartGroupVersionKindGetter(pkg, dir)
-	gvk, err := gvkGetter.GVK()
+	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		return err
 	}
@@ -240,13 +235,17 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Message:            fmt.Sprintf("Generating CRD for: %s", gvr),
 		})
 
-		valuesSchemaGetter := generator.ChartValuesSchemaGetter(pkg, dir)
-		dat, err := generator.Generate(ctx, dir, gvkGetter, valuesSchemaGetter)
-		if err != nil {
-			return err
+		res := crdgen.Generate(ctx, crdgen.Options{
+			WorkDir:          dir,
+			GVK:              gvk,
+			Categories:       []string{"krateo", "composition"},
+			JsonSchemaGetter: generator.ChartJsonSchemaGetter(pkg, dir),
+		})
+		if res.Err != nil {
+			return res.Err
 		}
 
-		crd, err := tools.UnmarshalCRD(dat)
+		crd, err := tools.UnmarshalCRD(res.Manifest)
 		if err != nil {
 			return err
 		}
@@ -298,7 +297,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Namespace: cr.Namespace,
 			Name:      cr.Name,
 		},
-		Spec: cr.Spec.Chart.DeepCopy(),
+		CDCImageTag: os.Getenv(cdcImageTagEnvVar),
+		Spec:        cr.Spec.Chart.DeepCopy(),
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug
@@ -339,7 +339,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvk, err := generator.ChartGroupVersionKindGetter(pkg, dir).GVK()
+	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		return err
 	}

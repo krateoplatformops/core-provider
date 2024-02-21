@@ -4,7 +4,7 @@ metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
   name: postgresql-tgz
-  namespace: krateo-system
+  namespace: demo-system
 spec:
   chart:
     url: https://charts.bitnami.com/bitnami/postgresql-12.8.3.tgz

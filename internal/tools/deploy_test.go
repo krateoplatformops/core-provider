@@ -5,6 +5,7 @@ package tools
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
@@ -30,6 +31,7 @@ func TestDeploy(t *testing.T) {
 			Namespace: "default",
 			Name:      "postgresql-repo",
 		},
+		CDCImageTag: os.Getenv("CDC_IMAGE_TAG"),
 	})
 	if err != nil {
 		t.Fatal(err)

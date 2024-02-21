@@ -6,10 +6,12 @@ import (
 	"strings"
 
 	"github.com/gobuffalo/flect"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator/text"
+	"github.com/krateoplatformops/core-provider/internal/strutil"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/gengo/namer"
+	"k8s.io/gengo/types"
 )
 
 func GroupVersionResource(fs *chartfs.ChartFS) (schema.GroupVersionResource, error) {
@@ -29,22 +31,19 @@ func GroupVersionResource(fs *chartfs.ChartFS) (schema.GroupVersionResource, err
 		return schema.GroupVersionResource{}, err
 	}
 
-	name := res["name"].(string)
-	kind := flect.Pascalize(text.ToGolangName(name))
-	resource := strings.ToLower(flect.Pluralize(kind))
-	version := fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-"))
-
-	return schema.GroupVersionResource{
-		Group:    "composition.krateo.io",
-		Version:  version,
-		Resource: resource,
-	}, nil
+	return ToGroupVersionResource(schema.GroupVersionKind{
+		Group:   "composition.krateo.io",
+		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-")),
+		Kind:    flect.Pascalize(strutil.ToGolangName(res["name"].(string))),
+	}), nil
 }
 
 func ToGroupVersionResource(gvk schema.GroupVersionKind) schema.GroupVersionResource {
 	return schema.GroupVersionResource{
-		Group:    gvk.Group,
-		Version:  gvk.Version,
-		Resource: strings.ToLower(flect.Pluralize(gvk.Kind)),
+		Group:   gvk.Group,
+		Version: gvk.Version,
+		Resource: namer.NewPrivatePluralNamer(nil).Name(
+			&types.Type{Name: types.Name{Name: gvk.Kind}},
+		),
 	}
 }

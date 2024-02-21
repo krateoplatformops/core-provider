@@ -1,6 +1,10 @@
-package text
+package strutil_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/krateoplatformops/core-provider/internal/strutil"
+)
 
 func TestThatCapitalisationOccursCorrectly(t *testing.T) {
 	tests := []struct {
@@ -30,7 +34,7 @@ func TestThatCapitalisationOccursCorrectly(t *testing.T) {
 	}
 
 	for idx, test := range tests {
-		actual := CapitaliseFirstLetter(test.input)
+		actual := strutil.CapitaliseFirstLetter(test.input)
 		if actual != test.expected {
 			t.Errorf("Test %d failed: For input \"%s\", expected \"%s\", got \"%s\"", idx, test.input, test.expected, actual)
 		}
@@ -86,7 +90,7 @@ func TestThatJavascriptKeyNamesCanBeConvertedToValidGoNames(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		actual := ToGolangName(test.input)
+		actual := strutil.ToGolangName(test.input)
 
 		if test.expected != actual {
 			t.Errorf("For test '%s', for input '%s' expected '%s' but got '%s'.", test.description, test.input, test.expected, actual)
