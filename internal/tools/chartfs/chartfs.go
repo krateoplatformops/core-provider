@@ -6,7 +6,7 @@ import (
 	"io"
 	"io/fs"
 
-	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 	"github.com/krateoplatformops/core-provider/internal/tgzfs"
 )

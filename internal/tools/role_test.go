@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"

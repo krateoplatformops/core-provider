@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )

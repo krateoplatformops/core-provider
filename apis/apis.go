@@ -3,12 +3,14 @@ package apis
 import (
 	"k8s.io/apimachinery/pkg/runtime"
 
-	definitions "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
+	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	schemadefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/schemadefinitions/v1alpha1"
 )
 
 func init() {
 	AddToSchemes = append(AddToSchemes,
-		definitions.SchemeBuilder.AddToScheme,
+		compositiondefinitionsv1alpha1.SchemeBuilder.AddToScheme,
+		schemadefinitionsv1alpha1.SchemeBuilder.AddToScheme,
 	)
 }
 

@@ -7,12 +7,11 @@ import (
 
 //+kubebuilder:object:root=true
 
-// DefinitionList is a list of Definition objects.
-type DefinitionList struct {
+type CompositionDefinitionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []Definition `json:"items"`
+	Items []CompositionDefinition `json:"items"`
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
@@ -33,15 +32,14 @@ type ChartInfo struct {
 	Repo string `json:"repo,omitempty"`
 }
 
-// DefinitionSpec is the specification of a Definition.
-type DefinitionSpec struct {
+type CompositionDefinitionSpec struct {
 	rtv1.ManagedSpec `json:",inline"`
 
 	Chart *ChartInfo `json:"chart,omitempty"`
 }
 
-// DefinitionStatus is the status of a Definition.
-type DefinitionStatus struct {
+// CompositionDefinitionStatus is the status of a CompositionDefinition.
+type CompositionDefinitionStatus struct {
 	rtv1.ManagedStatus `json:",inline"`
 
 	// Resource: the generated custom resource
@@ -61,11 +59,11 @@ type DefinitionStatus struct {
 //+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp",priority=10
 
-// Definition is a definition type with a spec and a status.
-type Definition struct {
+// CompositionDefinition is a definition type with a spec and a status.
+type CompositionDefinition struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   DefinitionSpec   `json:"spec,omitempty"`
-	Status DefinitionStatus `json:"status,omitempty"`
+	Spec   CompositionDefinitionSpec   `json:"spec,omitempty"`
+	Status CompositionDefinitionStatus `json:"status,omitempty"`
 }

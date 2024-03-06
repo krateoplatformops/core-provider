@@ -1,0 +1,12 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  annotations:
+     "krateo.io/connector-verbose": "true"
+  name: postgresql-oci
+  namespace: demo-system
+spec:
+  chart:
+    url: oci://registry-1.docker.io/bitnamicharts/postgresql
+    version: "12.8.3"
+
