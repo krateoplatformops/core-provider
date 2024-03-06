@@ -1,10 +1,12 @@
+---
 apiVersion: core.krateo.io/v1alpha1
-kind: Definition
+kind: SchemaDefinition
 metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
-  name: postgresql-tgz
+  name: sample
   namespace: demo-system
 spec:
-  chart:
-    url: https://charts.bitnami.com/bitnami/postgresql-12.8.3.tgz
+  schema:
+    kind: Sample
+    url: http://localhost:8100/values.schema.json

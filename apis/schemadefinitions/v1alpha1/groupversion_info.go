@@ -26,12 +26,12 @@ var (
 )
 
 var (
-	DefinitionKind             = reflect.TypeOf(Definition{}).Name()
-	DefinitionGroupKind        = schema.GroupKind{Group: Group, Kind: DefinitionKind}.String()
-	DefinitionKindAPIVersion   = DefinitionKind + "." + SchemeGroupVersion.String()
-	DefinitionGroupVersionKind = SchemeGroupVersion.WithKind(DefinitionKind)
+	SchemaDefinitionKind             = reflect.TypeOf(SchemaDefinition{}).Name()
+	SchemaDefinitionGroupKind        = schema.GroupKind{Group: Group, Kind: SchemaDefinitionKind}.String()
+	SchemaDefinitionKindAPIVersion   = SchemaDefinitionKind + "." + SchemeGroupVersion.String()
+	SchemaDefinitionGroupVersionKind = SchemeGroupVersion.WithKind(SchemaDefinitionKind)
 )
 
 func init() {
-	SchemeBuilder.Register(&Definition{}, &DefinitionList{})
+	SchemeBuilder.Register(&SchemaDefinition{}, &SchemaDefinitionList{})
 }

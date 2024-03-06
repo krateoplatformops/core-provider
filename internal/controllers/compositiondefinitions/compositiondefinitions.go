@@ -1,4 +1,4 @@
-package definitions
+package compositiondefinitions
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
-	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/definitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/definitions/generator"
+	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"github.com/krateoplatformops/crdgen"
@@ -47,14 +47,14 @@ const (
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	_ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
 
-	name := reconciler.ControllerName(definitionsv1alpha1.DefinitionGroupKind)
+	name := reconciler.ControllerName(compositiondefinitionsv1alpha1.CompositionDefinitionGroupKind)
 
 	log := o.Logger.WithValues("controller", name)
 
 	recorder := mgr.GetEventRecorderFor(name)
 
 	r := reconciler.NewReconciler(mgr,
-		resource.ManagedKind(definitionsv1alpha1.DefinitionGroupVersionKind),
+		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
 			kube:     mgr.GetClient(),
 			log:      log,
@@ -69,7 +69,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
-		For(&definitionsv1alpha1.Definition{}).
+		For(&compositiondefinitionsv1alpha1.CompositionDefinition{}).
 		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
 }
 
@@ -80,7 +80,7 @@ type connector struct {
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
-	_, ok := mg.(*definitionsv1alpha1.Definition)
+	_, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return nil, errors.New(errNotCR)
 	}
@@ -100,7 +100,7 @@ type external struct {
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
-	cr, ok := mg.(*definitionsv1alpha1.Definition)
+	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
@@ -196,7 +196,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 }
 
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {
-	cr, ok := mg.(*definitionsv1alpha1.Definition)
+	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return errors.New(errNotCR)
 	}
@@ -236,10 +236,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		})
 
 		res := crdgen.Generate(ctx, crdgen.Options{
-			WorkDir:          dir,
-			GVK:              gvk,
-			Categories:       []string{"krateo", "composition"},
-			JsonSchemaGetter: generator.ChartJsonSchemaGetter(pkg, dir),
+			Managed:                true,
+			WorkDir:                dir,
+			GVK:                    gvk,
+			Categories:             []string{"composition"},
+			SpecJsonSchemaGetter:   generator.ChartJsonSchemaGetter(pkg, dir),
+			StatusJsonSchemaGetter: StaticJsonSchemaGetter(),
 		})
 		if res.Err != nil {
 			return res.Err
@@ -324,7 +326,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
-	cr, ok := mg.(*definitionsv1alpha1.Definition)
+	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return errors.New(errNotCR)
 	}

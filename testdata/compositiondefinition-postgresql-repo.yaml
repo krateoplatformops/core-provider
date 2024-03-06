@@ -1,5 +1,5 @@
 apiVersion: core.krateo.io/v1alpha1
-kind: Definition
+kind: CompositionDefinition
 metadata:
   annotations:
      "krateo.io/connector-verbose": "true"

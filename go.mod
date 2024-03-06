@@ -9,7 +9,7 @@ require (
 	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/go-cmp v0.6.0
-	github.com/krateoplatformops/crdgen v0.1.0
+	github.com/krateoplatformops/crdgen v0.2.0
 	github.com/krateoplatformops/provider-runtime v0.7.0
 	github.com/pkg/errors v0.9.1
 	github.com/stoewer/go-strcase v1.3.0

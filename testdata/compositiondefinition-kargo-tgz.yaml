@@ -1,12 +1,10 @@
 apiVersion: core.krateo.io/v1alpha1
-kind: Definition
+kind: CompositionDefinition
 metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
-  name: postgresql-oci
+  name: kargo-tgz
   namespace: demo-system
 spec:
   chart:
-    url: oci://registry-1.docker.io/bitnamicharts/postgresql
-    version: "12.8.3"
-
+    url: https://github.com/krateoplatformops/kargo-chart/releases/download/0.1.6/kargo-0.1.0.tgz
