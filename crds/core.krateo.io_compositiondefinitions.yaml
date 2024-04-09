@@ -10,7 +10,7 @@ spec:
   names:
     categories:
     - krateo
-    - definition
+    - defs
     - core
     kind: CompositionDefinition
     listKind: CompositionDefinitionList
@@ -19,19 +19,24 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - jsonPath: .status.resource
-      name: RESOURCE
-      type: string
     - jsonPath: .status.conditions[?(@.type=='Ready')].status
       name: READY
       type: string
-    - jsonPath: .status.packageUrl
-      name: PACKAGE URL
-      type: string
     - jsonPath: .metadata.creationTimestamp
       name: AGE
-      priority: 10
       type: date
+    - jsonPath: .status.apiVersion
+      name: API VERSION
+      priority: 10
+      type: string
+    - jsonPath: .status.kind
+      name: KIND
+      priority: 10
+      type: string
+    - jsonPath: .status.packageUrl
+      name: PACKAGE URL
+      priority: 10
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -98,6 +103,9 @@ spec:
           status:
             description: CompositionDefinitionStatus is the status of a CompositionDefinition.
             properties:
+              apiVersion:
+                description: 'APIVersion: the generated custom resource API version'
+                type: string
               conditions:
                 description: Conditions of the resource.
                 items:
@@ -134,11 +142,11 @@ spec:
                   - type
                   type: object
                 type: array
+              kind:
+                description: 'Kind: the generated custom resource Kind'
+                type: string
               packageUrl:
                 description: 'PackageURL: .tgz or oci chart direct url'
-                type: string
-              resource:
-                description: 'Resource: the generated custom resource'
                 type: string
             type: object
         type: object

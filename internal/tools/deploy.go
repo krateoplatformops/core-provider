@@ -99,10 +99,12 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 		return err
 	}
 
-	gvr, err := GroupVersionResource(pkg)
+	gvk, err := GroupVersionKind(pkg)
 	if err != nil {
 		return err
 	}
+
+	gvr := ToGroupVersionResource(gvk)
 
 	sa := CreateServiceAccount(opts.NamespacedName)
 	if err := InstallServiceAccount(ctx, opts.KubeClient, &sa); err != nil {

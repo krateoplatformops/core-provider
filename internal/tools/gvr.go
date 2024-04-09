@@ -14,28 +14,28 @@ import (
 	"k8s.io/gengo/types"
 )
 
-func GroupVersionResource(fs *chartfs.ChartFS) (schema.GroupVersionResource, error) {
+func GroupVersionKind(fs *chartfs.ChartFS) (schema.GroupVersionKind, error) {
 	fin, err := fs.Open(fs.RootDir() + "/Chart.yaml")
 	if err != nil {
-		return schema.GroupVersionResource{}, err
+		return schema.GroupVersionKind{}, err
 	}
 	defer fin.Close()
 
 	din, err := io.ReadAll(fin)
 	if err != nil {
-		return schema.GroupVersionResource{}, err
+		return schema.GroupVersionKind{}, err
 	}
 
 	res := map[string]any{}
 	if err := yaml.Unmarshal(din, &res); err != nil {
-		return schema.GroupVersionResource{}, err
+		return schema.GroupVersionKind{}, err
 	}
 
-	return ToGroupVersionResource(schema.GroupVersionKind{
+	return schema.GroupVersionKind{
 		Group:   "composition.krateo.io",
 		Version: fmt.Sprintf("v%s", strings.ReplaceAll(res["version"].(string), ".", "-")),
 		Kind:    flect.Pascalize(strutil.ToGolangName(res["name"].(string))),
-	}), nil
+	}, nil
 }
 
 func ToGroupVersionResource(gvk schema.GroupVersionKind) schema.GroupVersionResource {

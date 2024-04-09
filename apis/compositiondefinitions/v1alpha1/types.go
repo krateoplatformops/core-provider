@@ -42,9 +42,13 @@ type CompositionDefinitionSpec struct {
 type CompositionDefinitionStatus struct {
 	rtv1.ManagedStatus `json:",inline"`
 
-	// Resource: the generated custom resource
+	// APIVersion: the generated custom resource API version
 	// +optional
-	Resource string `json:"resource,omitempty"`
+	APIVersion string `json:"apiVersion,omitempty"`
+
+	// Kind: the generated custom resource Kind
+	// +optional
+	Kind string `json:"kind,omitempty"`
 
 	// PackageURL: .tgz or oci chart direct url
 	// +optional
@@ -53,11 +57,12 @@ type CompositionDefinitionStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
-//+kubebuilder:resource:scope=Namespaced,categories={krateo,definition,core}
-//+kubebuilder:printcolumn:name="RESOURCE",type="string",JSONPath=".status.resource"
+//+kubebuilder:resource:scope=Namespaced,categories={krateo,defs,core}
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
-//+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl"
-//+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp",priority=10
+//+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+//+kubebuilder:printcolumn:name="API VERSION",type="string",JSONPath=".status.apiVersion",priority=10
+//+kubebuilder:printcolumn:name="KIND",type="string",JSONPath=".status.kind",priority=10
+//+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl",priority=10
 
 // CompositionDefinition is a definition type with a spec and a status.
 type CompositionDefinition struct {
