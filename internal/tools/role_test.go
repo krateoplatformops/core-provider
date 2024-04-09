@@ -75,10 +75,12 @@ func createRoleFromURL() (rbacv1.Role, error) {
 		return rbacv1.Role{}, err
 	}
 
-	gvr, err := GroupVersionResource(pkg)
+	gvk, err := GroupVersionKind(pkg)
 	if err != nil {
 		return rbacv1.Role{}, err
 	}
+
+	gvr := ToGroupVersionResource(gvk)
 
 	return CreateRole(pkg, gvr.Resource, types.NamespacedName{
 		Name:      fmt.Sprintf("%s-controller", gvr.Resource),

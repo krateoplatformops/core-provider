@@ -5,8 +5,19 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/krateoplatformops/core-provider/apis/schemadefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/ptr"
 	"github.com/krateoplatformops/crdgen"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+func toGVK(cr *v1alpha1.SchemaDefinition) schema.GroupVersionKind {
+	return schema.GroupVersionKind{
+		Group:   defaultGroup,
+		Version: ptr.Deref(cr.Spec.Schema.Version, defaultVersion),
+		Kind:    cr.Spec.Schema.Kind,
+	}
+}
 
 var _ crdgen.JsonSchemaGetter = (*urlJsonSchemaGetter)(nil)
 

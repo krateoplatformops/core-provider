@@ -8,7 +8,7 @@
 .idea/**/vcs.xml
 
 ## VSCode
-.vscode/
+#.vscode/
 
 ## File-based project format:
 *.iws

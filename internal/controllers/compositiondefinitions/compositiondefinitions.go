@@ -34,9 +34,9 @@ import (
 const (
 	errNotCR = "managed resource is not a Definition custom resource"
 
-	labelKeyGroup    = "krateo.io/crd-group"
-	labelKeyVersion  = "krateo.io/crd-version"
-	labelKeyResource = "krateo.io/crd-resource"
+	// labelKeyGroup    = "krateo.io/crd-group"
+	// labelKeyVersion  = "krateo.io/crd-version"
+	// labelKeyResource = "krateo.io/crd-resource"
 
 	reconcileGracePeriod = 1 * time.Minute
 	reconcileTimeout     = 4 * time.Minute
@@ -110,11 +110,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	gvr, err := tools.GroupVersionResource(pkg)
+	gvk, err := tools.GroupVersionKind(pkg)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
+	gvr := tools.ToGroupVersionResource(gvk)
 	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
@@ -129,8 +130,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	cr.Status.Resource = fmt.Sprintf("%s.%s", gvr.Resource, gvr.GroupVersion().String())
-
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
 	}
@@ -140,10 +139,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Name:      cr.Name,
 	}, os.Getenv(cdcImageTagEnvVar))
 	if err != nil {
-		return reconciler.ExternalObservation{
-			ResourceExists:   true,
-			ResourceUpToDate: true,
-		}, err
+		return reconciler.ExternalObservation{}, err
 	}
 
 	deployOk, deployReady, err := tools.LookupDeployment(ctx, e.kube, &obj)
@@ -175,6 +171,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			"gvr", gvr.String())
 	}
 
+	cr.Status.APIVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
 	cr.Status.PackageURL = pkg.PackageURL()
 
 	if !deployReady {
@@ -263,28 +260,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		cr.Labels = make(map[string]string)
 	}
 
-	dirty := false
-	if _, ok := cr.Labels[labelKeyGroup]; !ok {
-		dirty = true
-		cr.Labels[labelKeyGroup] = gvr.Group
-	}
-
-	if _, ok := cr.Labels[labelKeyVersion]; !ok {
-		dirty = true
-		cr.Labels[labelKeyVersion] = gvr.Version
-	}
-
-	if _, ok := cr.Labels[labelKeyResource]; !ok {
-		dirty = true
-		cr.Labels[labelKeyResource] = gvr.Resource
-	}
-
-	if dirty {
-		err := e.kube.Update(ctx, cr, &client.UpdateOptions{})
-		if err != nil {
-			return err
-		}
-	}
+	// err = e.kube.Update(ctx, cr, &client.UpdateOptions{})
+	// if err != nil {
+	// 	return err
+	// }
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Deploying Dynamic Controller",

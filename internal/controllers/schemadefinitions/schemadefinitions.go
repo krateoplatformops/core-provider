@@ -33,10 +33,6 @@ import (
 const (
 	errNotCR = "managed resource is not a FormDefinition custom resource"
 
-	labelKeyGroup    = "krateo.io/crd-group"
-	labelKeyVersion  = "krateo.io/crd-version"
-	labelKeyResource = "krateo.io/crd-resource"
-
 	reconcileGracePeriod = 1 * time.Minute
 	reconcileTimeout     = 4 * time.Minute
 
@@ -107,13 +103,9 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	verbose := meta.IsVerbose(cr)
 
-	gvk := schema.GroupVersionKind{
-		Group:   defaultGroup,
-		Version: ptr.Deref(cr.Spec.Schema.Version, defaultVersion),
-		Kind:    cr.Spec.Schema.Kind,
-	}
-
+	gvk := toGVK(cr)
 	gr := crdutil.InferGroupResource(gvk.GroupKind())
+
 	ok, err := crdutil.Lookup(ctx, e.kube, gr.WithVersion(gvk.Version))
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
@@ -130,6 +122,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
+	cr.Status.APIVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
 	cr.SetConditions(rtv1.Available())
 
 	want, err := e.computeDigest(cr)
@@ -178,13 +171,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
+	cr.Status.APIVersion, cr.Status.Kind = toGVK(cr).ToAPIVersionAndKind()
 	cr.Status.Digest = ptr.To(res.Digest)
-	cr.Status.Resource = crdutil.InferGroupResource(
-		schema.GroupKind{
-			Group: defaultGroup,
-			Kind:  cr.Spec.Schema.Kind,
-		},
-	).String()
 
 	return e.kube.Status().Update(ctx, cr)
 }
@@ -204,13 +192,6 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	cr = cr.DeepCopy()
 
-	gr := crdutil.InferGroupResource(
-		schema.GroupKind{
-			Group: defaultGroup,
-			Kind:  cr.Spec.Schema.Kind,
-		},
-	)
-
 	res := e.generateCRD(ctx, cr)
 	if res.Err != nil {
 		return res.Err
@@ -225,6 +206,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
+	gvk := toGVK(cr)
+	gr := crdutil.InferGroupResource(gvk.GroupKind())
 	err = crdutil.Update(ctx, e.kube, gr, newObj)
 	if err != nil {
 		return err
@@ -234,8 +217,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		e.log.Debug("CRD Updated.", "digest", res.Digest)
 	}
 
+	cr.Status.APIVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
 	cr.Status.Digest = ptr.To(res.Digest)
-	cr.Status.Resource = gr.String()
 
 	return e.kube.Status().Update(ctx, cr)
 }
@@ -253,14 +236,8 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	cr.SetConditions(rtv1.Deleting())
 
-	spec := cr.Spec.DeepCopy()
-
-	gr := crdutil.InferGroupResource(
-		schema.GroupKind{
-			Group: defaultGroup,
-			Kind:  spec.Schema.Kind,
-		},
-	)
+	gvk := toGVK(cr)
+	gr := crdutil.InferGroupResource(gvk.GroupKind())
 
 	return crdutil.Uninstall(ctx, e.kube, gr)
 }
