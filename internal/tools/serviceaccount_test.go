@@ -1,9 +1,10 @@
-package tools
+package tools_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/krateoplatformops/core-provider/internal/tools"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -13,12 +14,12 @@ func TestInstallServiceAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj := CreateServiceAccount(types.NamespacedName{
+	obj := tools.CreateServiceAccount(types.NamespacedName{
 		Name:      "demo",
 		Namespace: "default",
 	})
 
-	err = InstallServiceAccount(context.TODO(), kube, &obj)
+	err = tools.InstallServiceAccount(context.TODO(), kube, &obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestUninstallServiceAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallServiceAccount(context.TODO(), UninstallOptions{
+	err = tools.UninstallServiceAccount(context.TODO(), tools.UninstallOptions{
 		KubeClient: kube,
 		NamespacedName: types.NamespacedName{
 			Name:      "demo",

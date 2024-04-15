@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package tools
+package tools_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
@@ -24,7 +25,7 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = Deploy(context.TODO(), DeployOptions{
+	err = tools.Deploy(context.TODO(), tools.DeployOptions{
 		KubeClient: kube,
 		Spec:       nfo,
 		NamespacedName: types.NamespacedName{
@@ -50,7 +51,7 @@ func TestUndeploy(t *testing.T) {
 		Resource: "postgresqls",
 	}
 
-	err = Undeploy(context.TODO(), UndeployOptions{
+	err = tools.Undeploy(context.TODO(), tools.UndeployOptions{
 		KubeClient: kube,
 		GVR:        gvr,
 		NamespacedName: types.NamespacedName{

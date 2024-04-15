@@ -1,9 +1,10 @@
-package tools
+package tools_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/krateoplatformops/core-provider/internal/tools"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -13,12 +14,12 @@ func TestInstallClusterRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj := CreateClusterRole(types.NamespacedName{
+	obj := tools.CreateClusterRole(types.NamespacedName{
 		Name:      "demo",
 		Namespace: "default",
 	})
 
-	err = InstallClusterRole(context.TODO(), kube, &obj)
+	err = tools.InstallClusterRole(context.TODO(), kube, &obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestUninstallClusterRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallClusterRole(context.TODO(), UninstallOptions{
+	err = tools.UninstallClusterRole(context.TODO(), tools.UninstallOptions{
 		KubeClient: kube,
 		NamespacedName: types.NamespacedName{
 			Name:      "demo",

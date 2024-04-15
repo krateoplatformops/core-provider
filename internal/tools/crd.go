@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"log"
 
 	"github.com/avast/retry-go"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -66,12 +67,14 @@ func LookupCRD(ctx context.Context, kube client.Client, gvr schema.GroupVersionR
 	err := kube.Get(ctx, client.ObjectKey{Name: gvr.GroupResource().String()}, &res, &client.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
+			log.Printf("[WRN] CRD NOT found (gvr: %s)\n", gvr.String())
 			return false, nil
 		} else {
 			return false, err
 		}
 	}
 
+	log.Printf("[DBG] Looking for matching version (%s)\n", gvr.Version)
 	for _, el := range res.Spec.Versions {
 		if el.Name == gvr.Version {
 			return true, nil
