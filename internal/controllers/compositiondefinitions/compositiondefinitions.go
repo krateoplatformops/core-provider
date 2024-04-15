@@ -3,6 +3,8 @@ package compositiondefinitions
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"time"
 
@@ -49,7 +51,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 
 	name := reconciler.ControllerName(compositiondefinitionsv1alpha1.CompositionDefinitionGroupKind)
 
-	log := o.Logger.WithValues("controller", name)
+	l := o.Logger.WithValues("controller", name)
 
 	recorder := mgr.GetEventRecorderFor(name)
 
@@ -57,13 +59,13 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
 			kube:     mgr.GetClient(),
-			log:      log,
+			log:      l,
 			recorder: recorder,
 		}),
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithCreationGracePeriod(reconcileGracePeriod),
 		reconciler.WithPollInterval(o.PollInterval),
-		reconciler.WithLogger(log),
+		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -83,6 +85,12 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 	_, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return nil, errors.New(errNotCR)
+	}
+
+	if meta.IsVerbose(mg) {
+		log.SetOutput(os.Stderr)
+	} else {
+		log.SetOutput(io.Discard)
 	}
 
 	return &external{
@@ -116,12 +124,16 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	gvr := tools.ToGroupVersionResource(gvk)
+	log.Printf("[DBG] Observing (gvk: %s, gvr: %s)\n", gvk.String(), gvr.String())
+
 	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 
 	if !crdOk {
+		log.Printf("[DBG] CRD does not exists yet (gvr: %q)\n", gvr.String())
+
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
@@ -130,9 +142,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	if meta.IsVerbose(cr) {
-		e.log.Debug("Searching for Dynamic Controller", "gvr", gvr.String())
-	}
+	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
 
 	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
@@ -254,10 +264,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("CRD alredy generated", "gvr", gvr.String())
-	}
-
-	if cr.Labels == nil {
-		cr.Labels = make(map[string]string)
 	}
 
 	// err = e.kube.Update(ctx, cr, &client.UpdateOptions{})

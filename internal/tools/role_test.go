@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package tools
+package tools_test
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,7 +31,7 @@ func TestInstallRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = InstallRole(context.TODO(), kube, &obj)
+	err = tools.InstallRole(context.TODO(), kube, &obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestUninstallRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallRole(context.TODO(), UninstallOptions{
+	err = tools.UninstallRole(context.TODO(), tools.UninstallOptions{
 		KubeClient: kube,
 		NamespacedName: types.NamespacedName{
 			Name:      "postgresqls-controller",
@@ -75,14 +76,14 @@ func createRoleFromURL() (rbacv1.Role, error) {
 		return rbacv1.Role{}, err
 	}
 
-	gvk, err := GroupVersionKind(pkg)
+	gvk, err := tools.GroupVersionKind(pkg)
 	if err != nil {
 		return rbacv1.Role{}, err
 	}
 
-	gvr := ToGroupVersionResource(gvk)
+	gvr := tools.ToGroupVersionResource(gvk)
 
-	return CreateRole(pkg, gvr.Resource, types.NamespacedName{
+	return tools.CreateRole(pkg, gvr.Resource, types.NamespacedName{
 		Name:      fmt.Sprintf("%s-controller", gvr.Resource),
 		Namespace: "default",
 	})

@@ -39,11 +39,14 @@ func GroupVersionKind(fs *chartfs.ChartFS) (schema.GroupVersionKind, error) {
 }
 
 func ToGroupVersionResource(gvk schema.GroupVersionKind) schema.GroupVersionResource {
+	rn := namer.NewPrivatePluralNamer(nil).Name(
+		&types.Type{Name: types.Name{Name: gvk.Kind}},
+	)
+	rn = strings.ToLower(rn)
+
 	return schema.GroupVersionResource{
-		Group:   gvk.Group,
-		Version: gvk.Version,
-		Resource: namer.NewPrivatePluralNamer(nil).Name(
-			&types.Type{Name: types.Name{Name: gvk.Kind}},
-		),
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: rn,
 	}
 }

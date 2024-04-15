@@ -1,9 +1,10 @@
-package tools
+package tools_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/krateoplatformops/core-provider/internal/tools"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -13,12 +14,12 @@ func TestInstallClusterRoleBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj := CreateClusterRoleBinding(types.NamespacedName{
+	obj := tools.CreateClusterRoleBinding(types.NamespacedName{
 		Name:      "demo",
 		Namespace: "default",
 	})
 
-	err = InstallClusterRoleBinding(context.TODO(), kube, &obj)
+	err = tools.InstallClusterRoleBinding(context.TODO(), kube, &obj)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func TestUninstallClusterRoleBinding(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = UninstallClusterRoleBinding(context.TODO(), UninstallOptions{
+	err = tools.UninstallClusterRoleBinding(context.TODO(), tools.UninstallOptions{
 		KubeClient: kube,
 		NamespacedName: types.NamespacedName{
 			Name:      "demo",
