@@ -94,7 +94,7 @@ func CreateRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName
 		Rules: []rbacv1.PolicyRule{
 			{
 				APIGroups: []string{"core.krateo.io"},
-				Resources: []string{"definitions", "definitions/status"},
+				Resources: []string{"compositiondefinitions", "compositiondefinitions/status"},
 				Verbs:     []string{"*"},
 			},
 			{
