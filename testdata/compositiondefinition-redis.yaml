@@ -1,0 +1,11 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  annotations:
+     "krateo.io/connector-verbose": "true"
+  name: sample-oci
+  namespace: demo-system
+spec:
+  chart:
+    url: oci://registry-1.docker.io/bitnamicharts/redis
+    version: 18.0.1

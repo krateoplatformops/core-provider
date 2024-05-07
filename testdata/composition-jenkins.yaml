@@ -1,0 +1,12 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  annotations:
+     "krateo.io/connector-verbose": "true"
+  name: sample-repo
+  namespace: demo-system
+spec:
+  chart:
+    url: https://charts.krateo.io
+    version: 10.2.4
+    repo: jenkins
