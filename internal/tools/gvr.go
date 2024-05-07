@@ -10,8 +10,6 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/gengo/namer"
-	"k8s.io/gengo/types"
 )
 
 func GroupVersionKind(fs *chartfs.ChartFS) (schema.GroupVersionKind, error) {
@@ -39,14 +37,13 @@ func GroupVersionKind(fs *chartfs.ChartFS) (schema.GroupVersionKind, error) {
 }
 
 func ToGroupVersionResource(gvk schema.GroupVersionKind) schema.GroupVersionResource {
-	rn := namer.NewPrivatePluralNamer(nil).Name(
-		&types.Type{Name: types.Name{Name: gvk.Kind}},
-	)
-	rn = strings.ToLower(rn)
-
+	// rn := namer.NewPrivatePluralNamer(nil).Name(
+	// 	&types.Type{Name: types.Name{Name: gvk.Kind}},
+	// )
+	// rn = strings.ToLower(rn)
 	return schema.GroupVersionResource{
 		Group:    gvk.Group,
 		Version:  gvk.Version,
-		Resource: rn,
+		Resource: flect.Pluralize(strings.ToLower(gvk.Kind)),
 	}
 }

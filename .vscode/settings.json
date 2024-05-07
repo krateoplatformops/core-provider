@@ -3,4 +3,5 @@
         "-tags=unit,integration"
     ],
     "go.testTags": "unit,integration",
+    "go.testFlags": ["-v"],
 }

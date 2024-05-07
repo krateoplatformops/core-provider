@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/semver"
+	"github.com/davecgh/go-spew/spew"
 	"helm.sh/helm/v3/pkg/registry"
 )
 
@@ -98,6 +99,7 @@ func (g *ociGetter) resolveURI(ref, version string) (*url.URL, error) {
 			return nil, fmt.Errorf("no tags found in provided repository: %s", ref)
 		}
 
+		spew.Dump(tags)
 		// Determine if version provided
 		// If empty, try to get the highest available tag
 		// If exact version, try to find it
