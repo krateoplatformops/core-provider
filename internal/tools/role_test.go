@@ -83,7 +83,7 @@ func createRoleFromURL() (rbacv1.Role, error) {
 
 	gvr := tools.ToGroupVersionResource(gvk)
 
-	return tools.CreateRole(pkg, gvr.Resource, types.NamespacedName{
+	return tools.InitRole(pkg, gvr.Resource, types.NamespacedName{
 		Name:      fmt.Sprintf("%s-controller", gvr.Resource),
 		Namespace: "default",
 	})

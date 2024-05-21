@@ -2,12 +2,14 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -86,41 +88,51 @@ func Undeploy(ctx context.Context, opts UndeployOptions) error {
 }
 
 type DeployOptions struct {
-	KubeClient     client.Client
-	NamespacedName types.NamespacedName
-	Spec           *definitionsv1alpha1.ChartInfo
-	CDCImageTag    string
-	Log            func(msg string, keysAndValues ...any)
+	DiscoveryClient discovery.DiscoveryInterface
+	KubeClient      client.Client
+	NamespacedName  types.NamespacedName
+	Spec            *definitionsv1alpha1.ChartInfo
+	CDCImageTag     string
+	Log             func(msg string, keysAndValues ...any)
 }
 
-func Deploy(ctx context.Context, opts DeployOptions) error {
+func Deploy(ctx context.Context, opts DeployOptions) (err error, rbacErr error) {
 	pkg, err := chartfs.ForSpec(opts.Spec)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	gvk, err := GroupVersionKind(pkg)
 	if err != nil {
-		return err
+		return err, nil
 	}
 
 	gvr := ToGroupVersionResource(gvk)
 
 	sa := CreateServiceAccount(opts.NamespacedName)
-	if err := InstallServiceAccount(ctx, opts.KubeClient, &sa); err != nil {
-		return err
+	if err = InstallServiceAccount(ctx, opts.KubeClient, &sa); err != nil {
+		return err, nil
 	}
 	if opts.Log != nil {
 		opts.Log("ServiceAccount successfully installed",
 			"gvr", gvr.String(), "name", sa.Name, "namespace", sa.Namespace)
 	}
 
-	role, err := CreateRole(pkg, gvr.Resource, opts.NamespacedName)
+	role, err := InitRole(pkg, gvr.Resource, opts.NamespacedName)
 	if err != nil {
-		return err
+		return err, nil
 	}
+	cr := InitClusterRole(opts.NamespacedName)
+
+	err = PopulateRoleClusterRole(pkg, opts.DiscoveryClient, &role, &cr)
+	if errors.Is(err, ErrKindApiVersion) {
+		rbacErr = err
+	} else if err != nil {
+		return err, nil
+	}
+
 	if err := InstallRole(ctx, opts.KubeClient, &role); err != nil {
-		return err
+		return err, rbacErr
 	}
 	if opts.Log != nil {
 		opts.Log("Role successfully installed",
@@ -129,16 +141,15 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	rb := CreateRoleBinding(opts.NamespacedName)
 	if err := InstallRoleBinding(ctx, opts.KubeClient, &rb); err != nil {
-		return err
+		return err, rbacErr
 	}
 	if opts.Log != nil {
 		opts.Log("RoleBinding successfully installed",
 			"gvr", gvr.String(), "name", rb.Name, "namespace", rb.Namespace)
 	}
 
-	cr := CreateClusterRole(opts.NamespacedName)
 	if err := InstallClusterRole(ctx, opts.KubeClient, &cr); err != nil {
-		return err
+		return err, rbacErr
 	}
 	if opts.Log != nil {
 		opts.Log("ClusterRole successfully installed",
@@ -147,7 +158,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	crb := CreateClusterRoleBinding(opts.NamespacedName)
 	if err := InstallClusterRoleBinding(ctx, opts.KubeClient, &crb); err != nil {
-		return err
+		return err, rbacErr
 	}
 	if opts.Log != nil {
 		opts.Log("ClusterRoleBinding successfully installed",
@@ -156,7 +167,7 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 
 	dep, err := CreateDeployment(gvr, opts.NamespacedName, opts.CDCImageTag)
 	if err != nil {
-		return err
+		return err, rbacErr
 	}
 
 	err = InstallDeployment(ctx, opts.KubeClient, &dep)
@@ -166,5 +177,5 @@ func Deploy(ctx context.Context, opts DeployOptions) error {
 				"gvr", gvr.String(), "name", dep.Name, "namespace", dep.Namespace)
 		}
 	}
-	return err
+	return err, rbacErr
 }

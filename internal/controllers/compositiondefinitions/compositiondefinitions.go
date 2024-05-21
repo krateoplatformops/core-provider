@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,9 +59,10 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	r := reconciler.NewReconciler(mgr,
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
-			kube:     mgr.GetClient(),
-			log:      l,
-			recorder: recorder,
+			discovery: discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
+			kube:      mgr.GetClient(),
+			log:       l,
+			recorder:  recorder,
 		}),
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithCreationGracePeriod(reconcileGracePeriod),
@@ -76,9 +78,10 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 }
 
 type connector struct {
-	kube     client.Client
-	log      logging.Logger
-	recorder record.EventRecorder
+	discovery discovery.DiscoveryInterface
+	kube      client.Client
+	log       logging.Logger
+	recorder  record.EventRecorder
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
@@ -94,17 +97,18 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 	}
 
 	return &external{
-		kube: c.kube,
-		log:  c.log,
-
-		rec: c.recorder,
+		kube:      c.kube,
+		log:       c.log,
+		discovery: c.discovery,
+		rec:       c.recorder,
 	}, nil
 }
 
 type external struct {
-	kube client.Client
-	log  logging.Logger
-	rec  record.EventRecorder
+	discovery discovery.DiscoveryInterface
+	kube      client.Client
+	log       logging.Logger
+	rec       record.EventRecorder
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
@@ -194,7 +198,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	cr.SetConditions(rtv1.Available())
+	if cr.Status.Error != nil {
+		cr.SetConditions(rtv1.Unavailable().WithMessage(*cr.Status.Error))
+	} else {
+		cr.SetConditions(rtv1.Available())
+	}
 
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
@@ -278,7 +286,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	opts := tools.DeployOptions{
-		KubeClient: e.kube,
+		DiscoveryClient: e.discovery,
+		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
 			Namespace: cr.Namespace,
 			Name:      cr.Name,
@@ -290,7 +299,18 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		opts.Log = e.log.Debug
 	}
 
-	err = tools.Deploy(ctx, opts)
+	err, rbacErr := tools.Deploy(ctx, opts)
+	if rbacErr != nil {
+		strErr := rbacErr.Error()
+		cr.Status.Error = &strErr
+		e.log.Info("Error deploying Dynamic Controller", "error", rbacErr.Error())
+		cr.SetConditions(rtv1.Unavailable().WithMessage(rbacErr.Error()))
+	}
+	if err != nil {
+		return err
+	}
+
+	err = e.kube.Status().Update(ctx, cr)
 	if err != nil {
 		return err
 	}

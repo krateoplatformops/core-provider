@@ -25,7 +25,7 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = tools.Deploy(context.TODO(), tools.DeployOptions{
+	err, _ = tools.Deploy(context.TODO(), tools.DeployOptions{
 		KubeClient: kube,
 		Spec:       nfo,
 		NamespacedName: types.NamespacedName{
@@ -38,7 +38,6 @@ func TestDeploy(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
 func TestUndeploy(t *testing.T) {
 	kube, err := setupKubeClient()
 	if err != nil {
