@@ -17,7 +17,7 @@ import (
 )
 
 func populateFromFile(discovery discovery.DiscoveryInterface, fi fs.File, crdInfoList []CRDInfo, role *rbacv1.Role, clusterRole *rbacv1.ClusterRole) error {
-	findKindAPIVersion := func(fi fs.File) *metav1.TypeMeta {
+	findKindAPIVersion := func(fi fs.File) (policies []metav1.TypeMeta, errs []error) {
 		scanner := bufio.NewScanner(fi)
 		kind, apiVersion := "", ""
 		for scanner.Scan() {
@@ -30,48 +30,73 @@ func populateFromFile(discovery discovery.DiscoveryInterface, fi fs.File, crdInf
 				kind = strings.TrimSpace(strings.TrimPrefix(scanner.Text(), "kind:"))
 			}
 			if kind != "" && apiVersion != "" {
-				return &metav1.TypeMeta{
+				invalidKindAPIVersionReg := regexp.MustCompile(`{{(?:[^{}]*|{{.*?}})*}}`)
+				if invalidKindAPIVersionReg.MatchString(kind) || invalidKindAPIVersionReg.MatchString(apiVersion) {
+					errs = append(errs, fmt.Errorf("kind or apiVersion contains template: %s, %s", kind, apiVersion))
+					kind, apiVersion = "", ""
+					continue
+				}
+
+				policies = append(policies, metav1.TypeMeta{
 					Kind:       kind,
 					APIVersion: apiVersion,
-				}
+				})
+				kind, apiVersion = "", ""
 			}
 		}
-		return nil
+		return
 	}
 
-	tpl := findKindAPIVersion(fi)
-	if tpl == nil {
+	policies, errs := findKindAPIVersion(fi)
+	if len(policies) == 0 {
+		if len(errs) > 0 {
+			wrappedErrs := ErrKindApiVersion
+			for _, err := range errs {
+				wrappedErrs = fmt.Errorf("%w - %w", wrappedErrs, err)
+			}
+			return wrappedErrs
+		}
 		return ErrKindApiVersion
 	}
 
-	gv, err := schema.ParseGroupVersion(tpl.APIVersion)
-	if err != nil {
-		return fmt.Errorf("failed to parse group version: %w", err)
-	}
-	gvr := schema.GroupVersionResource{
-		Group:    gv.Group,
-		Version:  gv.Version,
-		Resource: strings.ToLower(flect.Pluralize(tpl.Kind)),
-	}
-	namespaced, err := isGRNamespaced(discovery, schema.GroupResource{
-		Group:    gvr.Group,
-		Resource: gvr.Resource,
-	}, crdInfoList)
-	if err != nil {
-		//Default to clusterRole
-		namespaced = false
+	for _, policy := range policies {
+		gv, err := schema.ParseGroupVersion(policy.APIVersion)
+		if err != nil {
+			return fmt.Errorf("failed to parse group version: %w", err)
+		}
+		gvr := schema.GroupVersionResource{
+			Group:    gv.Group,
+			Version:  gv.Version,
+			Resource: strings.ToLower(flect.Pluralize(policy.Kind)),
+		}
+		namespaced, err := isGRNamespaced(discovery, schema.GroupResource{
+			Group:    gvr.Group,
+			Resource: gvr.Resource,
+		}, crdInfoList)
+		if err != nil {
+			//Default to clusterRole
+			namespaced = false
+		}
+
+		policyRule := rbacv1.PolicyRule{
+			APIGroups: []string{gvr.Group},
+			Resources: []string{gvr.Resource, fmt.Sprintf("%s/status", gvr.Resource)},
+			Verbs:     []string{"*"},
+		}
+
+		if namespaced {
+			role.Rules = append(role.Rules, policyRule)
+		} else {
+			clusterRole.Rules = append(clusterRole.Rules, policyRule)
+		}
 	}
 
-	policyRule := rbacv1.PolicyRule{
-		APIGroups: []string{gvr.Group},
-		Resources: []string{gvr.Resource, fmt.Sprintf("%s/status", gvr.Resource)},
-		Verbs:     []string{"*"},
-	}
-
-	if namespaced {
-		role.Rules = append(role.Rules, policyRule)
-	} else {
-		clusterRole.Rules = append(clusterRole.Rules, policyRule)
+	if len(errs) > 0 {
+		wrappedErrs := ErrKindApiVersion
+		for _, err := range errs {
+			wrappedErrs = fmt.Errorf("%w - %w", wrappedErrs, err)
+		}
+		return wrappedErrs
 	}
 	return nil
 }
@@ -106,14 +131,6 @@ func populateFromDir(pkg *chartfs.ChartFS, templatesDir string, dir []fs.DirEntr
 }
 
 func PopulateRoleClusterRole(pkg *chartfs.ChartFS, discovery discovery.DiscoveryInterface, role *rbacv1.Role, clusterRole *rbacv1.ClusterRole) error {
-	rend, err := RenderChartTemplates(pkg)
-	if err != nil {
-		return err
-	}
-	if len(rend) == 0 {
-		return fmt.Errorf("no entries in manifest")
-	}
-
 	crdInfoList, _ := GetCRDInfoList(pkg)
 
 	templatesDir := path.Join(pkg.RootDir(), "templates")
