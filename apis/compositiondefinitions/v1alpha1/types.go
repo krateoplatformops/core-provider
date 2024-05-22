@@ -53,6 +53,10 @@ type CompositionDefinitionStatus struct {
 	// PackageURL: .tgz or oci chart direct url
 	// +optional
 	PackageURL string `json:"packageUrl,omitempty"`
+
+	// Error: error messages - actually only used if an error occurred during role and clusterrole creation
+	// +optional
+	Error *string `json:"error,omitempty"`
 }
 
 //+kubebuilder:object:root=true

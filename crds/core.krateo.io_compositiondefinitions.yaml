@@ -142,6 +142,10 @@ spec:
                   - type
                   type: object
                 type: array
+              error:
+                description: 'Error: error messages - actually only used if an error
+                  occurred during role and clusterrole creation'
+                type: string
               kind:
                 description: 'Kind: the generated custom resource Kind'
                 type: string

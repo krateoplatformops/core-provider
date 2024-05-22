@@ -17,7 +17,7 @@ func TestInstallClusterRole(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	obj := tools.CreateClusterRole(types.NamespacedName{
+	obj := tools.InitClusterRole(types.NamespacedName{
 		Name:      "demo",
 		Namespace: "default",
 	})

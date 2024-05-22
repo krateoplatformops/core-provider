@@ -61,7 +61,7 @@ func UninstallClusterRole(ctx context.Context, opts UninstallOptions) error {
 	)
 }
 
-func CreateClusterRole(opts types.NamespacedName) rbacv1.ClusterRole {
+func InitClusterRole(opts types.NamespacedName) rbacv1.ClusterRole {
 	return rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -77,8 +77,8 @@ func CreateClusterRole(opts types.NamespacedName) rbacv1.ClusterRole {
 				Verbs:     []string{"*"},
 			},
 			{
-				APIGroups: []string{"apiextensions.k8s.io/v1"},
-				Resources: []string{"crds"},
+				APIGroups: []string{"apiextensions.k8s.io"},
+				Resources: []string{"customresourcedefinitions"},
 				Verbs:     []string{"*"},
 			},
 		},
