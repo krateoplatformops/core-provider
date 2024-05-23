@@ -13,8 +13,10 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 	"github.com/krateoplatformops/core-provider/internal/strutil"
 	"github.com/krateoplatformops/core-provider/internal/tgzfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/resolvers"
 	"github.com/krateoplatformops/crdgen"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
@@ -22,16 +24,26 @@ const (
 	defaultGroup = "composition.krateo.io"
 )
 
-func ChartInfoFromSpec(ctx context.Context, nfo *v1alpha1.ChartInfo) (pkg fs.FS, rootDir string, err error) {
+func ChartInfoFromSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.ChartInfo) (pkg fs.FS, rootDir string, err error) {
 	if nfo == nil {
 		return nil, "", fmt.Errorf("chart infos cannot be nil")
 	}
 
-	dat, _, err := getter.Get(getter.GetOptions{
+	opts := getter.GetOptions{
 		URI:     nfo.Url,
 		Version: nfo.Version,
-		Repo:    nfo.Repo,
-	})
+		Repo:    nfo.Repo}
+	if nfo.Credentials != nil {
+		secret, err := resolvers.GetSecret(ctx, kube, nfo.Credentials.PasswordRef)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to get secret: %w", err)
+		}
+		opts.Username = nfo.Credentials.Username
+		opts.Password = secret
+		opts.PassCredentialsAll = true
+	}
+
+	dat, _, err := getter.Get(opts)
 	if err != nil {
 		return nil, "", err
 	}

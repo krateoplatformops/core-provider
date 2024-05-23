@@ -6,12 +6,15 @@ package tools_test
 import (
 	"context"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestDeploy(t *testing.T) {
@@ -24,8 +27,17 @@ func TestDeploy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	home, err := os.UserHomeDir()
+	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(home, ".kube/config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := client.New(cfg, client.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err, _ = tools.Deploy(context.TODO(), tools.DeployOptions{
+	err, _ = tools.Deploy(context.TODO(), cli, tools.DeployOptions{
 		KubeClient: kube,
 		Spec:       nfo,
 		NamespacedName: types.NamespacedName{

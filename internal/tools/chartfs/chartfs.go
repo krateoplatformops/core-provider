@@ -2,6 +2,7 @@ package chartfs
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -9,6 +10,8 @@ import (
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/helm/getter"
 	"github.com/krateoplatformops/core-provider/internal/tgzfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/resolvers"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func FromReader(in io.Reader, pkgurl string) (*ChartFS, error) {
@@ -40,16 +43,26 @@ func FromReader(in io.Reader, pkgurl string) (*ChartFS, error) {
 	}, nil
 }
 
-func ForSpec(nfo *v1alpha1.ChartInfo) (*ChartFS, error) {
+func ForSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.ChartInfo) (*ChartFS, error) {
 	if nfo == nil {
 		return nil, fmt.Errorf("chart infos cannot be nil")
 	}
 
-	dat, url, err := getter.Get(getter.GetOptions{
+	opts := getter.GetOptions{
 		URI:     nfo.Url,
 		Version: nfo.Version,
-		Repo:    nfo.Repo,
-	})
+		Repo:    nfo.Repo}
+	if nfo.Credentials != nil {
+		secret, err := resolvers.GetSecret(ctx, kube, nfo.Credentials.PasswordRef)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get secret: %w", err)
+		}
+
+		opts.Username = nfo.Credentials.Username
+		opts.Password = secret
+		opts.PassCredentialsAll = true
+	}
+	dat, url, err := getter.Get(opts)
 	if err != nil {
 		return nil, err
 	}

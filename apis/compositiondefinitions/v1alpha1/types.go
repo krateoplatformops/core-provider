@@ -14,6 +14,11 @@ type CompositionDefinitionList struct {
 	Items []CompositionDefinition `json:"items"`
 }
 
+type Credentials struct {
+	Username    string                 `json:"username"`
+	PasswordRef rtv1.SecretKeySelector `json:"passwordRef"`
+}
+
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.repo) || has(self.repo)", message="Repo is required once set"
 type ChartInfo struct {
@@ -30,6 +35,10 @@ type ChartInfo struct {
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Repo is immutable"
 	// +kubebuilder:validation:MaxLength=256
 	Repo string `json:"repo,omitempty"`
+
+	// Credentials: credentials for private repos
+	// +optional
+	Credentials *Credentials `json:"credentials,omitempty"`
 }
 
 type CompositionDefinitionSpec struct {

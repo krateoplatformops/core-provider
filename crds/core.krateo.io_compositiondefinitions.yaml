@@ -64,6 +64,33 @@ spec:
             properties:
               chart:
                 properties:
+                  credentials:
+                    description: 'Credentials: credentials for private repos'
+                    properties:
+                      passwordRef:
+                        description: A SecretKeySelector is a reference to a secret
+                          key in an arbitrary namespace.
+                        properties:
+                          key:
+                            description: The key to select.
+                            type: string
+                          name:
+                            description: Name of the referenced object.
+                            type: string
+                          namespace:
+                            description: Namespace of the referenced object.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        - namespace
+                        type: object
+                      username:
+                        type: string
+                    required:
+                    - passwordRef
+                    - username
+                    type: object
                   repo:
                     description: 'Repo: helm repo name (for helm repo urls only)'
                     maxLength: 256

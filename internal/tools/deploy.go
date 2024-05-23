@@ -96,8 +96,8 @@ type DeployOptions struct {
 	Log             func(msg string, keysAndValues ...any)
 }
 
-func Deploy(ctx context.Context, opts DeployOptions) (err error, rbacErr error) {
-	pkg, err := chartfs.ForSpec(opts.Spec)
+func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err error, rbacErr error) {
+	pkg, err := chartfs.ForSpec(ctx, kube, opts.Spec)
 	if err != nil {
 		return err, nil
 	}

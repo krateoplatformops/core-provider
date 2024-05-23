@@ -117,7 +117,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
 
-	pkg, err := chartfs.ForSpec(cr.Spec.Chart)
+	pkg, err := chartfs.ForSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -221,7 +221,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(ctx, cr.Spec.Chart)
+	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		opts.Log = e.log.Debug
 	}
 
-	err, rbacErr := tools.Deploy(ctx, opts)
+	err, rbacErr := tools.Deploy(ctx, e.kube, opts)
 	if rbacErr != nil {
 		strErr := rbacErr.Error()
 		cr.Status.Error = &strErr
@@ -340,7 +340,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(ctx, cr.Spec.Chart)
+	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
