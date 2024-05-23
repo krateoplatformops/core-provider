@@ -29,10 +29,10 @@ RUN CGO_ENABLED=0 GO111MODULE=on go build -a -o /bin/manager cmd/main.go && \
 
 # Deployment environment
 # ----------------------
-FROM gcr.io/distroless/static:nonroot
+FROM golang:1.22.3-alpine3.18
 
-# ENV GOCACHE='/tmp/.cache'
-# RUN mkdir -p "$GOCACHE/go-build" && chmod -R 1777 "$GOCACHE"
+ENV GOCACHE='/tmp/.cache'
+RUN mkdir -p "$GOCACHE/go-build" && chmod -R 1777 "$GOCACHE"
 
 # COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
