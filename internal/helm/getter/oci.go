@@ -67,6 +67,17 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if opts.PassCredentialsAll {
+		host := strings.Split(ref, "/")[0]
+		loginopts := []registry.LoginOption{
+			registry.LoginOptBasicAuth(opts.Username, opts.Password),
+		}
+		err := g.client.Login(host, loginopts...)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to login: %w", err)
+		}
+		defer g.client.Logout(host)
+	}
 
 	pullOpts := []registry.PullOption{
 		registry.PullOptWithChart(true),

@@ -6,7 +6,7 @@ import (
 
 func TestTGZ(t *testing.T) {
 	const (
-		uri = "https://github.com/krateoplatformops/krateo-v2-template-fireworksapp/releases/download/0.0.1/fireworks-app-0.1.0.tgz"
+		uri = "https://github.com/krateoplatformops/krateo-v2-template-fireworksapp/releases/download/0.1.0/fireworks-app-0.1.0.tgz"
 	)
 
 	if !isTGZ(uri) {

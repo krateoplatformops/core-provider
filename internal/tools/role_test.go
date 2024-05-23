@@ -6,6 +6,8 @@ package tools_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path"
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -13,6 +15,8 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
 )
 
@@ -69,7 +73,16 @@ func TestCreateRoleFromTGZ(t *testing.T) {
 }
 
 func createRoleFromURL() (rbacv1.Role, error) {
-	pkg, err := chartfs.ForSpec(&v1alpha1.ChartInfo{
+	home, err := os.UserHomeDir()
+	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(home, ".kube/config"))
+	if err != nil {
+		return rbacv1.Role{}, err
+	}
+	cli, err := client.New(cfg, client.Options{})
+	if err != nil {
+		return rbacv1.Role{}, err
+	}
+	pkg, err := chartfs.ForSpec(context.TODO(), cli, &v1alpha1.ChartInfo{
 		Url: testChartUrl,
 	})
 	if err != nil {
