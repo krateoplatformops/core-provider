@@ -36,6 +36,10 @@ type ChartInfo struct {
 	// +kubebuilder:validation:MaxLength=256
 	Repo string `json:"repo,omitempty"`
 
+	// InsecureSkipVerifyTLS: skip tls verification
+	// +optional
+	InsecureSkipVerifyTLS bool `json:"insecureSkipVerifyTLS,omitempty"`
+
 	// Credentials: credentials for private repos
 	// +optional
 	Credentials *Credentials `json:"credentials,omitempty"`

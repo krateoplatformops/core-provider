@@ -30,9 +30,11 @@ func ChartInfoFromSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.Ch
 	}
 
 	opts := getter.GetOptions{
-		URI:     nfo.Url,
-		Version: nfo.Version,
-		Repo:    nfo.Repo}
+		URI:                   nfo.Url,
+		Version:               nfo.Version,
+		Repo:                  nfo.Repo,
+		InsecureSkipVerifyTLS: nfo.InsecureSkipVerifyTLS,
+	}
 	if nfo.Credentials != nil {
 		secret, err := resolvers.GetSecret(ctx, kube, nfo.Credentials.PasswordRef)
 		if err != nil {

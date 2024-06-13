@@ -71,6 +71,7 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, string, error) {
 		host := strings.Split(ref, "/")[0]
 		loginopts := []registry.LoginOption{
 			registry.LoginOptBasicAuth(opts.Username, opts.Password),
+			registry.LoginOptInsecure(opts.InsecureSkipVerifyTLS),
 		}
 		err := g.client.Login(host, loginopts...)
 		if err != nil {
