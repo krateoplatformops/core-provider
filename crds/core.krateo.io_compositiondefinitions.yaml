@@ -91,6 +91,9 @@ spec:
                     - passwordRef
                     - username
                     type: object
+                  insecureSkipVerifyTLS:
+                    description: 'InsecureSkipVerifyTLS: skip tls verification'
+                    type: boolean
                   repo:
                     description: 'Repo: helm repo name (for helm repo urls only)'
                     maxLength: 256
