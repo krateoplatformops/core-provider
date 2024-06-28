@@ -1,4 +1,4 @@
-package tools
+package rbactools
 
 import (
 	"context"
@@ -70,17 +70,6 @@ func InitClusterRole(opts types.NamespacedName) rbacv1.ClusterRole {
 		ObjectMeta: metav1.ObjectMeta{
 			Name: opts.Name,
 		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{""},
-				Resources: []string{"namespaces"},
-				Verbs:     []string{"*"},
-			},
-			{
-				APIGroups: []string{"apiextensions.k8s.io"},
-				Resources: []string{"customresourcedefinitions"},
-				Verbs:     []string{"*"},
-			},
-		},
+		Rules: []rbacv1.PolicyRule{},
 	}
 }
