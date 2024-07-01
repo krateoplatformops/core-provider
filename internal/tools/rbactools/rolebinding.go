@@ -1,4 +1,4 @@
-package tools
+package rbactools
 
 import (
 	"context"
@@ -61,7 +61,7 @@ func InstallRoleBinding(ctx context.Context, kube client.Client, obj *rbacv1.Rol
 	)
 }
 
-func CreateRoleBinding(opts types.NamespacedName) rbacv1.RoleBinding {
+func CreateRoleBinding(sa types.NamespacedName, opts types.NamespacedName) rbacv1.RoleBinding {
 	return rbacv1.RoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -79,8 +79,8 @@ func CreateRoleBinding(opts types.NamespacedName) rbacv1.RoleBinding {
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
-				Name:      opts.Name,
-				Namespace: opts.Namespace,
+				Name:      sa.Name,
+				Namespace: sa.Namespace,
 			},
 		},
 	}

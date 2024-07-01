@@ -22,6 +22,9 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
+	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
+	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
 	"github.com/krateoplatformops/crdgen"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -130,7 +133,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	gvr := tools.ToGroupVersionResource(gvk)
 	log.Printf("[DBG] Observing (gvk: %s, gvr: %s)\n", gvk.String(), gvr.String())
 
-	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
+	crdOk, err := crdtools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -148,7 +151,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
 
-	obj, err := tools.CreateDeployment(gvr, types.NamespacedName{
+	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
 	}, os.Getenv(cdcImageTagEnvVar))
@@ -156,7 +159,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	deployOk, deployReady, err := tools.LookupDeployment(ctx, e.kube, &obj)
+	deployOk, deployReady, err := deployment.LookupDeployment(ctx, e.kube, &obj)
 	if err != nil {
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
@@ -232,7 +235,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	gvr := tools.ToGroupVersionResource(gvk)
-	crdOk, err := tools.LookupCRD(ctx, e.kube, gvr)
+	crdOk, err := crdtools.LookupCRD(ctx, e.kube, gvr)
 	if err != nil {
 		return err
 	}
@@ -261,12 +264,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			return res.Err
 		}
 
-		crd, err := tools.UnmarshalCRD(res.Manifest)
+		crd, err := crdtools.UnmarshalCRD(res.Manifest)
 		if err != nil {
 			return err
 		}
 
-		return tools.InstallCRD(ctx, e.kube, crd)
+		return crdtools.InstallCRD(ctx, e.kube, crd)
 	}
 
 	if meta.IsVerbose(cr) {
@@ -285,7 +288,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		)
 	}
 
-	opts := tools.DeployOptions{
+	opts := deploy.DeployOptions{
 		DiscoveryClient: e.discovery,
 		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
@@ -299,7 +302,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		opts.Log = e.log.Debug
 	}
 
-	err, rbacErr := tools.Deploy(ctx, e.kube, opts)
+	err, rbacErr := deploy.Deploy(ctx, e.kube, opts)
 	if rbacErr != nil {
 		strErr := rbacErr.Error()
 		cr.Status.Error = &strErr
@@ -350,9 +353,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	opts := tools.UndeployOptions{
-		KubeClient: e.kube,
-		GVR:        tools.ToGroupVersionResource(gvk),
+	opts := deploy.UndeployOptions{
+		DiscoveryClient: e.discovery,
+		Spec:            cr.Spec.Chart.DeepCopy(),
+		KubeClient:      e.kube,
+		GVR:             tools.ToGroupVersionResource(gvk),
 		NamespacedName: types.NamespacedName{
 			Name:      cr.Name,
 			Namespace: cr.Namespace,
@@ -362,5 +367,5 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		opts.Log = e.log.Debug
 	}
 
-	return tools.Undeploy(ctx, opts)
+	return deploy.Undeploy(ctx, e.kube, opts)
 }

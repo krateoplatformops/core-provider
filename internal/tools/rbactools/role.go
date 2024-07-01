@@ -1,12 +1,12 @@
-package tools
+package rbactools
 
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 
 	"github.com/avast/retry-go"
-	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"github.com/gobuffalo/flect"
 
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -69,8 +69,8 @@ func InstallRole(ctx context.Context, kube client.Client, obj *rbacv1.Role) erro
 	)
 }
 
-func InitRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName) (rbacv1.Role, error) {
-
+func InitRole(resource string, opts types.NamespacedName) rbacv1.Role {
+	kind := strings.ToLower(flect.Singularize(resource))
 	role := rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "rbac.authorization.k8s.io/v1",
@@ -79,49 +79,17 @@ func InitRole(pkg *chartfs.ChartFS, resource string, opts types.NamespacedName) 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      opts.Name,
 			Namespace: opts.Namespace,
-		},
-		Rules: []rbacv1.PolicyRule{
-			{
-				APIGroups: []string{"core.krateo.io"},
-				Resources: []string{"compositiondefinitions", "compositiondefinitions/status"},
-				Verbs:     []string{"*"},
-			},
-			{
-				APIGroups: []string{"composition.krateo.io"},
-				Resources: []string{resource, fmt.Sprintf("%s/status", resource)},
-				Verbs:     []string{"*"},
+			Labels: map[string]string{
+				"app.kubernetes.io/name":       "role",
+				"app.kubernetes.io/instance":   "manager-role",
+				"app.kubernetes.io/component":  "rbac",
+				"app.kubernetes.io/created-by": kind,
+				"app.kubernetes.io/part-of":    kind,
+				"app.kubernetes.io/managed-by": "kustomize",
 			},
 		},
+		Rules: []rbacv1.PolicyRule{},
 	}
 
-	return role, nil
+	return role
 }
-
-// func createPolicyInfo(dec *utilyaml.YAMLReader) (nfo policytInfo, err error) {
-// 	buf, err := dec.Read()
-// 	if err != nil {
-// 		return nfo, err
-// 	}
-
-// 	tm := metav1.TypeMeta{}
-// 	if err := yaml.Unmarshal(buf, &tm); err != nil {
-// 		return nfo, err
-// 	}
-// 	if tm.Kind == "" {
-// 		return nfo, err
-// 	}
-
-// 	gv, err := schema.ParseGroupVersion(tm.APIVersion)
-// 	if err != nil {
-// 		return nfo, err
-// 	}
-
-// 	nfo.group = gv.Group
-// 	nfo.resource = strings.ToLower(flect.Pluralize(tm.Kind))
-// 	return nfo, err
-// }
-
-// type policytInfo struct {
-// 	group    string
-// 	resource string
-// }
