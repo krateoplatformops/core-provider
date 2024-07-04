@@ -249,7 +249,8 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 				out.WriteString(finded + "\n")
 			}
 
-			yamls := strings.Split(out.String(), "---")
+			dividerReg := regexp.MustCompile(`^-{3}$`)
+			yamls := dividerReg.Split(out.String(), -1)
 
 			for _, y := range yamls {
 				n, _ := yaml.Parse(y)
