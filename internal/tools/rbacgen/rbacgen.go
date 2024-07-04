@@ -40,6 +40,8 @@ type RbacGenerator struct {
 	pkg             *chartfs.ChartFS
 	deployName      string
 	deployNamespace string
+	secretNamespace string
+	secretName      string
 }
 
 type RBAC struct {
@@ -50,12 +52,14 @@ type RBAC struct {
 	ServiceAccount     *corev1.ServiceAccount
 }
 
-func NewRbacGenerator(discovery discovery.DiscoveryInterface, pkg *chartfs.ChartFS, deployName string, deployNamespace string) *RbacGenerator {
+func NewRbacGenerator(discovery discovery.DiscoveryInterface, pkg *chartfs.ChartFS, deployName string, deployNamespace string, secretName string, secretNamespace string) *RbacGenerator {
 	return &RbacGenerator{
 		discovery:       discovery,
 		pkg:             pkg,
 		deployName:      deployName,
 		deployNamespace: deployNamespace,
+		secretNamespace: secretNamespace,
+		secretName:      secretName,
 	}
 }
 
@@ -156,11 +160,6 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 			Resources: []string{resourceName, fmt.Sprintf("%s/status", resourceName)},
 			Verbs:     []string{"*"},
 		},
-		{
-			APIGroups: []string{""},
-			Resources: []string{"secrets"},
-			Verbs:     []string{"*"},
-		},
 	}
 
 	rb := rbacMap[r.deployNamespace]
@@ -178,6 +177,29 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 	}
 	rb.Role.Rules = append(rb.Role.Rules, compositionRules...)
 	rbacMap[r.deployNamespace] = rb
+
+	//Secret Namespace RBAC
+	if r.secretNamespace != "" && r.secretName != "" {
+		rb, ok := rbacMap[r.secretNamespace]
+		if !ok {
+			rb = RBAC{}
+		}
+		if rb.Role == nil {
+			rb.Role = ptr(rbactools.InitRole(resourceName, types.NamespacedName{Name: r.deployName, Namespace: r.secretNamespace}))
+		}
+		if rb.RoleBinding == nil {
+			rb.RoleBinding = ptr(rbactools.CreateRoleBinding(
+				types.NamespacedName{Name: r.deployName, Namespace: r.deployNamespace},
+				types.NamespacedName{Name: r.deployName, Namespace: r.secretNamespace}))
+		}
+		rb.Role.Rules = append(rb.Role.Rules, rbacv1.PolicyRule{
+			APIGroups:     []string{""},
+			Resources:     []string{"secrets"},
+			Verbs:         []string{"get"},
+			ResourceNames: []string{r.secretName},
+		})
+		rbacMap[r.secretNamespace] = rb
+	}
 
 	if err != nil {
 		return nil, err
