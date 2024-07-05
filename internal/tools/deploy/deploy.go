@@ -49,7 +49,21 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		return err
 	}
 	gvr := tools.ToGroupVersionResource(gvk)
-	rbgen := rbacgen.NewRbacGenerator(opts.DiscoveryClient, pkg, opts.NamespacedName.Name, opts.NamespacedName.Namespace)
+
+	secretns, secretname := "", ""
+	if opts.Spec.Credentials != nil {
+		secretns = opts.Spec.Credentials.PasswordRef.Namespace
+		secretname = opts.Spec.Credentials.PasswordRef.Name
+	}
+
+	rbgen := rbacgen.NewRbacGenerator(
+		opts.DiscoveryClient,
+		pkg,
+		opts.NamespacedName.Name,
+		opts.NamespacedName.Namespace,
+		secretname,
+		secretns,
+	)
 	rbMap, err := rbgen.PopulateRBAC(gvr.Resource)
 	if err != nil && !errors.Is(err, rbacgen.ErrKindApiVersion) {
 		return err
@@ -139,7 +153,21 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 
 	gvr := tools.ToGroupVersionResource(gvk)
 
-	rbgen := rbacgen.NewRbacGenerator(opts.DiscoveryClient, pkg, opts.NamespacedName.Name, opts.NamespacedName.Namespace)
+	secretns, secretname := "", ""
+
+	if opts.Spec.Credentials != nil {
+		secretns = opts.Spec.Credentials.PasswordRef.Namespace
+		secretname = opts.Spec.Credentials.PasswordRef.Name
+	}
+
+	rbgen := rbacgen.NewRbacGenerator(
+		opts.DiscoveryClient,
+		pkg,
+		opts.NamespacedName.Name,
+		opts.NamespacedName.Namespace,
+		secretname,
+		secretns,
+	)
 
 	rbMap, err := rbgen.PopulateRBAC(gvr.Resource)
 	if errors.Is(err, rbacgen.ErrKindApiVersion) {
