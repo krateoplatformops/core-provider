@@ -44,12 +44,12 @@ spec:
           name: metrics
           protocol: TCP
         resources: {}
-        securityContext:
-          allowPrivilegeEscalation: false
-          privileged: false
-          runAsGroup: 2000
-          runAsNonRoot: true
-          runAsUser: 2000
+        # securityContext:
+        #   allowPrivilegeEscalation: false
+        #   privileged: false
+        #   runAsGroup: 2000
+        #   runAsNonRoot: true
+        #   runAsUser: 2000
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
       dnsPolicy: ClusterFirst
