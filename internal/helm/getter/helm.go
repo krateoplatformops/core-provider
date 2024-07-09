@@ -2,6 +2,7 @@ package getter
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/krateoplatformops/core-provider/internal/helm/repo"
@@ -40,8 +41,18 @@ func (g *repoGetter) Get(opts GetOptions) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("no package url found in index @ %s/%s", res.Name, res.Version)
 	}
 
+	chartUrlStr := res.URLs[0]
+	_, err = url.ParseRequestURI(chartUrlStr)
+	if err != nil {
+		chartUrlStr = fmt.Sprintf("%s/%s", opts.URI, chartUrlStr)
+		_, err = url.ParseRequestURI(chartUrlStr)
+		if err != nil {
+			return nil, "", fmt.Errorf("invalid chart url: %s", chartUrlStr)
+		}
+	}
+
 	newopts := GetOptions{
-		URI:                   res.URLs[0],
+		URI:                   chartUrlStr,
 		Version:               res.Version,
 		Repo:                  res.Name,
 		InsecureSkipVerifyTLS: opts.InsecureSkipVerifyTLS,
