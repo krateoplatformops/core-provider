@@ -55,10 +55,10 @@ spec:
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
-      securityContext:
-        runAsGroup: 2000
-        runAsNonRoot: true
-        runAsUser: 2000
+      # securityContext:
+      #   runAsGroup: 2000
+      #   runAsNonRoot: true
+      #   runAsUser: 2000
       serviceAccount: {{ .name }}
       serviceAccountName: {{ .name }}
       terminationGracePeriodSeconds: 30
