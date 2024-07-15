@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"path"
 	"regexp"
@@ -245,6 +246,17 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 					continue
 				}
 
+				cleanTemplatedFields := regexp.MustCompile(`:\s*{{(?:[^{}]*|{{.*?}})*}}`)
+				finded = cleanTemplatedFields.FindString(scanner.Text())
+				if finded != "" {
+					cleanTemplatedFieldReg := regexp.MustCompile(`:\s*(.*)`)
+					finded = cleanTemplatedFieldReg.ReplaceAllString(finded, "")
+					if finded != scanner.Text() {
+						out.WriteString(finded + "\n")
+						continue
+					}
+				}
+
 				ifReg := regexp.MustCompile(`^{{\s*-?\s*if\s+.+}}`)
 				finded = ifReg.ReplaceAllString(scanner.Text(), "---")
 				if finded != scanner.Text() {
@@ -266,16 +278,45 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 					continue
 				}
 
-				invalidKindAPIVersionReg := regexp.MustCompile(`{{(?:[^{}]*|{{.*?}})*}}`)
-				finded = invalidKindAPIVersionReg.ReplaceAllString(scanner.Text(), "")
+				dots := regexp.MustCompile(`^\.\.\.\s*$`)
+				finded = dots.ReplaceAllString(scanner.Text(), "")
+				if dots.MatchString(scanner.Text()) {
+					out.WriteString(finded + "\n")
+					continue
+				}
+
 				out.WriteString(finded + "\n")
 			}
 
-			dividerReg := regexp.MustCompile(`^-{3}$`)
-			yamls := dividerReg.Split(out.String(), -1)
+			strout := out.String()
+			out.Reset()
+			templateReg := regexp.MustCompile(`{{(?:[^{}]*|{{.*?}})*}}`)
+			outBuf := templateReg.ReplaceAllString(strout, "")
+			out.WriteString(outBuf + "\n")
+
+			// now scan the output out buffer
+			var yamls []string
+			scanner = bufio.NewScanner(out)
+			tmpout := new(bytes.Buffer)
+			for scanner.Scan() {
+				// regex to match the divider
+				dividerReg := regexp.MustCompile(`^-{3}\s*$`)
+				// if the line is a divider, then we have a yaml so put it in the yamls slice
+				if dividerReg.MatchString(scanner.Text()) {
+					yamls = append(yamls, tmpout.String())
+					tmpout.Reset()
+					continue
+				}
+				tmpout.WriteString(scanner.Text() + "\n")
+			}
+			yamls = append(yamls, tmpout.String())
 
 			for _, y := range yamls {
-				n, _ := yaml.Parse(y)
+				n, err := yaml.Parse(y)
+				if err != nil && err != io.EOF {
+					errs = append(errs, fmt.Errorf("failed to parse yaml in file %s : %w", file.Name(), err))
+					continue
+				}
 				if n.IsNilOrEmpty() {
 					continue
 				}
