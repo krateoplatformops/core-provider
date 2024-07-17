@@ -161,6 +161,11 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 			Resources: []string{resourceName, fmt.Sprintf("%s/status", resourceName)},
 			Verbs:     []string{"*"},
 		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"secrets"},
+			Verbs:     []string{"*"},
+		},
 	}
 
 	rb := rbacMap[r.deployNamespace]
@@ -201,10 +206,10 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 		})
 		rbacMap[r.secretNamespace] = rb
 	}
-
 	if err != nil {
 		return nil, err
 	}
+
 	return rbacMap, rbacErr
 }
 
