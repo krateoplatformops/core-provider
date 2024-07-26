@@ -13,7 +13,8 @@ import (
 )
 
 type Names struct {
-	Kind string `json:"kind"`
+	Kind   string `json:"kind"`
+	Plural string `json:"plural"`
 }
 type Version struct {
 	Name string `json:"name"`
@@ -31,7 +32,9 @@ type CRD struct {
 }
 
 type CRDInfo struct {
-	schema.GroupVersionKind
+	Kind     string
+	Resource string
+	schema.GroupVersion
 	Namespaced bool
 }
 
@@ -63,11 +66,12 @@ func GetCRDInfoList(pkg *chartfs.ChartFS) ([]CRDInfo, error) {
 			}
 			for _, version := range crd.Spec.Versions {
 				gvk := CRDInfo{
-					GroupVersionKind: schema.GroupVersionKind{
+					GroupVersion: schema.GroupVersion{
 						Group:   crd.Spec.Group,
 						Version: version.Name,
-						Kind:    crd.Spec.Names.Kind,
 					},
+					Kind:       crd.Spec.Names.Kind,
+					Resource:   crd.Spec.Names.Plural,
 					Namespaced: crd.Spec.Scope == "Namespaced",
 				}
 				crdList = append(crdList, gvk)

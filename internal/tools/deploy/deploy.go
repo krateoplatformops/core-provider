@@ -19,7 +19,7 @@ import (
 )
 
 type UndeployOptions struct {
-	DiscoveryClient discovery.DiscoveryInterface
+	DiscoveryClient discovery.CachedDiscoveryInterface
 	KubeClient      client.Client
 	NamespacedName  types.NamespacedName
 	GVR             schema.GroupVersionResource
@@ -132,7 +132,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 }
 
 type DeployOptions struct {
-	DiscoveryClient discovery.DiscoveryInterface
+	DiscoveryClient discovery.CachedDiscoveryInterface
 	KubeClient      client.Client
 	NamespacedName  types.NamespacedName
 	Spec            *definitionsv1alpha1.ChartInfo

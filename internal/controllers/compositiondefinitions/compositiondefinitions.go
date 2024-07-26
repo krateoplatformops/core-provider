@@ -10,6 +10,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -289,7 +290,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	opts := deploy.DeployOptions{
-		DiscoveryClient: e.discovery,
+		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
 			Namespace: cr.Namespace,
@@ -354,7 +355,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	opts := deploy.UndeployOptions{
-		DiscoveryClient: e.discovery,
+		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		Spec:            cr.Spec.Chart.DeepCopy(),
 		KubeClient:      e.kube,
 		GVR:             tools.ToGroupVersionResource(gvk),

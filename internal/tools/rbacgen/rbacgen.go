@@ -13,14 +13,15 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	crdinfo "github.com/krateoplatformops/core-provider/internal/tools/crdInfo"
 	"github.com/krateoplatformops/core-provider/internal/tools/rbactools"
 	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/restmapper"
 	"sigs.k8s.io/kustomize/kyaml/yaml"
 )
 
@@ -30,6 +31,7 @@ var ErrKindApiVersion = errors.New(strErrKindApiVersion)
 
 type Resource struct {
 	Kind                string
+	Resource            string
 	APIVersion          string
 	Namespace           string
 	IsNamespaceTemlated bool
@@ -37,7 +39,7 @@ type Resource struct {
 }
 
 type RbacGenerator struct {
-	discovery       discovery.DiscoveryInterface
+	discovery       discovery.CachedDiscoveryInterface
 	pkg             *chartfs.ChartFS
 	deployName      string
 	deployNamespace string
@@ -53,7 +55,7 @@ type RBAC struct {
 	ServiceAccount     *corev1.ServiceAccount
 }
 
-func NewRbacGenerator(discovery discovery.DiscoveryInterface, pkg *chartfs.ChartFS, deployName string, deployNamespace string, secretName string, secretNamespace string) *RbacGenerator {
+func NewRbacGenerator(discovery discovery.CachedDiscoveryInterface, pkg *chartfs.ChartFS, deployName string, deployNamespace string, secretName string, secretNamespace string) *RbacGenerator {
 	return &RbacGenerator{
 		discovery:       discovery,
 		pkg:             pkg,
@@ -128,7 +130,7 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 		rule := rbacv1.PolicyRule{
 			Verbs:     []string{"*"},
 			APIGroups: []string{apiGroup},
-			Resources: []string{rbactools.KindToResource(res.Kind)},
+			Resources: []string{res.Resource},
 		}
 
 		if res.IsNamespaced && nsName.Namespace != "" {
@@ -148,7 +150,7 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 		}
 		rbacMap[nsName.Namespace] = rb
 	}
-	//Deploy Namespace RBAC
+	// Deploy Namespace RBAC
 	// Add composition rules in the deploy namespace
 	compositionRules := []rbacv1.PolicyRule{
 		{
@@ -341,17 +343,19 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 					continue
 				}
 				apiVSplit := strings.Split(n.GetApiVersion(), "/")
-				gr := schema.GroupResource{
-					Resource: strings.ToLower(flect.Pluralize(n.GetKind())),
+
+				gk := schema.GroupKind{
+					Kind: n.GetKind(),
 				}
 				if len(apiVSplit) > 1 {
-					gr.Group = apiVSplit[0]
+					gk.Group = apiVSplit[0]
 				}
 
-				res.IsNamespaced, err = isGRNamespaced(r.discovery, gr, crdList)
+				res.Resource, res.IsNamespaced, err = getGKInfo(r.discovery, gk, crdList)
 				if err != nil {
 					//Default to clusterRole
 					res.IsNamespaced = false
+					errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
 				}
 
 				resources = append(resources, res)
@@ -373,31 +377,24 @@ func wrapErrors(errs []error) error {
 	return fmt.Errorf("%w: %s", ErrKindApiVersion, wrappedErrs)
 }
 
-func isGRNamespaced(discovery discovery.DiscoveryInterface, gr schema.GroupResource, crdList []crdinfo.CRDInfo) (bool, error) {
-	groupList, resLists, err := discovery.ServerGroupsAndResources()
-	if err != nil {
-		return false, err
-	}
+// returns true if the resource is namespaced or false if it's cluster scoped
+func boolForScope(scope meta.RESTScope) bool {
+	return scope == meta.RESTScopeNamespace
+}
+
+func getGKInfo(discovery discovery.CachedDiscoveryInterface, gk schema.GroupKind, crdList []crdinfo.CRDInfo) (string, bool, error) {
+	rm := restmapper.NewDeferredDiscoveryRESTMapper(discovery)
 
 	for _, crd := range crdList {
-		if crd.GroupVersionKind.Group == gr.Group && crd.GroupVersionKind.Kind == gr.Resource {
-			return crd.Namespaced, nil
+		if crd.GroupVersion.Group == gk.Group && crd.Kind == gk.Kind {
+			return crd.Resource, crd.Namespaced, nil
 		}
 	}
 
-	for _, group := range groupList {
-		if group.Name == gr.Group {
-			for _, res := range resLists {
-				for _, res := range res.APIResources {
-					resource := strings.ToLower(flect.Pluralize(res.Kind))
-					if resource == gr.Resource {
-						return res.Namespaced, nil
-					}
-				}
-			}
-		}
+	gvr, err := rm.RESTMapping(gk)
+	if err != nil {
+		return "", false, err
 	}
 
-	return false, fmt.Errorf("resource %s not found", gr.String())
-
+	return gvr.Resource.Resource, boolForScope(gvr.Scope), nil
 }
