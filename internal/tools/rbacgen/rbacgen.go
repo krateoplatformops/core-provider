@@ -215,11 +215,40 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 	return rbacMap, rbacErr
 }
 
+func getDependencyDir(pkg *chartfs.ChartFS, templatesDir string) string {
+	chartsDirPath := path.Join(strings.TrimSuffix(templatesDir, "templates"), "charts")
+
+	_, err := fs.ReadDir(pkg.FS(), chartsDirPath)
+	if err != nil {
+		return ""
+	}
+	return chartsDirPath
+}
+
 func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error) {
 	var resources []Resource
 	var errs []error
 	// error is ignored - not critical
 	crdList, _ := crdinfo.GetCRDInfoList(r.pkg)
+
+	depsDirPath := getDependencyDir(r.pkg, templatesDir)
+	if depsDirPath != "" {
+		depsDir, err := fs.ReadDir(r.pkg.FS(), depsDirPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read directory %s: %w", depsDirPath, err)
+		}
+		for _, file := range depsDir {
+			if file.IsDir() {
+				depsDir := path.Join(depsDirPath, file.Name(), "templates")
+				ress, err := r.getResourcesInfo(depsDir)
+				if err != nil {
+					return nil, err
+				}
+				resources = append(resources, ress...)
+			}
+		}
+	}
+
 	dir, err := fs.ReadDir(r.pkg.FS(), templatesDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read directory %s: %w", templatesDir, err)
