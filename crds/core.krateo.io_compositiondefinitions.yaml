@@ -69,8 +69,8 @@ spec:
                     description: 'Credentials: credentials for private repos'
                     properties:
                       passwordRef:
-                        description: A SecretKeySelector is a reference to a secret
-                          key in an arbitrary namespace.
+                        description: 'PasswordRef: reference to secret containing
+                          password for private repo'
                         properties:
                           key:
                             description: The key to select.
@@ -87,6 +87,7 @@ spec:
                         - namespace
                         type: object
                       username:
+                        description: 'Username: username for private repo'
                         type: string
                     required:
                     - passwordRef
