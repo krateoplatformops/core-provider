@@ -15,17 +15,19 @@ type CompositionDefinitionList struct {
 }
 
 type Credentials struct {
-	Username    string                 `json:"username"`
+	// Username: username for private repo
+	Username string `json:"username"`
+	// PasswordRef: reference to secret containing password for private repo
 	PasswordRef rtv1.SecretKeySelector `json:"passwordRef"`
 }
 
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.repo) || has(self.repo)", message="Repo is required once set"
 type ChartInfo struct {
-	// Url: oci or tgz full url
+	// Url: oci or tgz full url, or helm repo url
 	// +immutable
 	Url string `json:"url"`
-	// Version: desired chart version
+	// Version: desired chart version, needed for oci charts and for helm repo urls
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Version is immutable"
 	// +kubebuilder:validation:MaxLength=20
