@@ -1,0 +1,28 @@
+@startuml core-provider
+
+package "Core Provider"{
+   component "core-provider" as provider
+   collections "CompositionDefinition\nManifest" as compositiondefinition
+   collections "CRD\nManifest" as crd
+   collections "RBAC\nPolicy" as rbac
+}
+
+package "Composition Dynamic Controller" {
+   component "composition-dynamic-controller" as cdc
+   collections "Custom Resource Manifest" as cr
+}
+
+database "Helm Chart Release" as er
+
+
+provider -d- compositiondefinition : Definition for
+provider -u-> crd : Generate
+provider -u-> rbac: Generate
+provider -r-> cdc : Deploy
+
+cdc <-u- cr : Definition for
+cdc -r-> er : Manage (Observe, Create, Delete)
+
+crd <.r. cr : Represents
+rbac .r.> cdc : Applies to
+@enduml 
