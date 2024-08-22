@@ -4,10 +4,15 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 
 ## Summary
 
-- [Summary](#summary)
+- [Architecture](#architecture)
 - [Overview](#overview)
 - [Examples](#examples)
 - [Configuration](#configuration)
+
+## Architecture
+
+![core-provider Architecture Image](_diagrams/core-provider.png "core-provider Architecture")
+
 
 ## Overview
 
