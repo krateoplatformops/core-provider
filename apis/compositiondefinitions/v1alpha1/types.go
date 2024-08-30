@@ -23,16 +23,13 @@ type Credentials struct {
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.repo) || has(self.repo)", message="Repo is required once set"
 type ChartInfo struct {
 	// Url: oci or tgz full url
-	// +immutable
 	Url string `json:"url"`
 	// Version: desired chart version
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Version is immutable"
 	// +kubebuilder:validation:MaxLength=20
 	Version string `json:"version,omitempty"`
 	// Repo: helm repo name (for helm repo urls only)
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="Repo is immutable"
 	// +kubebuilder:validation:MaxLength=256
 	Repo string `json:"repo,omitempty"`
 
@@ -51,17 +48,40 @@ type CompositionDefinitionSpec struct {
 	Chart *ChartInfo `json:"chart,omitempty"`
 }
 
-// CompositionDefinitionStatus is the status of a CompositionDefinition.
-type CompositionDefinitionStatus struct {
-	rtv1.ManagedStatus `json:",inline"`
-
-	// APIVersion: the generated custom resource API version
+type VersionDetail struct {
+	// Version: the version of the chart that is served. It is the version of the CRD.
 	// +optional
-	APIVersion string `json:"apiVersion,omitempty"`
+	Version string `json:"version"`
+
+	// Served: whether the version is served
+	// +optional
+	Served bool `json:"served"`
+
+	// Stored: whether the version is stored
+	// +optional
+	Stored bool `json:"stored"`
+}
+
+type Managed struct {
+	// VersionInfo: the version information of the chart
+	// +optional
+	VersionInfo []VersionDetail `json:"versionInfo,omitempty"`
+
+	// Group: the generated custom resource Group
+	// +optional
+	Group string `json:"group,omitempty"`
 
 	// Kind: the generated custom resource Kind
 	// +optional
 	Kind string `json:"kind,omitempty"`
+}
+
+// CompositionDefinitionStatus is the status of a CompositionDefinition.
+type CompositionDefinitionStatus struct {
+	rtv1.ManagedStatus `json:",inline"`
+
+	// Managed: information about the managed resources
+	Managed Managed `json:"managed,omitempty"`
 
 	// PackageURL: .tgz or oci chart direct url
 	// +optional
@@ -77,7 +97,6 @@ type CompositionDefinitionStatus struct {
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,defs,core}
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
-//+kubebuilder:printcolumn:name="API VERSION",type="string",JSONPath=".status.apiVersion",priority=10
 //+kubebuilder:printcolumn:name="KIND",type="string",JSONPath=".status.kind",priority=10
 //+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl",priority=10
 

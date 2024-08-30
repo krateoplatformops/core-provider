@@ -12,9 +12,10 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/gobuffalo/flect v1.0.2
 	github.com/google/go-cmp v0.6.0
-	github.com/krateoplatformops/crdgen v0.3.5
+	github.com/krateoplatformops/crdgen v0.3.6
 	github.com/krateoplatformops/provider-runtime v0.7.0
 	github.com/pkg/errors v0.9.1
+	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 	github.com/stoewer/go-strcase v1.3.0
 	gopkg.in/yaml.v2 v2.4.0
 	helm.sh/helm/v3 v3.14.4

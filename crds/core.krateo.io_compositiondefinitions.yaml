@@ -25,10 +25,6 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
-    - jsonPath: .status.apiVersion
-      name: API VERSION
-      priority: 10
-      type: string
     - jsonPath: .status.kind
       name: KIND
       priority: 10
@@ -98,9 +94,6 @@ spec:
                     description: 'Repo: helm repo name (for helm repo urls only)'
                     maxLength: 256
                     type: string
-                    x-kubernetes-validations:
-                    - message: Repo is immutable
-                      rule: self == oldSelf
                   url:
                     description: 'Url: oci or tgz full url'
                     type: string
@@ -108,9 +101,6 @@ spec:
                     description: 'Version: desired chart version'
                     maxLength: 20
                     type: string
-                    x-kubernetes-validations:
-                    - message: Version is immutable
-                      rule: self == oldSelf
                 required:
                 - url
                 type: object
@@ -133,9 +123,6 @@ spec:
           status:
             description: CompositionDefinitionStatus is the status of a CompositionDefinition.
             properties:
-              apiVersion:
-                description: 'APIVersion: the generated custom resource API version'
-                type: string
               conditions:
                 description: Conditions of the resource.
                 items:
@@ -176,9 +163,32 @@ spec:
                 description: 'Error: error messages - actually only used if an error
                   occurred during role and clusterrole creation'
                 type: string
-              kind:
-                description: 'Kind: the generated custom resource Kind'
-                type: string
+              managed:
+                description: 'Managed: information about the managed resources'
+                properties:
+                  group:
+                    description: 'Group: the generated custom resource Group'
+                    type: string
+                  kind:
+                    description: 'Kind: the generated custom resource Kind'
+                    type: string
+                  versionInfo:
+                    description: 'VersionInfo: the version information of the chart'
+                    items:
+                      properties:
+                        served:
+                          description: 'Served: whether the version is served'
+                          type: boolean
+                        stored:
+                          description: 'Stored: whether the version is stored'
+                          type: boolean
+                        version:
+                          description: 'Version: the version of the chart that is
+                            served. It is the version of the CRD.'
+                          type: string
+                      type: object
+                    type: array
+                type: object
               packageUrl:
                 description: 'PackageURL: .tgz or oci chart direct url'
                 type: string
