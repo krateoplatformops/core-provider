@@ -54,3 +54,4 @@ cover.out
 /.vendor-new
 .tool-versions
 **/*.xpkg
+.vscode
