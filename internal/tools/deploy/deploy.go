@@ -3,7 +3,6 @@ package deploy
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	tools "github.com/krateoplatformops/core-provider/internal/tools"
@@ -25,6 +24,7 @@ type UndeployOptions struct {
 	GVR             schema.GroupVersionResource
 	Spec            *definitionsv1alpha1.ChartInfo
 	Log             func(msg string, keysAndValues ...any)
+	SkipCRD         bool
 }
 
 func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) error {
@@ -32,7 +32,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		KubeClient: opts.KubeClient,
 		NamespacedName: types.NamespacedName{
 			Namespace: opts.NamespacedName.Namespace,
-			Name:      fmt.Sprintf("%s-%s-controller", opts.GVR.Resource, opts.GVR.Version),
+			Name:      opts.NamespacedName.Name,
 		},
 		Log: opts.Log,
 	})
@@ -122,10 +122,13 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 			return err
 		}
 	}
-	err = crd.UninstallCRD(ctx, opts.KubeClient, opts.GVR.GroupResource())
-	if err == nil {
-		if opts.Log != nil {
-			opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
+
+	if !opts.SkipCRD {
+		err = crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
+		if err == nil {
+			if opts.Log != nil {
+				opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
+			}
 		}
 	}
 	return err

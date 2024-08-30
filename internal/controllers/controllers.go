@@ -5,7 +5,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
-	"github.com/krateoplatformops/core-provider/internal/controllers/schemadefinitions"
 )
 
 // Setup creates all controllers with the supplied logger and adds them to
@@ -13,7 +12,6 @@ import (
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	for _, setup := range []func(ctrl.Manager, controller.Options) error{
 		compositiondefinitions.Setup,
-		schemadefinitions.Setup,
 	} {
 		if err := setup(mgr, o); err != nil {
 			return err

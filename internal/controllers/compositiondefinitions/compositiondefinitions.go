@@ -8,6 +8,8 @@ import (
 	"os"
 	"time"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -134,7 +136,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	gvr := tools.ToGroupVersionResource(gvk)
 	log.Printf("[DBG] Observing (gvk: %s, gvr: %s)\n", gvk.String(), gvr.String())
 
-	crdOk, err := crdtools.LookupCRD(ctx, e.kube, gvr)
+	crdOk, err := crdtools.Lookup(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -148,6 +150,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			ResourceExists:   false,
 			ResourceUpToDate: true,
 		}, nil
+	}
+
+	crd, err := crdtools.Get(ctx, e.kube, gvr)
+	if err != nil {
+		return reconciler.ExternalObservation{}, err
 	}
 
 	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
@@ -189,7 +196,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			"gvr", gvr.String())
 	}
 
-	cr.Status.APIVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+	// Sets the status of the CompositionDefinition
+	if crd != nil {
+		updateVersionInfo(cr, crd)
+		cr.Status.Managed.Group = crd.Spec.Group
+		cr.Status.Managed.Kind = crd.Spec.Names.Kind
+	}
 	cr.Status.PackageURL = pkg.PackageURL()
 
 	if !deployReady {
@@ -236,12 +248,19 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	gvr := tools.ToGroupVersionResource(gvk)
-	crdOk, err := crdtools.LookupCRD(ctx, e.kube, gvr)
+
+	crdOk, err := crdtools.Lookup(ctx, e.kube, gvr)
 	if err != nil {
 		return err
 	}
 
+	var crd *apiextensionsv1.CustomResourceDefinition
 	if !crdOk {
+		crd, err = crdtools.Get(ctx, e.kube, gvr)
+		if err != nil {
+			return err
+		}
+
 		if meta.IsVerbose(cr) {
 			e.log.Debug("Generating CRD", "gvr", gvr.String())
 		}
@@ -265,22 +284,40 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			return res.Err
 		}
 
-		crd, err := crdtools.UnmarshalCRD(res.Manifest)
+		newcrd, err := crdtools.Unmarshal(res.Manifest)
 		if err != nil {
 			return err
 		}
 
-		return crdtools.InstallCRD(ctx, e.kube, crd)
-	}
+		if crd == nil {
+			return crdtools.Install(ctx, e.kube, newcrd)
+		}
 
-	if meta.IsVerbose(cr) {
-		e.log.Debug("CRD alredy generated", "gvr", gvr.String())
-	}
+		crd, err = crdtools.AppendVersion(*crd, *newcrd)
+		if err != nil {
+			return err
+		}
+		return crdtools.Update(ctx, e.kube, crd.Name, crd)
+	} else {
+		crd, err = crdtools.Get(ctx, e.kube, gvr)
+		if err != nil {
+			return err
+		}
+		if crd == nil {
+			return errors.New("CRD not found")
+		}
 
-	// err = e.kube.Update(ctx, cr, &client.UpdateOptions{})
-	// if err != nil {
-	// 	return err
-	// }
+		if meta.IsVerbose(cr) {
+			e.log.Debug("CRD alredy generated, checking served resources", "gvr", gvr.String())
+		}
+
+		crdtools.SetServedStorage(crd, gvr.Version)
+
+		err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+		if err != nil {
+			return err
+		}
+	}
 
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Deploying Dynamic Controller",
@@ -294,7 +331,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
 			Namespace: cr.Namespace,
-			Name:      cr.Name,
+			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
 		CDCImageTag: os.Getenv(cdcImageTagEnvVar),
 		Spec:        cr.Spec.Chart.DeepCopy(),
@@ -312,6 +349,36 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	// Undeploy olders versions of the CRD
+	for _, v := range crd.Spec.Versions {
+		if !v.Served && !v.Storage {
+			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
+				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+				Spec:            cr.Spec.Chart.DeepCopy(),
+				KubeClient:      e.kube,
+				GVR:             tools.ToGroupVersionResource(gvk),
+				NamespacedName: types.NamespacedName{
+					Name:      resourceNamer(gvr.Resource, v.Name),
+					Namespace: cr.Namespace,
+				},
+				SkipCRD: true,
+			})
+
+			// err = deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
+			// 	KubeClient: e.kube,
+			// 	NamespacedName: types.NamespacedName{
+			// 		Namespace: cr.Namespace,
+			// 		Name:      resourceNamer(gvr.Resource, v.Name),
+			// 	},
+			// 	Log: e.log.Debug,
+			// })
+			if err != nil {
+				return err
+			}
+		}
+
 	}
 
 	err = e.kube.Status().Update(ctx, cr)
@@ -354,19 +421,49 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
+	gvr := tools.ToGroupVersionResource(gvk)
+
 	opts := deploy.UndeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		Spec:            cr.Spec.Chart.DeepCopy(),
 		KubeClient:      e.kube,
-		GVR:             tools.ToGroupVersionResource(gvk),
+		GVR:             gvr,
 		NamespacedName: types.NamespacedName{
-			Name:      cr.Name,
+			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
+		SkipCRD: false,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug
 	}
 
 	return deploy.Undeploy(ctx, e.kube, opts)
+}
+
+func resourceNamer(resourceName string, chartVersion string) string {
+	return fmt.Sprintf("%s-%s-controller", resourceName, chartVersion)
+}
+
+func updateVersionInfo(cr *compositiondefinitionsv1alpha1.CompositionDefinition, crd *apiextensionsv1.CustomResourceDefinition) {
+	for _, v := range crd.Spec.Versions {
+		i := -1
+		for j, cv := range cr.Status.Managed.VersionInfo {
+			if cv.Version == v.Name {
+				i = j
+				break
+			}
+		}
+
+		if i == -1 {
+			cr.Status.Managed.VersionInfo = append(cr.Status.Managed.VersionInfo, compositiondefinitionsv1alpha1.VersionDetail{
+				Version: v.Name,
+				Served:  v.Served,
+				Stored:  v.Storage,
+			})
+			continue
+		}
+		cr.Status.Managed.VersionInfo[i].Served = v.Served
+		cr.Status.Managed.VersionInfo[i].Stored = v.Storage
+	}
 }
