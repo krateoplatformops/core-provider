@@ -202,6 +202,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		cr.Status.Managed.Group = crd.Spec.Group
 		cr.Status.Managed.Kind = crd.Spec.Names.Kind
 	}
+	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
 	cr.Status.PackageURL = pkg.PackageURL()
 
 	if !deployReady {

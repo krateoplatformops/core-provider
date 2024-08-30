@@ -80,6 +80,12 @@ type Managed struct {
 type CompositionDefinitionStatus struct {
 	rtv1.ManagedStatus `json:",inline"`
 
+	// Kind: the kind of the custom resource
+	Kind string `json:"kind,omitempty"`
+
+	// ApiVersion: the api version of the custom resource
+	ApiVersion string `json:"apiVersion,omitempty"`
+
 	// Managed: information about the managed resources
 	Managed Managed `json:"managed,omitempty"`
 
@@ -97,6 +103,7 @@ type CompositionDefinitionStatus struct {
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,defs,core}
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
+//+kubebuilder:printcolumn:name="API VERSION",type="string",JSONPath=".status.apiVersion",priority=10
 //+kubebuilder:printcolumn:name="KIND",type="string",JSONPath=".status.kind",priority=10
 //+kubebuilder:printcolumn:name="PACKAGE URL",type="string",JSONPath=".status.packageUrl",priority=10
 
