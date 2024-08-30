@@ -25,6 +25,10 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: AGE
       type: date
+    - jsonPath: .status.apiVersion
+      name: API VERSION
+      priority: 10
+      type: string
     - jsonPath: .status.kind
       name: KIND
       priority: 10
@@ -123,6 +127,9 @@ spec:
           status:
             description: CompositionDefinitionStatus is the status of a CompositionDefinition.
             properties:
+              apiVersion:
+                description: 'ApiVersion: the api version of the custom resource'
+                type: string
               conditions:
                 description: Conditions of the resource.
                 items:
@@ -162,6 +169,9 @@ spec:
               error:
                 description: 'Error: error messages - actually only used if an error
                   occurred during role and clusterrole creation'
+                type: string
+              kind:
+                description: 'Kind: the kind of the custom resource'
                 type: string
               managed:
                 description: 'Managed: information about the managed resources'
