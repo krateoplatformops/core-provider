@@ -2,16 +2,25 @@ package v1alpha1
 
 import (
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
+	"github.com/krateoplatformops/provider-runtime/pkg/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-//+kubebuilder:object:root=true
-
+// +kubebuilder:object:root=true
 type CompositionDefinitionList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 
 	Items []CompositionDefinition `json:"items"`
+}
+
+// GetItems of this CompositionDefinitionList.
+func (l *CompositionDefinitionList) GetItems() []resource.Managed {
+	items := make([]resource.Managed, len(l.Items))
+	for i := range l.Items {
+		items[i] = &l.Items[i]
+	}
+	return items
 }
 
 type Credentials struct {
@@ -43,7 +52,7 @@ type ChartInfo struct {
 }
 
 type CompositionDefinitionSpec struct {
-	rtv1.ManagedSpec `json:",inline"`
+	// rtv1.ManagedSpec `json:",inline"`
 
 	Chart *ChartInfo `json:"chart,omitempty"`
 }
@@ -78,7 +87,7 @@ type Managed struct {
 
 // CompositionDefinitionStatus is the status of a CompositionDefinition.
 type CompositionDefinitionStatus struct {
-	rtv1.ManagedStatus `json:",inline"`
+	rtv1.ConditionedStatus `json:",inline"`
 
 	// Kind: the kind of the custom resource
 	Kind string `json:"kind,omitempty"`
@@ -114,4 +123,14 @@ type CompositionDefinition struct {
 
 	Spec   CompositionDefinitionSpec   `json:"spec,omitempty"`
 	Status CompositionDefinitionStatus `json:"status,omitempty"`
+}
+
+// SetConditions of this CompositionDefinition.
+func (mg *CompositionDefinition) SetConditions(c ...rtv1.Condition) {
+	mg.Status.SetConditions(c...)
+}
+
+// GetCondition of this CompositionDefinition.
+func (mg *CompositionDefinition) GetCondition(ct rtv1.ConditionType) rtv1.Condition {
+	return mg.Status.GetCondition(ct)
 }

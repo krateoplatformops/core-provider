@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.1
   name: compositiondefinitions.core.krateo.io
 spec:
   group: core.krateo.io
@@ -113,16 +113,6 @@ spec:
                   rule: '!has(oldSelf.version) || has(self.version)'
                 - message: Repo is required once set
                   rule: '!has(oldSelf.repo) || has(self.repo)'
-              deletionPolicy:
-                default: Delete
-                description: |-
-                  DeletionPolicy specifies what will happen to the underlying external
-                  when this managed resource is deleted - either "Delete" or "Orphan" the
-                  external resource.
-                enum:
-                - Orphan
-                - Delete
-                type: string
             type: object
           status:
             description: CompositionDefinitionStatus is the status of a CompositionDefinition.

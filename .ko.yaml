@@ -1,0 +1,12 @@
+builds:
+- id: core-provider
+  #main: main.go
+  dir: . 
+  env:
+  - CGO_ENABLED=0
+  ldflags:
+  - -s -w
+  - -extldflags "-static"
+defaultPlatforms:
+- linux/arm64
+#- linux/amd64

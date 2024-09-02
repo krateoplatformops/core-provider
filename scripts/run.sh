@@ -12,4 +12,4 @@ kubectl apply -f testdata/compositiondefinition-redis.yaml
 #kubectl apply -f testdata/compositiondefinition-postgresql-tgz.yaml
 #kubectl apply -f testdata/sample.yaml
 
-go run cmd/main.go --debug --poll "3m"
+go run main.go --debug --poll "3m"

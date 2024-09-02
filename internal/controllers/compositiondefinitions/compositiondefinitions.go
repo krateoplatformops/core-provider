@@ -80,7 +80,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
 		For(&compositiondefinitionsv1alpha1.CompositionDefinition{}).
-		Complete(ratelimiter.NewReconciler(name, r, o.GlobalRateLimiter))
+		Complete(ratelimiter.New(name, r, o.GlobalRateLimiter))
 }
 
 type connector struct {
