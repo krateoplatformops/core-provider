@@ -6,22 +6,27 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
+	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
 	"github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
@@ -41,18 +46,47 @@ import (
 )
 
 const (
-	errNotCR = "managed resource is not a Definition custom resource"
-
-	// labelKeyGroup    = "krateo.io/crd-group"
-	// labelKeyVersion  = "krateo.io/crd-version"
-	// labelKeyResource = "krateo.io/crd-resource"
-
+	errNotCR             = "managed resource is not a Definition custom resource"
 	reconcileGracePeriod = 1 * time.Minute
 	reconcileTimeout     = 4 * time.Minute
 
 	cdcImageTagEnvVar = "CDC_IMAGE_TAG"
 )
 
+const (
+	mutatingWebhookName         = "core.provider.krateo.io"
+	mutatingWebhookMetadataName = "core-provider-webhook"
+)
+
+var (
+	// Build webhooks used for the various server
+	// configuration options
+	//
+	// These handlers could be also be implementations
+	// of the AdmissionHandler interface for more complex
+	// implementations.
+	mutatingHook = &webhook.Admission{
+		Handler: admission.HandlerFunc(func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
+			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
+				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
+				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
+			)
+		}),
+	}
+	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
+	cabundle                     = GetCABundle()
+)
+
+func GetCABundle() []byte {
+	// CertDir is the directory that contains the server key and certificate. Defaults to
+	// <temp-dir>/k8s-webhook-server/serving-certs.
+	fb, err := os.ReadFile(path.Join(os.TempDir(), "k8s-webhook-server/serving-certs/tls.crt"))
+	if err != nil {
+		return nil
+	}
+
+	return fb
+}
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	_ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
 
@@ -62,11 +96,15 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 
 	recorder := mgr.GetEventRecorderFor(name)
 
+	mgr.GetWebhookServer().Register("/mutate", mutatingHook)
+	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
+	cli := mgr.GetClient()
+
 	r := reconciler.NewReconciler(mgr,
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
 			discovery: discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
-			kube:      mgr.GetClient(),
+			kube:      cli,
 			log:       l,
 			recorder:  recorder,
 		}),
@@ -81,6 +119,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		WithOptions(o.ForControllerRuntime()).
 		For(&compositiondefinitionsv1alpha1.CompositionDefinition{}).
 		Complete(ratelimiter.New(name, r, o.GlobalRateLimiter))
+
 }
 
 type connector struct {
@@ -298,6 +337,46 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		if err != nil {
 			return err
 		}
+		if len(crd.Spec.Versions) > 1 {
+			// This occurs when the CRD version installed via new CompositionDefinition CR
+			// is not installed but the CRD is already installed
+			if cr.Status.ApiVersion == "" && cr.Status.Kind == "" {
+				crdtools.SetServedStorage(crd, crdtools.VersionConf{
+					Name:   newcrd.Spec.Versions[0].Name,
+					Served: true,
+				})
+			} else {
+				// Latest version has to be the newly added version
+				crdtools.SetServedStorage(crd, crdtools.VersionConf{
+					Name:   newcrd.Spec.Versions[0].Name,
+					Served: true,
+				})
+				currentVersion := strings.Split(cr.Status.ApiVersion, "/")[1]
+				crdtools.SetServedStorage(crd, crdtools.VersionConf{
+					Name:   currentVersion,
+					Served: false,
+				})
+			}
+		}
+
+		whport := int32(9443)
+		whpath := "/convert"
+
+		crd = crdtools.ConversionConf(*crd, &apiextensionsv1.CustomResourceConversion{
+			Strategy: apiextensionsv1.WebhookConverter,
+			Webhook: &apiextensionsv1.WebhookConversion{
+				ConversionReviewVersions: []string{"v1", "v1alpha1", "v1alpha2"},
+				ClientConfig: &apiextensionsv1.WebhookClientConfig{
+					Service: &apiextensionsv1.ServiceReference{
+						Namespace: "default",
+						Name:      "core-provider-webhook-service",
+						Port:      &whport,
+						Path:      &whpath,
+					},
+					CABundle: cabundle,
+				},
+			},
+		})
 		return crdtools.Update(ctx, e.kube, crd.Name, crd)
 	} else {
 		crd, err = crdtools.Get(ctx, e.kube, gvr)
@@ -309,10 +388,13 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		}
 
 		if meta.IsVerbose(cr) {
-			e.log.Debug("CRD alredy generated, checking served resources", "gvr", gvr.String())
+			e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
 		}
 
-		crdtools.SetServedStorage(crd, gvr.Version)
+		crdtools.SetServedStorage(crd, crdtools.VersionConf{
+			Name:   gvr.Version,
+			Served: true,
+		})
 
 		err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 		if err != nil {
@@ -354,7 +436,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	// Undeploy olders versions of the CRD
 	for _, v := range crd.Spec.Versions {
-		if !v.Served && !v.Storage {
+		if !v.Served {
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
 				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 				Spec:            cr.Spec.Chart.DeepCopy(),
@@ -367,19 +449,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 				SkipCRD: true,
 			})
 
-			// err = deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
-			// 	KubeClient: e.kube,
-			// 	NamespacedName: types.NamespacedName{
-			// 		Namespace: cr.Namespace,
-			// 		Name:      resourceNamer(gvr.Resource, v.Name),
-			// 	},
-			// 	Log: e.log.Debug,
-			// })
 			if err != nil {
 				return err
 			}
 		}
-
 	}
 
 	err = e.kube.Status().Update(ctx, cr)

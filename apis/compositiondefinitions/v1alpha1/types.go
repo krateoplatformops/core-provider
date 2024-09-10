@@ -31,6 +31,11 @@ type Credentials struct {
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.version) || has(self.version)", message="Version is required once set"
 // +kubebuilder:validation:XValidation:rule="!has(oldSelf.repo) || has(self.repo)", message="Repo is required once set"
 type ChartInfo struct {
+	// Served: whether the chart is served
+	// +optional
+	// +kubebuilder:default=true
+	Served bool `json:"served"`
+
 	// Url: oci or tgz full url
 	Url string `json:"url"`
 	// Version: desired chart version
@@ -53,7 +58,6 @@ type ChartInfo struct {
 
 type CompositionDefinitionSpec struct {
 	// rtv1.ManagedSpec `json:",inline"`
-
 	Chart *ChartInfo `json:"chart,omitempty"`
 }
 
@@ -89,10 +93,10 @@ type Managed struct {
 type CompositionDefinitionStatus struct {
 	rtv1.ConditionedStatus `json:",inline"`
 
-	// Kind: the kind of the custom resource
+	// Kind: the kind of the custom resource - Last applied kind
 	Kind string `json:"kind,omitempty"`
 
-	// ApiVersion: the api version of the custom resource
+	// ApiVersion: the api version of the custom resource - Last applied apiVersion
 	ApiVersion string `json:"apiVersion,omitempty"`
 
 	// Managed: information about the managed resources
