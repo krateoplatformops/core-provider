@@ -29,6 +29,7 @@ spec:
       containers:
       - name: {{ .resource }}-{{ .apiVersion }}-controller
         image: ghcr.io/krateoplatformops/composition-dynamic-controller:{{ or .tag "0.5.0" }}
+        # image: kind.local/composition-dynamic-controller:latest
         imagePullPolicy: IfNotPresent
         env: 
         - name: HOME # home should be set to /tmp or any other writable directory to avoid permission issues with helm https://github.com/helm/helm/issues/8038

@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.1
   name: compositiondefinitions.core.krateo.io
 spec:
   group: core.krateo.io
@@ -63,6 +63,7 @@ spec:
           spec:
             properties:
               chart:
+                description: rtv1.ManagedSpec `json:",inline"`
                 properties:
                   credentials:
                     description: 'Credentials: credentials for private repos'
@@ -98,6 +99,10 @@ spec:
                     description: 'Repo: helm repo name (for helm repo urls only)'
                     maxLength: 256
                     type: string
+                  served:
+                    default: true
+                    description: 'Served: whether the chart is served'
+                    type: boolean
                   url:
                     description: 'Url: oci or tgz full url'
                     type: string
@@ -113,22 +118,13 @@ spec:
                   rule: '!has(oldSelf.version) || has(self.version)'
                 - message: Repo is required once set
                   rule: '!has(oldSelf.repo) || has(self.repo)'
-              deletionPolicy:
-                default: Delete
-                description: |-
-                  DeletionPolicy specifies what will happen to the underlying external
-                  when this managed resource is deleted - either "Delete" or "Orphan" the
-                  external resource.
-                enum:
-                - Orphan
-                - Delete
-                type: string
             type: object
           status:
             description: CompositionDefinitionStatus is the status of a CompositionDefinition.
             properties:
               apiVersion:
-                description: 'ApiVersion: the api version of the custom resource'
+                description: 'ApiVersion: the api version of the custom resource -
+                  Last applied apiVersion'
                 type: string
               conditions:
                 description: Conditions of the resource.
@@ -171,7 +167,8 @@ spec:
                   occurred during role and clusterrole creation'
                 type: string
               kind:
-                description: 'Kind: the kind of the custom resource'
+                description: 'Kind: the kind of the custom resource - Last applied
+                  kind'
                 type: string
               managed:
                 description: 'Managed: information about the managed resources'

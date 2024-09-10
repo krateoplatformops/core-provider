@@ -103,10 +103,7 @@ import (
 	"fmt"
 	"strings"
 
-	gojson "encoding/json"
-
 	"github.com/avast/retry-go"
-	"github.com/krateoplatformops/core-provider/internal/tools/crd/jsonequality"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -273,6 +270,11 @@ func Unmarshal(dat []byte) (*apiextensionsv1.CustomResourceDefinition, error) {
 	return res, err
 }
 
+func ConversionConf(crd apiextensionsv1.CustomResourceDefinition, conf *apiextensionsv1.CustomResourceConversion) *apiextensionsv1.CustomResourceDefinition {
+	crd.Spec.Conversion = conf
+	return &crd
+}
+
 // AppendVersion appends the version of the toadd CRD to the crd CRD and sets the Storage and Served fields in the last version of the crd CRD.
 func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
 	for _, el2 := range toadd.Spec.Versions {
@@ -286,53 +288,41 @@ func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextens
 		}
 
 		if !exist {
-			existingschema, err := gojson.Marshal(crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties)
-			if err != nil {
-				fmt.Println("error: ", err)
-			}
-			newschema, err := gojson.Marshal(el2.Schema.OpenAPIV3Schema.Properties)
-			if err != nil {
-				fmt.Println("error: ", err)
-			}
+			// existingschema, err := gojson.Marshal(crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties)
+			// if err != nil {
+			// 	fmt.Println("error: ", err)
+			// }
+			// newschema, err := gojson.Marshal(el2.Schema.OpenAPIV3Schema.Properties)
+			// if err != nil {
+			// 	fmt.Println("error: ", err)
+			// }
 
-			if jsonequality.JSONEq(string(existingschema), string(newschema)) {
-				crd.Spec.Versions = append(crd.Spec.Versions, el2)
-			} else {
-				return nil, fmt.Errorf("schema not equal")
-			}
+			crd.Spec.Versions = append(crd.Spec.Versions, el2)
+
+			// if jsonequality.JSONEq(string(existingschema), string(newschema)) {
+			// 	crd.Spec.Versions = append(crd.Spec.Versions, el2)
+			// } else {
+			// 	return nil, fmt.Errorf("schema not equal")
+			// }
 		}
-	}
-	if len(crd.Spec.Versions) > 1 {
-		// Latest version is the last version - not ideal
-		// var versions []string
-		// for i := range crd.Spec.Versions {
-		// 	versions = append(versions, crd.Spec.Versions[i].Name)
-		// }
-		// versions = versionsort.SortVersions(versions)
-		// for i := range crd.Spec.Versions {
-		// 	if crd.Spec.Versions[i].Name == versions[0] {
-		// 		crd.Spec.Versions[i].Storage = true
-		// 		crd.Spec.Versions[i].Served = true
-		// 	} else {
-		// 		crd.Spec.Versions[i].Storage = false
-		// 		crd.Spec.Versions[i].Served = false
-		// 	}
-		// }
-
-		// Latest version has to be the newly added version
-		SetServedStorage(&crd, toadd.Spec.Versions[0].Name)
 	}
 
 	return &crd, nil
 }
 
-func SetServedStorage(crd *apiextensionsv1.CustomResourceDefinition, version string) {
+type VersionConf struct {
+	Name   string
+	Served bool
+}
+
+func SetServedStorage(crd *apiextensionsv1.CustomResourceDefinition, vconf VersionConf) {
 	for i := range crd.Spec.Versions {
-		if crd.Spec.Versions[i].Name == version {
-			crd.Spec.Versions[i].Served = true
+		if crd.Spec.Versions[i].Name == vconf.Name {
+			// crd.Spec.Versions[i].Served = true
 			crd.Spec.Versions[i].Storage = true
+			crd.Spec.Versions[i].Served = vconf.Served
 		} else {
-			crd.Spec.Versions[i].Served = false
+			// crd.Spec.Versions[i].Served = false
 			crd.Spec.Versions[i].Storage = false
 		}
 	}
