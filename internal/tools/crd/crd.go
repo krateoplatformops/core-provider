@@ -279,31 +279,58 @@ func ConversionConf(crd apiextensionsv1.CustomResourceDefinition, conf *apiexten
 func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
 	for _, el2 := range toadd.Spec.Versions {
 		exist := false
+		vacuum := false
 		for _, el1 := range crd.Spec.Versions {
 			if el1.Name == el2.Name {
 				exist = true
 				break
 			}
-
+		}
+		for _, el1 := range crd.Spec.Versions {
+			if el1.Name == "vacuum" {
+				vacuum = true
+				break
+			}
 		}
 
 		if !exist {
-			// existingschema, err := gojson.Marshal(crd.Spec.Versions[0].Schema.OpenAPIV3Schema.Properties)
-			// if err != nil {
-			// 	fmt.Println("error: ", err)
-			// }
-			// newschema, err := gojson.Marshal(el2.Schema.OpenAPIV3Schema.Properties)
-			// if err != nil {
-			// 	fmt.Println("error: ", err)
-			// }
-
 			crd.Spec.Versions = append(crd.Spec.Versions, el2)
-
-			// if jsonequality.JSONEq(string(existingschema), string(newschema)) {
-			// 	crd.Spec.Versions = append(crd.Spec.Versions, el2)
-			// } else {
-			// 	return nil, fmt.Errorf("schema not equal")
-			// }
+			if !vacuum {
+				crd.Spec.Versions = append(crd.Spec.Versions, apiextensionsv1.CustomResourceDefinitionVersion{
+					Name:    "vacuum",
+					Served:  false,
+					Storage: true,
+					Schema: &apiextensionsv1.CustomResourceValidation{
+						OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+							Type:        "object",
+							Description: "This is a vacuum version to storage different versions",
+							Properties: map[string]apiextensionsv1.JSONSchemaProps{
+								"apiVersion": {
+									Type:        "string",
+									Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+								},
+								"kind": {
+									Type: "string",
+								},
+								"metadata": {
+									Type: "object",
+								},
+								"spec": {
+									Type:                   "object",
+									XPreserveUnknownFields: &[]bool{true}[0],
+								},
+							},
+						},
+					},
+				})
+			}
+			for i := range crd.Spec.Versions {
+				// if different from vacuum served: false and storage: true
+				if crd.Spec.Versions[i].Name != "vacuum" {
+					crd.Spec.Versions[i].Served = true
+					crd.Spec.Versions[i].Storage = false
+				}
+			}
 		}
 	}
 
@@ -313,19 +340,6 @@ func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextens
 type VersionConf struct {
 	Name   string
 	Served bool
-}
-
-func SetServedStorage(crd *apiextensionsv1.CustomResourceDefinition, vconf VersionConf) {
-	for i := range crd.Spec.Versions {
-		if crd.Spec.Versions[i].Name == vconf.Name {
-			// crd.Spec.Versions[i].Served = true
-			crd.Spec.Versions[i].Storage = true
-			crd.Spec.Versions[i].Served = vconf.Served
-		} else {
-			// crd.Spec.Versions[i].Served = false
-			crd.Spec.Versions[i].Storage = false
-		}
-	}
 }
 
 func registerEventually() error {

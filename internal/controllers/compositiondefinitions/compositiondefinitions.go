@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path"
-	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -337,27 +336,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		if err != nil {
 			return err
 		}
-		if len(crd.Spec.Versions) > 1 {
-			// This occurs when the CRD version installed via new CompositionDefinition CR
-			// is not installed but the CRD is already installed
-			if cr.Status.ApiVersion == "" && cr.Status.Kind == "" {
-				crdtools.SetServedStorage(crd, crdtools.VersionConf{
-					Name:   newcrd.Spec.Versions[0].Name,
-					Served: true,
-				})
-			} else {
-				// Latest version has to be the newly added version
-				crdtools.SetServedStorage(crd, crdtools.VersionConf{
-					Name:   newcrd.Spec.Versions[0].Name,
-					Served: true,
-				})
-				currentVersion := strings.Split(cr.Status.ApiVersion, "/")[1]
-				crdtools.SetServedStorage(crd, crdtools.VersionConf{
-					Name:   currentVersion,
-					Served: false,
-				})
-			}
-		}
 
 		whport := int32(9443)
 		whpath := "/convert"
@@ -391,10 +369,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
 		}
 
-		crdtools.SetServedStorage(crd, crdtools.VersionConf{
-			Name:   gvr.Version,
-			Served: true,
-		})
+		// crdtools.SetServedStorage(crd, crdtools.VersionConf{
+		// 	Name:   gvr.Version,
+		// 	Served: true,
+		// })
 
 		err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 		if err != nil {

@@ -89,10 +89,9 @@ func (wh *webhook) handleConvertRequest(req *apix.ConversionRequest) (*apix.Conv
 		unssrc, _ := usrc.(*unstructured.Unstructured)
 		src := &convertible.Hub{Unstructured: unssrc}
 		dst := createEmptyConvertible(req.DesiredAPIVersion, gvk.Kind)
-		err = wh.convertObject(src, dst)
-		if err != nil {
-			return nil, fmt.Errorf("Error converting Object: %w", err)
-		}
+		dst.Object["metadata"] = src.Object["metadata"]
+		dst.Object["spec"] = src.Object["spec"]
+		dst.Object["status"] = src.Object["status"]
 		objects = append(objects, runtime.RawExtension{Object: dst})
 	}
 	return &apix.ConversionResponse{
