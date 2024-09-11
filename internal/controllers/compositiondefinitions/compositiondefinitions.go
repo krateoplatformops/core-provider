@@ -32,6 +32,7 @@ import (
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
+	"github.com/krateoplatformops/core-provider/internal/tools/env"
 	"github.com/krateoplatformops/crdgen"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -74,6 +75,8 @@ var (
 	}
 	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
 	cabundle                     = GetCABundle()
+	webhookServiceName           = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
+	webhookServiceNamespace      = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
 )
 
 func GetCABundle() []byte {
@@ -346,8 +349,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 				ConversionReviewVersions: []string{"v1", "v1alpha1", "v1alpha2"},
 				ClientConfig: &apiextensionsv1.WebhookClientConfig{
 					Service: &apiextensionsv1.ServiceReference{
-						Namespace: "default",
-						Name:      "core-provider-webhook-service",
+						Namespace: webhookServiceNamespace,
+						Name:      webhookServiceName,
 						Port:      &whport,
 						Path:      &whpath,
 					},
