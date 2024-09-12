@@ -19,10 +19,17 @@ func TestInitClusterRole(t *testing.T) {
 
 	clusterRole := InitClusterRole(opts)
 
+	expectedRules := []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{"apiextensions.k8s.io"},
+			Resources: []string{"customresourcedefinitions"},
+			Verbs:     []string{"get", "list"},
+		},
+	}
 	assert.Equal(t, "rbac.authorization.k8s.io/v1", clusterRole.APIVersion)
 	assert.Equal(t, "ClusterRole", clusterRole.Kind)
 	assert.Equal(t, opts.Name, clusterRole.Name)
-	assert.Empty(t, clusterRole.Rules)
+	assert.Equal(t, clusterRole.Rules, expectedRules)
 }
 func TestUninstallClusterRole(t *testing.T) {
 	opts := UninstallOptions{
