@@ -100,15 +100,12 @@ spec:
                     description: 'Repo: helm repo name (for helm repo urls only)'
                     maxLength: 256
                     type: string
-                  served:
-                    default: true
-                    description: 'Served: whether the chart is served'
-                    type: boolean
                   url:
                     description: 'Url: oci or tgz full url'
                     type: string
                   version:
-                    description: 'Version: desired chart version'
+                    description: 'Version: desired chart version, needed for oci charts
+                      and for helm repo urls'
                     maxLength: 20
                     type: string
                 required:
