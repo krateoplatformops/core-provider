@@ -149,4 +149,4 @@ jobs:
     steps:
       - name: Update CRD doc
         run: |
-          curl -s https://doc.crds.dev/github.com/${{ github.repository_owner }}/{{ github.repository }}@${{  github.ref_name }}
+          curl -s https://doc.crds.dev/github.com/${{ github.repository_owner }}/${{ github.repository }}@${{  github.ref_name }}
