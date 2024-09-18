@@ -319,6 +319,10 @@ func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextens
 									Type:                   "object",
 									XPreserveUnknownFields: &[]bool{true}[0],
 								},
+								"status": {
+									Type:                   "object",
+									XPreserveUnknownFields: &[]bool{true}[0],
+								},
 							},
 						},
 					},
