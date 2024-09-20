@@ -2,6 +2,7 @@ package rbactools
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/avast/retry-go"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -74,6 +75,30 @@ func CreateClusterRoleBinding(opts types.NamespacedName) rbacv1.ClusterRoleBindi
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
 			Name:     opts.Name,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      opts.Name,
+				Namespace: opts.Namespace,
+			},
+		},
+	}
+}
+
+func CreateClusterRoleBindingAdmin(opts types.NamespacedName) rbacv1.ClusterRoleBinding {
+	return rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "ClusterRoleBinding",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name: fmt.Sprintf("%s-admin", opts.Name),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     "cluster-admin",
 		},
 		Subjects: []rbacv1.Subject{
 			{
