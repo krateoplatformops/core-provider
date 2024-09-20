@@ -231,6 +231,16 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 		}
 	}
 
+	crbAdmin := rbactools.CreateClusterRoleBindingAdmin(types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name,
+	})
+
+	err = rbactools.InstallClusterRoleBinding(ctx, opts.KubeClient, &crbAdmin)
+	if err != nil {
+		return err, rbacErr
+	}
+
 	dep, err := deployment.CreateDeployment(gvr, opts.NamespacedName, opts.CDCImageTag)
 	if err != nil {
 		return err, rbacErr
