@@ -43,3 +43,64 @@ func TestUninstallClusterRoleBinding(t *testing.T) {
 	err = fakeClient.Get(ctx, client.ObjectKeyFromObject(&clusterRoleBinding), crb)
 	assert.True(t, apierrors.IsNotFound(err))
 }
+func TestPopulateClusterRoleBinding(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmp      *rbacv1.ClusterRoleBinding
+		obj      *rbacv1.ClusterRoleBinding
+		expected []rbacv1.Subject
+	}{
+		{
+			name: "No subjects in tmp",
+			tmp:  &rbacv1.ClusterRoleBinding{},
+			obj: &rbacv1.ClusterRoleBinding{
+				Subjects: []rbacv1.Subject{
+					{Kind: "User", Name: "user1", Namespace: "default"},
+				},
+			},
+			expected: []rbacv1.Subject{
+				{Kind: "User", Name: "user1", Namespace: "default"},
+			},
+		},
+		{
+			name: "No new subjects in obj",
+			tmp: &rbacv1.ClusterRoleBinding{
+				Subjects: []rbacv1.Subject{
+					{Kind: "User", Name: "user1", Namespace: "default"},
+				},
+			},
+			obj: &rbacv1.ClusterRoleBinding{
+				Subjects: []rbacv1.Subject{
+					{Kind: "User", Name: "user1", Namespace: "default"},
+				},
+			},
+			expected: []rbacv1.Subject{
+				{Kind: "User", Name: "user1", Namespace: "default"},
+			},
+		},
+		{
+			name: "New subjects in obj",
+			tmp: &rbacv1.ClusterRoleBinding{
+				Subjects: []rbacv1.Subject{
+					{Kind: "User", Name: "user1", Namespace: "default"},
+				},
+			},
+			obj: &rbacv1.ClusterRoleBinding{
+				Subjects: []rbacv1.Subject{
+					{Kind: "User", Name: "user2", Namespace: "default"},
+				},
+			},
+			expected: []rbacv1.Subject{
+				{Kind: "User", Name: "user1", Namespace: "default"},
+				{Kind: "User", Name: "user2", Namespace: "default"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			populateClusterRoleBinding(tt.tmp, tt.obj)
+			assert.Equal(t, tt.expected, tt.tmp.Subjects)
+		})
+	}
+}
