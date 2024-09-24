@@ -12,6 +12,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+func populateClusterRoleBinding(tmp *rbacv1.ClusterRoleBinding, obj *rbacv1.ClusterRoleBinding) {
+	for _, sub := range obj.Subjects {
+		found := false
+		for _, tmpSub := range tmp.Subjects {
+			if sub.Name == tmpSub.Name && sub.Namespace == tmpSub.Namespace && sub.Kind == tmpSub.Kind {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			tmp.Subjects = append(tmp.Subjects, sub)
+		}
+	}
+}
+
 func InstallClusterRoleBinding(ctx context.Context, kube client.Client, obj *rbacv1.ClusterRoleBinding) error {
 	return retry.Do(
 		func() error {
@@ -24,8 +40,8 @@ func InstallClusterRoleBinding(ctx context.Context, kube client.Client, obj *rba
 
 				return err
 			}
-
-			return nil
+			populateClusterRoleBinding(&tmp, obj)
+			return kube.Update(ctx, &tmp, &client.UpdateOptions{})
 		},
 	)
 }
