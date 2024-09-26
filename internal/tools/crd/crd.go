@@ -275,6 +275,15 @@ func ConversionConf(crd apiextensionsv1.CustomResourceDefinition, conf *apiexten
 	return &crd
 }
 
+func SetServedStorage(crd *apiextensionsv1.CustomResourceDefinition, version string, served, storage bool) {
+	for i := range crd.Spec.Versions {
+		if crd.Spec.Versions[i].Name == version {
+			crd.Spec.Versions[i].Served = served
+			crd.Spec.Versions[i].Storage = storage
+		}
+	}
+}
+
 // AppendVersion appends the version of the toadd CRD to the crd CRD and sets the Storage and Served fields in the last version of the crd CRD.
 func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextensionsv1.CustomResourceDefinition) (*apiextensionsv1.CustomResourceDefinition, error) {
 	for _, el2 := range toadd.Spec.Versions {
