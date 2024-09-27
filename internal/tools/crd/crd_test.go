@@ -7,16 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -182,18 +177,4 @@ func TestGet(t *testing.T) {
 	} else {
 		t.Logf("CRD does not exist")
 	}
-}
-
-func setupKubeClient() (client.Client, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(home, ".kube/config"))
-	if err != nil {
-		return nil, err
-	}
-
-	return client.New(cfg, client.Options{})
 }
