@@ -1,0 +1,4 @@
+# sample regex patterns
+ignore:
+  - "apis"
+  - "main.go"

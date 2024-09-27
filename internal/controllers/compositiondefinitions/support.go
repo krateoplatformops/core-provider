@@ -51,6 +51,13 @@ func resourceNamer(resourceName string, chartVersion string) string {
 	return fmt.Sprintf("%s-%s-controller", resourceName, chartVersion)
 }
 
+// updateVersionInfo updates the version information of a CompositionDefinition custom resource
+// based on the provided CustomResourceDefinition and GroupVersionResource.
+//
+// The function iterates through the versions specified in the CustomResourceDefinition and updates
+// the corresponding version information in the CompositionDefinition's status. If a version is not
+// found in the existing status, it is added. If the version matches the GroupVersionResource, additional
+// chart information is populated from the CompositionDefinition's spec.
 func updateVersionInfo(cr *compositiondefinitionsv1alpha1.CompositionDefinition, crd *apiextensionsv1.CustomResourceDefinition, gvr schema.GroupVersionResource) {
 	for _, v := range crd.Spec.Versions {
 		i := -1
@@ -93,7 +100,8 @@ const (
 	CompositionVersionLabel = "krateo.io/composition-version"
 )
 
-// updateCompositionsVersion updates the composition version label for all compositions
+// updateCompositionsVersion updates the version label of all compositions in a namespace
+// that match the specified GroupVersionResource (GVR) and current version.
 func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log logging.Logger, opts CompositionsInfo, newVersion string) error {
 	// Create a label requirement for the composition version
 	labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
