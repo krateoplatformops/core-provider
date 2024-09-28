@@ -29,6 +29,26 @@ const (
     },
     "helmChartVersion": {
       "type": "string"
+    },
+    "managed": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          }
+        }
+      }
     }
   }
 }`

@@ -329,11 +329,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		})
 
 		res := crdgen.Generate(ctx, crdgen.Options{
-			Managed:              true,
-			WorkDir:              dir,
-			GVK:                  gvk,
-			Categories:           []string{"compositions", "comps"},
-			SpecJsonSchemaGetter: generator.ChartJsonSchemaGetter(pkg, dir),
+			Managed:                true,
+			WorkDir:                dir,
+			GVK:                    gvk,
+			Categories:             []string{"compositions", "comps"},
+			SpecJsonSchemaGetter:   generator.ChartJsonSchemaGetter(pkg, dir),
+			StatusJsonSchemaGetter: StaticJsonSchemaGetter(),
 		})
 		if res.Err != nil {
 			return res.Err
