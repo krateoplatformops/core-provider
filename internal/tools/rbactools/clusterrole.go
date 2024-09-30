@@ -76,6 +76,11 @@ func InitClusterRole(opts types.NamespacedName) rbacv1.ClusterRole {
 				Resources: []string{"customresourcedefinitions"},
 				Verbs:     []string{"get", "list"},
 			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"events"},
+				Verbs:     []string{"create", "patch", "update"},
+			},
 		},
 	}
 }
