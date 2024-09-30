@@ -53,6 +53,26 @@ type ChartInfo struct {
 	Credentials *Credentials `json:"credentials,omitempty"`
 }
 
+type ChartInfoProps struct {
+	// Url: oci or tgz full url
+	Url string `json:"url"`
+	// Version: desired chart version, needed for oci charts and for helm repo urls
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=20
+	Version string `json:"version,omitempty"`
+	// Repo: helm repo name (for helm repo urls only)
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:MaxLength=256
+	Repo string `json:"repo,omitempty"`
+
+	// InsecureSkipVerifyTLS: skip tls verification
+	// +optional
+	InsecureSkipVerifyTLS bool `json:"insecureSkipVerifyTLS,omitempty"`
+
+	// Credentials: credentials for private repos
+	// +optional
+	Credentials *Credentials `json:"credentials,omitempty"`
+}
 type CompositionDefinitionSpec struct {
 	// rtv1.ManagedSpec `json:",inline"`
 	Chart *ChartInfo `json:"chart,omitempty"`
@@ -70,6 +90,10 @@ type VersionDetail struct {
 	// Stored: whether the version is stored
 	// +optional
 	Stored bool `json:"stored"`
+
+	// Chart: the chart information
+	// +optional
+	Chart *ChartInfoProps `json:"chart"`
 }
 
 type Managed struct {

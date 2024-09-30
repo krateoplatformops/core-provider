@@ -11,9 +11,11 @@ import (
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -106,6 +108,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
 			discovery: discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
+			dynamic:   dynamic.NewForConfigOrDie(mgr.GetConfig()),
 			kube:      cli,
 			log:       l,
 			recorder:  recorder,
@@ -125,6 +128,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 }
 
 type connector struct {
+	dynamic   dynamic.Interface
 	discovery discovery.DiscoveryInterface
 	kube      client.Client
 	log       logging.Logger
@@ -146,6 +150,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 	return &external{
 		kube:      c.kube,
 		log:       c.log,
+		dynamic:   c.dynamic,
 		discovery: c.discovery,
 		rec:       c.recorder,
 	}, nil
@@ -153,6 +158,7 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 
 type external struct {
 	discovery discovery.DiscoveryInterface
+	dynamic   dynamic.Interface
 	kube      client.Client
 	log       logging.Logger
 	rec       record.EventRecorder
@@ -173,7 +179,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
-
 	gvr := tools.ToGroupVersionResource(gvk)
 	log.Printf("[DBG] Observing (gvk: %s, gvr: %s)\n", gvk.String(), gvr.String())
 
@@ -184,7 +189,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	if !crdOk {
 		log.Printf("[DBG] CRD does not exists yet (gvr: %q)\n", gvr.String())
-
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
@@ -237,15 +241,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			"gvr", gvr.String())
 	}
 
-	// Sets the status of the CompositionDefinition
-	if crd != nil {
-		updateVersionInfo(cr, crd)
-		cr.Status.Managed.Group = crd.Spec.Group
-		cr.Status.Managed.Kind = crd.Spec.Names.Kind
-	}
-	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
-	cr.Status.PackageURL = pkg.PackageURL()
-
 	if !deployReady {
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("Dynamic Controller '%s' not ready yet", obj.Name)))
@@ -256,12 +251,30 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
+	// if version is different, Update
+	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
+	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
+		e.log.Info("Updating CompositionDefinition GVK", "old", oldGVK, "new", gvk)
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil
+	}
+
+	// Sets the status of the CompositionDefinition
+	if crd != nil {
+		updateVersionInfo(cr, crd, gvr)
+		cr.Status.Managed.Group = crd.Spec.Group
+		cr.Status.Managed.Kind = crd.Spec.Names.Kind
+	}
+	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+	cr.Status.PackageURL = pkg.PackageURL()
+
 	if cr.Status.Error != nil {
 		cr.SetConditions(rtv1.Unavailable().WithMessage(*cr.Status.Error))
 	} else {
 		cr.SetConditions(rtv1.Available())
 	}
-
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: true,
@@ -316,11 +329,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		})
 
 		res := crdgen.Generate(ctx, crdgen.Options{
-			Managed:              true,
-			WorkDir:              dir,
-			GVK:                  gvk,
-			Categories:           []string{"compositions", "comps"},
-			SpecJsonSchemaGetter: generator.ChartJsonSchemaGetter(pkg, dir),
+			Managed:                true,
+			WorkDir:                dir,
+			GVK:                    gvk,
+			Categories:             []string{"compositions", "comps"},
+			SpecJsonSchemaGetter:   generator.ChartJsonSchemaGetter(pkg, dir),
+			StatusJsonSchemaGetter: StaticJsonSchemaGetter(),
 		})
 		if res.Err != nil {
 			return res.Err
@@ -372,11 +386,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
 		}
 
-		// crdtools.SetServedStorage(crd, crdtools.VersionConf{
-		// 	Name:   gvr.Version,
-		// 	Served: true,
-		// })
-
 		err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 		if err != nil {
 			return err
@@ -415,27 +424,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	// Undeploy olders versions of the CRD
-	for _, v := range crd.Spec.Versions {
-		if !v.Served {
-			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
-				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
-				Spec:            cr.Spec.Chart.DeepCopy(),
-				KubeClient:      e.kube,
-				GVR:             tools.ToGroupVersionResource(gvk),
-				NamespacedName: types.NamespacedName{
-					Name:      resourceNamer(gvr.Resource, v.Name),
-					Namespace: cr.Namespace,
-				},
-				SkipCRD: true,
-			})
-
-			if err != nil {
-				return err
-			}
-		}
-	}
-
 	err = e.kube.Status().Update(ctx, cr)
 	if err != nil {
 		return err
@@ -452,7 +440,104 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 }
 
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
-	return nil // NOOP
+	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
+	if !ok {
+		return errors.New(errNotCR)
+	}
+
+	if !meta.IsActionAllowed(cr, meta.ActionUpdate) {
+		e.log.Debug("External resource should not be updated by provider, skip updating.")
+		return nil
+	}
+
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Updating CompositionDefinition", "name", cr.Name)
+	}
+
+	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	if err != nil {
+		return err
+	}
+
+	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
+	if err != nil {
+		return err
+	}
+
+	gvr := tools.ToGroupVersionResource(gvk)
+
+	crd, err := crdtools.Get(ctx, e.kube, gvr)
+	if err != nil {
+		return err
+	}
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Updating Compositions", "gvr", gvr.String())
+	}
+
+	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
+
+	if meta.IsVerbose(cr) {
+		e.log.Debug("Updating from GVK", "old", oldGVK, "new", gvk)
+	}
+
+	// Undeploy olders versions of the CRD
+	for _, vi := range cr.Status.Managed.VersionInfo {
+		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
+			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
+				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
+				KubeClient:      e.kube,
+				NamespacedName: types.NamespacedName{
+					Name:      resourceNamer(gvr.Resource, oldGVK.Version),
+					Namespace: cr.Namespace,
+				},
+				SkipCRD: true,
+			})
+			if err != nil {
+				return err
+			}
+			if meta.IsVerbose(cr) {
+				e.log.Debug("Undeployed old version of CRD", "gvr", gvr.String())
+			}
+		}
+	}
+
+	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
+		err := updateCompositionsVersion(ctx, e.dynamic, e.log, CompositionsInfo{
+			GVR: schema.GroupVersionResource{
+				Group:    oldGVK.Group,
+				Version:  oldGVK.Version,
+				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
+			},
+			Namespace: cr.Namespace,
+		}, gvk.Version)
+		if err != nil {
+			return fmt.Errorf("error updating compositions version: %w", err)
+		}
+
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Updated compositions version", "gvr", gvr.String())
+		}
+	}
+
+	// Sets the new version as served in the CRD
+	crdtools.SetServedStorage(crd, gvk.Version, true, false)
+	// Sets the old version as not served in the CRD
+	crdtools.SetServedStorage(crd, oldGVK.Version, false, false)
+
+	err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+	if err != nil {
+		return err
+	}
+
+	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+
+	err = e.kube.Status().Update(ctx, cr)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
@@ -494,31 +579,4 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	return deploy.Undeploy(ctx, e.kube, opts)
-}
-
-func resourceNamer(resourceName string, chartVersion string) string {
-	return fmt.Sprintf("%s-%s-controller", resourceName, chartVersion)
-}
-
-func updateVersionInfo(cr *compositiondefinitionsv1alpha1.CompositionDefinition, crd *apiextensionsv1.CustomResourceDefinition) {
-	for _, v := range crd.Spec.Versions {
-		i := -1
-		for j, cv := range cr.Status.Managed.VersionInfo {
-			if cv.Version == v.Name {
-				i = j
-				break
-			}
-		}
-
-		if i == -1 {
-			cr.Status.Managed.VersionInfo = append(cr.Status.Managed.VersionInfo, compositiondefinitionsv1alpha1.VersionDetail{
-				Version: v.Name,
-				Served:  v.Served,
-				Stored:  v.Storage,
-			})
-			continue
-		}
-		cr.Status.Managed.VersionInfo[i].Served = v.Served
-		cr.Status.Managed.VersionInfo[i].Stored = v.Storage
-	}
 }
