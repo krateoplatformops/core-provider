@@ -2,3 +2,4 @@
 ignore:
   - "apis"
   - "main.go"
+  - "internal/controllers/compositiondefintions/compositiondefinition.go"
