@@ -25,6 +25,11 @@ func TestInitClusterRole(t *testing.T) {
 			Resources: []string{"customresourcedefinitions"},
 			Verbs:     []string{"get", "list"},
 		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"events"},
+			Verbs:     []string{"create", "patch", "update"},
+		},
 	}
 	assert.Equal(t, "rbac.authorization.k8s.io/v1", clusterRole.APIVersion)
 	assert.Equal(t, "ClusterRole", clusterRole.Kind)
