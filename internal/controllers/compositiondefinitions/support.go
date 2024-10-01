@@ -25,12 +25,15 @@ const (
   "type": "object",
   "properties": {
     "helmChartUrl": {
+	  "optional": true,
       "type": "string"
     },
     "helmChartVersion": {
+	  "optional": true,
       "type": "string"
     },
     "managed": {
+	  "optional": true,
       "type": "array",
       "items": {
         "type": "object",
