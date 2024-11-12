@@ -79,7 +79,7 @@ Upon deleting the CR, the `composition-dynamic-controller` instance is undeploye
 
 ### Upgrade Chart Version
 
-<details><summary>RestDefinition fireworksapp source Manifest</summary>
+<details><summary>CompositionDefinition fireworksapp source Manifest</summary>
 
 ```yaml
 apiVersion: core.krateo.io/v1alpha1
