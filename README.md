@@ -4,10 +4,26 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 
 ## Summary
 
-- [Architecture](#architecture)
-- [Overview](#overview)
-- [Examples](#examples)
-- [Configuration](#configuration)
+   - [Architecture](#architecture)
+   - [Overview](#overview)
+      - [Authentication](#authentication)
+      - [RBAC Generation](#rbac-generation)
+      - [Multi-Version Support](#multi-version-support)
+      - [Composition Definition](#composition-definition)
+   - [Examples](#examples)
+      - [How to Install](#how-to-install)
+      - [Apply the CompositionDefinition Manifest](#apply-the-compositiondefinition-manifest)
+      - [Upgrade Chart Version](#upgrade-chart-version)
+         - [Update the Fireworksapp Chart in the `CompositionDefinition`](#update-the-fireworksapp-chart-in-the-compositiondefinition)
+         - [Automatic Deletion of Unused `composition-dynamic-controller` Deployments](#automatic-deletion-of-unused-composition-dynamic-controller-deployments)
+         - [Multi-Version Management](#multi-version-management)
+   - [Authentication](#authentication-1)
+      - [OCI Registry](#oci-registry)
+      - [Helm Repository](#helm-repository)
+   - [Configuration](#configuration)
+      - [Security Features](#security-features)
+      - [Best Practices](#best-practices)
+
 
 ### Architecture
 
