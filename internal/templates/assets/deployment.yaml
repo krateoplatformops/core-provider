@@ -45,15 +45,11 @@ spec:
           name: metrics
           protocol: TCP
         resources: {}
-        securityContext:
-          runAsNonRoot: true
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
-      securityContext:
-        runAsNonRoot: true
       serviceAccount: {{ .name }}
       serviceAccountName: {{ .name }}
       terminationGracePeriodSeconds: 30
