@@ -215,6 +215,44 @@ func (r *RbacGenerator) PopulateRBAC(resourceName string) (map[string]RBAC, erro
 	return rbacMap, rbacErr
 }
 
+func getResourceFromLookup(lookup string) *Resource {
+	lookupReg := regexp.MustCompile(`lookup\s*(?:"([^"]+)"|([^\s]+))\s*(?:"([^"]+)"|([^\s]+))\s*(?:"([^"]+)"|([^\s]+))\s*(?:"([^"]+)"|([^\s]+))`)
+	finded := lookupReg.FindString(lookup)
+	if finded != "" {
+		// get apiVersion, kind, namespace, and name from the lookup
+
+		submatch := lookupReg.FindStringSubmatch(lookup)
+		apiVersion := submatch[1]
+		if apiVersion == "" {
+			apiVersion = submatch[2]
+		}
+		kind := submatch[3]
+		if kind == "" {
+			kind = submatch[4]
+		}
+		namespace := submatch[5]
+		if namespace == "" {
+			namespace = submatch[6]
+		}
+
+		res := Resource{
+			Kind:       kind,
+			APIVersion: apiVersion,
+			Namespace:  namespace,
+		}
+
+		reg := regexp.MustCompile(`[a-z0-9]([-a-z0-9]*[a-z0-9])?`)
+
+		if !reg.MatchString(namespace) {
+			res.IsNamespaceTemlated = true
+			res.Namespace = ""
+		}
+
+		return &res
+	}
+	return nil
+}
+
 func getDependencyDir(pkg *chartfs.ChartFS, templatesDir string) string {
 	chartsDirPath := path.Join(strings.TrimSuffix(templatesDir, "templates"), "charts")
 
@@ -263,65 +301,114 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 			}
 			resources = append(resources, ress...)
 		}
-		if !file.IsDir() && strings.HasSuffix(file.Name(), ".yaml") {
+		if !file.IsDir() {
 			fi, err := r.pkg.Open(path.Join(templatesDir, file.Name()))
 			if err != nil {
 				return nil, fmt.Errorf("failed to open file %s: %w", file.Name(), err)
 			}
+
 			scanner := bufio.NewScanner(fi)
 			out := new(bytes.Buffer)
 
+			if strings.HasSuffix(file.Name(), ".tpl") {
+				for scanner.Scan() {
+					res := getResourceFromLookup(scanner.Text())
+					if res != nil {
+						group := strings.Split(res.APIVersion, "/")[0]
+						res.Resource, res.IsNamespaced, err = getGKInfo(r.discovery, schema.GroupKind{
+							Group: group,
+							Kind:  res.Kind,
+						}, crdList)
+						if err != nil {
+							//Default to clusterRole
+							res.IsNamespaced = false
+							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
+						}
+
+						resources = append(resources, *res)
+					}
+				}
+			}
 			// ^{{\s*-?\s*else\s+if\s+.+}} else if regex
 			// ^{{\s*-?\s*if\s+.+}} if regex
 			// ^{{\s*-?\s*else\s+}} else regex
-			for scanner.Scan() {
-				namespaceReg := regexp.MustCompile(`^\s\snamespace:\s*{{(?:[^{}]*|{{.*?}})*}}`)
-				finded := namespaceReg.ReplaceAllString(scanner.Text(), "  namespace: krateo-tpl-namespace-auto-generated")
-				if finded != scanner.Text() {
-					out.WriteString(finded + "\n")
-					continue
-				}
+			if strings.HasSuffix(file.Name(), ".yaml") || strings.HasSuffix(file.Name(), ".yml") {
+				for scanner.Scan() {
+					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}`)
+					finded := commentReg.ReplaceAllString(scanner.Text(), "")
+					if finded != scanner.Text() {
+						continue
+					}
 
-				cleanTemplatedFields := regexp.MustCompile(`:\s*{{(?:[^{}]*|{{.*?}})*}}`)
-				finded = cleanTemplatedFields.FindString(scanner.Text())
-				if finded != "" {
-					cleanTemplatedFieldReg := regexp.MustCompile(`:\s*(.*)`)
-					finded = cleanTemplatedFieldReg.ReplaceAllString(finded, "")
+					res := getResourceFromLookup(scanner.Text())
+					if res != nil {
+						group := strings.Split(res.APIVersion, "/")
+						gk := schema.GroupKind{
+							Kind: res.Kind,
+						}
+
+						if len(group) > 1 {
+							gk.Group = group[0]
+						}
+						res.Resource, res.IsNamespaced, err = getGKInfo(r.discovery, gk, crdList)
+
+						if err != nil {
+							//Default to clusterRole
+							res.IsNamespaced = false
+							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
+						}
+
+						resources = append(resources, *res)
+					}
+
+					namespaceReg := regexp.MustCompile(`^\s\snamespace:\s*{{(?:[^{}]*|{{.*?}})*}}`)
+					finded = namespaceReg.ReplaceAllString(scanner.Text(), "  namespace: krateo-tpl-namespace-auto-generated")
 					if finded != scanner.Text() {
 						out.WriteString(finded + "\n")
 						continue
 					}
-				}
 
-				ifReg := regexp.MustCompile(`^{{\s*-?\s*if\s+.+}}`)
-				finded = ifReg.ReplaceAllString(scanner.Text(), "---")
-				if finded != scanner.Text() {
+					cleanTemplatedFields := regexp.MustCompile(`:\s*{{(?:[^{}]*|{{.*?}})*}}`)
+					finded = cleanTemplatedFields.FindString(scanner.Text())
+					if finded != "" {
+						cleanTemplatedFieldReg := regexp.MustCompile(`:\s*(.*)`)
+						finded = cleanTemplatedFieldReg.ReplaceAllString(finded, "")
+						if finded != scanner.Text() {
+							out.WriteString(finded + "\n")
+							continue
+						}
+					}
+
+					ifReg := regexp.MustCompile(`^{{\s*-?\s*if\s+.+}}`)
+					finded = ifReg.ReplaceAllString(scanner.Text(), "---")
+					if finded != scanner.Text() {
+						out.WriteString(finded + "\n")
+						continue
+					}
+
+					elseIfReg := regexp.MustCompile(`^{{\s*-?\s*else\s+if\s+.+}}`)
+					finded = elseIfReg.ReplaceAllString(finded, "---")
+					if finded != scanner.Text() {
+						out.WriteString(finded + "\n")
+						continue
+					}
+
+					elseReg := regexp.MustCompile(`^{{\s*-?\s*else\s+}}`)
+					finded = elseReg.ReplaceAllString(finded, "---")
+					if finded != scanner.Text() {
+						out.WriteString(finded + "\n")
+						continue
+					}
+
+					dots := regexp.MustCompile(`^\.\.\.\s*$`)
+					finded = dots.ReplaceAllString(scanner.Text(), "")
+					if dots.MatchString(scanner.Text()) {
+						out.WriteString(finded + "\n")
+						continue
+					}
+
 					out.WriteString(finded + "\n")
-					continue
 				}
-
-				elseIfReg := regexp.MustCompile(`^{{\s*-?\s*else\s+if\s+.+}}`)
-				finded = elseIfReg.ReplaceAllString(finded, "---")
-				if finded != scanner.Text() {
-					out.WriteString(finded + "\n")
-					continue
-				}
-
-				elseReg := regexp.MustCompile(`^{{\s*-?\s*else\s+}}`)
-				finded = elseReg.ReplaceAllString(finded, "---")
-				if finded != scanner.Text() {
-					out.WriteString(finded + "\n")
-					continue
-				}
-
-				dots := regexp.MustCompile(`^\.\.\.\s*$`)
-				finded = dots.ReplaceAllString(scanner.Text(), "")
-				if dots.MatchString(scanner.Text()) {
-					out.WriteString(finded + "\n")
-					continue
-				}
-
-				out.WriteString(finded + "\n")
 			}
 
 			strout := out.String()
