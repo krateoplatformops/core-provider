@@ -241,9 +241,9 @@ func getResourceFromLookup(lookup string) *Resource {
 			Namespace:  namespace,
 		}
 
-		reg := regexp.MustCompile(`[a-z0-9]([-a-z0-9]*[a-z0-9])?`)
+		reg := regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?`)
 
-		if !reg.MatchString(namespace) {
+		if !reg.MatchString(res.Namespace) {
 			res.IsNamespaceTemlated = true
 			res.Namespace = ""
 		}
@@ -320,11 +320,15 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 
 					res := getResourceFromLookup(scanner.Text())
 					if res != nil {
-						group := strings.Split(res.APIVersion, "/")[0]
-						res.Resource, res.IsNamespaced, err = getGKInfo(r.discovery, schema.GroupKind{
-							Group: group,
-							Kind:  res.Kind,
-						}, crdList)
+						group := strings.Split(res.APIVersion, "/")
+						gk := schema.GroupKind{
+							Kind: res.Kind,
+						}
+
+						if len(group) > 1 {
+							gk.Group = group[0]
+						}
+						res.Resource, res.IsNamespaced, err = getGKInfo(r.discovery, gk, crdList)
 						if err != nil {
 							//Default to clusterRole
 							res.IsNamespaced = false
