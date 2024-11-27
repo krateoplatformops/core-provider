@@ -312,6 +312,12 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 
 			if strings.HasSuffix(file.Name(), ".tpl") {
 				for scanner.Scan() {
+					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}`)
+					finded := commentReg.ReplaceAllString(scanner.Text(), "")
+					if finded != scanner.Text() {
+						continue
+					}
+
 					res := getResourceFromLookup(scanner.Text())
 					if res != nil {
 						group := strings.Split(res.APIVersion, "/")[0]
