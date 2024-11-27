@@ -33,14 +33,25 @@ func TestPopulateRBAC(t *testing.T) {
 					GroupVersion: "v1",
 					APIResources: []metav1.APIResource{
 						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "Secret",
+							Group:      "",
+							Version:    "v1",
+							Kind:       "Secret",
+							Name:       "secrets",
+							Namespaced: true,
 						},
 						{
-							Group:   "",
-							Version: "v1",
-							Kind:    "ConfigMap",
+							Group:      "",
+							Version:    "v1",
+							Kind:       "ConfigMap",
+							Name:       "configmaps",
+							Namespaced: true,
+						},
+						{
+							Group:      "",
+							Version:    "v1",
+							Kind:       "Pod",
+							Name:       "pods",
+							Namespaced: true,
 						},
 					},
 				},
@@ -49,9 +60,7 @@ func TestPopulateRBAC(t *testing.T) {
 	}, "test", 1*time.Second)
 
 	pkg, err := chartfs.ForSpec(context.Background(), fakecli, &definitionsv1alpha1.ChartInfo{
-		Url:     "https://raw.githubusercontent.com/matteogastaldello/private-charts/main",
-		Version: "0.1.0",
-		Repo:    "test-chart",
+		Url: "https://raw.githubusercontent.com/matteogastaldello/private-charts/main/test-chart-0.1.1.tgz",
 	})
 	require.NoError(t, err)
 	deployName := "test-deploy"
@@ -97,7 +106,27 @@ func TestPopulateRBAC(t *testing.T) {
 			Resources: []string{"secrets"},
 			Verbs:     []string{"*"},
 		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"configmaps"},
+			Verbs:     []string{"*"},
+		},
+		{
+			APIGroups: []string{""},
+			Resources: []string{"secrets"},
+			Verbs:     []string{"*"},
+		},
+	}
+
+	defaultRules := []rbacv1.PolicyRule{
+		{
+			APIGroups: []string{""},
+			Verbs:     []string{"*"},
+			Resources: []string{"pods"},
+		},
 	}
 
 	assert.ElementsMatch(t, compositionRules, deployNamespaceRBAC.Role.Rules)
+	assert.ElementsMatch(t, defaultRules, rbacMap["default"].Role.Rules)
+
 }
