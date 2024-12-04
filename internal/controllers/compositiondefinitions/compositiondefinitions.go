@@ -2,9 +2,11 @@ package compositiondefinitions
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"path"
 	"time"
@@ -24,6 +26,7 @@ import (
 
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -55,11 +58,6 @@ const (
 	cdcImageTagEnvVar = "CDC_IMAGE_TAG"
 )
 
-const (
-	mutatingWebhookName         = "core.provider.krateo.io"
-	mutatingWebhookMetadataName = "core-provider-webhook"
-)
-
 var (
 	// Build webhooks used for the various server
 	// configuration options
@@ -69,8 +67,18 @@ var (
 	// implementations.
 	mutatingHook = &webhook.Admission{
 		Handler: admission.HandlerFunc(func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
+			unstructuredObj := &unstructured.Unstructured{}
+			if err := json.Unmarshal(req.Object.Raw, unstructuredObj); err != nil {
+				return webhook.Errored(http.StatusBadRequest, err)
+			}
+
+			if unstructuredObj.GetLabels() == nil || len(unstructuredObj.GetLabels()) == 0 {
+				return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
+					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
+					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
+				)
+			}
 			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
-				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
 				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 			)
 		}),
