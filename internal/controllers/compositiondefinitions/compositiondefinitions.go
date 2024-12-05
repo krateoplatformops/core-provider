@@ -530,8 +530,6 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	// Sets the new version as served in the CRD
 	crdtools.SetServedStorage(crd, gvk.Version, true, false)
-	// Sets the old version as not served in the CRD
-	crdtools.SetServedStorage(crd, oldGVK.Version, false, false)
 
 	err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 	if err != nil {
@@ -571,6 +569,16 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	gvr := tools.ToGroupVersionResource(gvk)
 
+	var skipCRD bool
+	lst, err := getCompositionDefinitions(ctx, e.kube, gvk)
+	if err != nil {
+		e.log.Debug("Error getting CompositionDefinitions", "error", err)
+		return fmt.Errorf("error getting CompositionDefinitions: %w", err)
+	}
+	if len(lst) > 1 {
+		skipCRD = true
+	}
+
 	opts := deploy.UndeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		Spec:            cr.Spec.Chart.DeepCopy(),
@@ -580,7 +588,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
-		SkipCRD: false,
+		SkipCRD: skipCRD,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug

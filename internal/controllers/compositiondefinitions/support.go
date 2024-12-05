@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -164,4 +165,23 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 	}
 
 	return nil
+}
+
+func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schema.GroupVersionKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
+	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
+	err := cli.List(ctx, &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
+	if err != nil {
+		return nil, fmt.Errorf("error listing CompositionDefinitions: %s", err)
+	}
+
+	lst := []compositiondefinitionsv1alpha1.CompositionDefinition{}
+	for i := range cdList.Items {
+		cd := &cdList.Items[i]
+		if cd.Status.Managed.Group == gvr.Group &&
+			cd.Status.Managed.Kind == gvr.Kind {
+			lst = append(lst, *cd)
+		}
+	}
+
+	return lst, nil
 }
