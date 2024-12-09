@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	CompositionStillExistError = errors.New(CompositionStillExistErr)
+	ErrCompositionStillExist = errors.New(CompositionStillExistErr)
 )
 
 type UndeployOptions struct {
@@ -50,28 +50,27 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 				opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
 			}
 		}
+		// Create a label requirement for the composition version
+		labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
+		if err != nil {
+			return err
+		}
+		selector := labels.NewSelector()
+		selector = selector.Add(*labelreq)
+
+		li, err := opts.DynamicClient.Resource(opts.GVR).List(ctx, metav1.ListOptions{
+			LabelSelector: selector.String(),
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(li.Items) > 0 {
+			return fmt.Errorf("%v for %s", ErrCompositionStillExist, opts.GVR.String())
+		}
 	}
 
-	// Create a label requirement for the composition version
-	labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
-	if err != nil {
-		return err
-	}
-	selector := labels.NewSelector()
-	selector = selector.Add(*labelreq)
-
-	li, err := opts.DynamicClient.Resource(opts.GVR).List(ctx, metav1.ListOptions{
-		LabelSelector: selector.String(),
-	})
-	if err != nil {
-		return err
-	}
-
-	if len(li.Items) > 0 {
-		return fmt.Errorf("%v for %s", CompositionStillExistError, opts.GVR.String())
-	}
-
-	err = deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
+	err := deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
 		KubeClient: opts.KubeClient,
 		NamespacedName: types.NamespacedName{
 			Namespace: opts.NamespacedName.Namespace,
