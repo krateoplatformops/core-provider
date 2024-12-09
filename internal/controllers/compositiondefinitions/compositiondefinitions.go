@@ -73,13 +73,13 @@ var (
 				return webhook.Errored(http.StatusBadRequest, err)
 			}
 			if unstructuredObj.GetLabels() == nil || len(unstructuredObj.GetLabels()) == 0 {
-				return webhook.Patched("mutating webhook called - insert krateo.io/composition-parent-version label",
+				return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
 					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
-					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-parent-version", Value: req.Kind.Version},
+					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 				)
 			}
-			return webhook.Patched("mutating webhook called - insert krateo.io/composition-parent-version label",
-				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-parent-version", Value: req.Kind.Version},
+			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
+				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 			)
 		}),
 	}
