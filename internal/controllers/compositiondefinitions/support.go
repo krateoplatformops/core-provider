@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/crdgen"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -117,15 +118,11 @@ type CompositionsInfo struct {
 	Namespace string
 }
 
-const (
-	CompositionVersionLabel = "krateo.io/composition-version"
-)
-
 // updateCompositionsVersion updates the version label of all compositions in a namespace
 // that match the specified GroupVersionResource (GVR) and current version.
 func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log logging.Logger, opts CompositionsInfo, newVersion string) error {
 	// Create a label requirement for the composition version
-	labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
+	labelreq, err := labels.NewRequirement(deploy.CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
 	if err != nil {
 		return err
 	}
@@ -152,7 +149,7 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 			labelmap = make(map[string]string)
 		}
 
-		labelmap[CompositionVersionLabel] = newVersion
+		labelmap[deploy.CompositionVersionLabel] = newVersion
 		err = unstructured.SetNestedStringMap(u.Object, labelmap, "metadata", "labels")
 		if err != nil {
 			return err

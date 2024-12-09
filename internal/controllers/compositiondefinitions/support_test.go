@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -75,7 +76,7 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 				"name":      "test-composition",
 				"namespace": "default",
 				"labels": map[string]interface{}{
-					CompositionVersionLabel: "v0-3-0",
+					deploy.CompositionVersionLabel: "v0-3-0",
 				},
 			},
 		}}
@@ -109,8 +110,8 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 		t.Fatalf("failed to get labels from updated composition: %v", err)
 	}
 
-	if labels[CompositionVersionLabel] != "v2" {
-		t.Errorf("expected composition version label 'v2', got '%s'", labels[CompositionVersionLabel])
+	if labels[deploy.CompositionVersionLabel] != "v2" {
+		t.Errorf("expected composition version label 'v2', got '%s'", labels[deploy.CompositionVersionLabel])
 	}
 }
 func TestGetCompositionDefinitions(t *testing.T) {

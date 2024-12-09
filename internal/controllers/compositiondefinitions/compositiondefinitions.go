@@ -51,9 +51,10 @@ import (
 )
 
 const (
-	errNotCR             = "managed resource is not a Definition custom resource"
-	reconcileGracePeriod = 1 * time.Minute
-	reconcileTimeout     = 4 * time.Minute
+	errNotCR                       = "managed resource is not a Definition custom resource"
+	reconcileGracePeriod           = 1 * time.Minute
+	reconcileTimeout               = 4 * time.Minute
+	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
 
 	cdcImageTagEnvVar = "CDC_IMAGE_TAG"
 )
@@ -71,15 +72,14 @@ var (
 			if err := json.Unmarshal(req.Object.Raw, unstructuredObj); err != nil {
 				return webhook.Errored(http.StatusBadRequest, err)
 			}
-
 			if unstructuredObj.GetLabels() == nil || len(unstructuredObj.GetLabels()) == 0 {
-				return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
+				return webhook.Patched("mutating webhook called - insert krateo.io/composition-parent-version label",
 					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
-					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
+					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-parent-version", Value: req.Kind.Version},
 				)
 			}
-			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
-				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
+			return webhook.Patched("mutating webhook called - insert krateo.io/composition-parent-version label",
+				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-parent-version", Value: req.Kind.Version},
 			)
 		}),
 	}
@@ -176,6 +176,13 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
+	}
+
+	if meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+		return reconciler.ExternalObservation{
+			ResourceExists:   false,
+			ResourceUpToDate: true,
+		}, e.Delete(ctx, cr)
 	}
 
 	pkg, err := chartfs.ForSpec(ctx, e.kube, cr.Spec.Chart)
@@ -493,6 +500,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
 				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+				DynamicClient:   e.dynamic,
 				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 				KubeClient:      e.kube,
 				NamespacedName: types.NamespacedName{
@@ -552,6 +560,8 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
+	e.log.Debug("Deleting CompositionDefinition", "name", cr.Name)
+
 	if !meta.IsActionAllowed(cr, meta.ActionDelete) {
 		e.log.Debug("External resource should not be deleted by provider, skip deleting.")
 		return nil
@@ -588,11 +598,27 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
-		SkipCRD: skipCRD,
+		SkipCRD:       skipCRD,
+		DynamicClient: e.dynamic,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug
 	}
 
-	return deploy.Undeploy(ctx, e.kube, opts)
+	err = deploy.Undeploy(ctx, e.kube, opts)
+	if err != nil {
+		if errors.Is(err, deploy.CompositionStillExistError) {
+			if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+				e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
+				meta.AddFinalizer(cr, compositionStillExistFinalizer)
+				err = e.kube.Update(ctx, cr)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
+	return e.kube.Update(ctx, cr)
 }
