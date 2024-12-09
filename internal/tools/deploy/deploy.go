@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	CompositionVersionLabel  = "krateo.io/composition-parent-version"
+	CompositionVersionLabel  = "krateo.io/composition-version"
 	CompositionStillExistErr = "compositions still exist"
 )
 
