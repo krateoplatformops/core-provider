@@ -607,7 +607,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	err = deploy.Undeploy(ctx, e.kube, opts)
 	if err != nil {
-		if errors.Is(err, deploy.CompositionStillExistError) {
+		if errors.Is(err, deploy.ErrCompositionStillExist) {
 			if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
 				e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
 				meta.AddFinalizer(cr, compositionStillExistFinalizer)
