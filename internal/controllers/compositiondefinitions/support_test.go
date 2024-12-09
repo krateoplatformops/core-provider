@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +13,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic/fake"
+
+	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 func TestUpdateVersionInfo(t *testing.T) {
@@ -73,7 +76,7 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 				"name":      "test-composition",
 				"namespace": "default",
 				"labels": map[string]interface{}{
-					CompositionVersionLabel: "v0-3-0",
+					deploy.CompositionVersionLabel: "v0-3-0",
 				},
 			},
 		}}
@@ -107,7 +110,63 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 		t.Fatalf("failed to get labels from updated composition: %v", err)
 	}
 
-	if labels[CompositionVersionLabel] != "v2" {
-		t.Errorf("expected composition version label 'v2', got '%s'", labels[CompositionVersionLabel])
+	if labels[deploy.CompositionVersionLabel] != "v2" {
+		t.Errorf("expected composition version label 'v2', got '%s'", labels[deploy.CompositionVersionLabel])
+	}
+}
+func TestGetCompositionDefinitions(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = compositiondefinitionsv1alpha1.SchemeBuilder.AddToScheme(scheme)
+
+	cli := fakeclient.NewClientBuilder().WithScheme(scheme).WithObjects(
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-composition-1",
+				Namespace: "demo-system",
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "test-group",
+					Kind:  "TestKind",
+				},
+			},
+		},
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-composition-2",
+				Namespace: "default",
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "test-group",
+					Kind:  "OtherKind",
+				},
+			},
+		},
+
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "test-composition-3",
+				Namespace: "krateo-system",
+			},
+		},
+	).Build()
+
+	gvk := schema.GroupVersionKind{
+		Group: "test-group",
+		Kind:  "TestKind",
+	}
+
+	compositions, err := getCompositionDefinitions(context.Background(), cli, gvk)
+	if err != nil {
+		t.Fatalf("getCompositionDefinitions failed: %v", err)
+	}
+
+	if len(compositions) != 1 {
+		t.Fatalf("expected 1 composition, got %d", len(compositions))
+	}
+
+	if compositions[0].Name != "test-composition-1" {
+		t.Errorf("expected composition name 'test-composition-1', got '%s'", compositions[0].Name)
 	}
 }

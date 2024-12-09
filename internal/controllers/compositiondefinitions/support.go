@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/crdgen"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/dynamic"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -116,15 +118,11 @@ type CompositionsInfo struct {
 	Namespace string
 }
 
-const (
-	CompositionVersionLabel = "krateo.io/composition-version"
-)
-
 // updateCompositionsVersion updates the version label of all compositions in a namespace
 // that match the specified GroupVersionResource (GVR) and current version.
 func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log logging.Logger, opts CompositionsInfo, newVersion string) error {
 	// Create a label requirement for the composition version
-	labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
+	labelreq, err := labels.NewRequirement(deploy.CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
 	if err != nil {
 		return err
 	}
@@ -151,7 +149,7 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 			labelmap = make(map[string]string)
 		}
 
-		labelmap[CompositionVersionLabel] = newVersion
+		labelmap[deploy.CompositionVersionLabel] = newVersion
 		err = unstructured.SetNestedStringMap(u.Object, labelmap, "metadata", "labels")
 		if err != nil {
 			return err
@@ -164,4 +162,23 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 	}
 
 	return nil
+}
+
+func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schema.GroupVersionKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
+	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
+	err := cli.List(ctx, &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
+	if err != nil {
+		return nil, fmt.Errorf("error listing CompositionDefinitions: %s", err)
+	}
+
+	lst := []compositiondefinitionsv1alpha1.CompositionDefinition{}
+	for i := range cdList.Items {
+		cd := &cdList.Items[i]
+		if cd.Status.Managed.Group == gvr.Group &&
+			cd.Status.Managed.Kind == gvr.Kind {
+			lst = append(lst, *cd)
+		}
+	}
+
+	return lst, nil
 }

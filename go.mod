@@ -12,7 +12,7 @@ require (
 	github.com/google/gnostic-models v0.6.9-0.20230804172637-c7be7c783f49
 	github.com/google/go-cmp v0.6.0
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7
-	github.com/krateoplatformops/crdgen v0.3.7
+	github.com/krateoplatformops/crdgen v0.3.8
 	github.com/krateoplatformops/provider-runtime v0.9.0
 	github.com/peterbourgon/diskv v2.0.1+incompatible
 	github.com/pkg/errors v0.9.1

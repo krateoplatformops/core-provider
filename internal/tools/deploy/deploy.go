@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	tools "github.com/krateoplatformops/core-provider/internal/tools"
@@ -11,15 +12,29 @@ import (
 	deployment "github.com/krateoplatformops/core-provider/internal/tools/deployment"
 	"github.com/krateoplatformops/core-provider/internal/tools/rbacgen"
 	"github.com/krateoplatformops/core-provider/internal/tools/rbactools"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	CompositionVersionLabel  = "krateo.io/composition-parent-version"
+	CompositionStillExistErr = "compositions still exist"
+)
+
+var (
+	ErrCompositionStillExist = errors.New(CompositionStillExistErr)
 )
 
 type UndeployOptions struct {
 	DiscoveryClient discovery.CachedDiscoveryInterface
 	KubeClient      client.Client
+	DynamicClient   dynamic.Interface
 	NamespacedName  types.NamespacedName
 	GVR             schema.GroupVersionResource
 	Spec            *definitionsv1alpha1.ChartInfo
@@ -28,6 +43,33 @@ type UndeployOptions struct {
 }
 
 func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) error {
+	if !opts.SkipCRD {
+		err := crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
+		if err == nil {
+			if opts.Log != nil {
+				opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
+			}
+		}
+		// Create a label requirement for the composition version
+		labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
+		if err != nil {
+			return err
+		}
+		selector := labels.NewSelector()
+		selector = selector.Add(*labelreq)
+
+		li, err := opts.DynamicClient.Resource(opts.GVR).List(ctx, metav1.ListOptions{
+			LabelSelector: selector.String(),
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(li.Items) > 0 {
+			return fmt.Errorf("%v for %s", ErrCompositionStillExist, opts.GVR.String())
+		}
+	}
+
 	err := deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
 		KubeClient: opts.KubeClient,
 		NamespacedName: types.NamespacedName{
@@ -123,14 +165,6 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 	}
 
-	if !opts.SkipCRD {
-		err = crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
-		if err == nil {
-			if opts.Log != nil {
-				opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
-			}
-		}
-	}
 	return err
 }
 
