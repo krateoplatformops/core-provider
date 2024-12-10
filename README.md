@@ -64,10 +64,20 @@ Here are some online tools to generate and validate JSON Schemas:
 
 #### How to Install
 
+The `core-provider` requires Krateo BFF to be installed in your cluster to perform some actions. If Krateo BFF is not already installed, you can install it with the following commands (note that it should be installed in the `krateo-system` namespace):
+
 ```sh
-$ helm repo add krateo https://charts.krateo.io
-$ helm repo update krateo
-$ helm install krateo-core-provider krateo/core-provider
+helm repo add krateo https://charts.krateo.io
+helm repo update
+helm install bff krateo/bff --namespace krateo-system --create-namespace
+```
+
+After installing Krateo BFF, you can install the `core-provider` with the following commands:
+
+```sh
+helm repo add krateo https://charts.krateo.io
+helm repo update
+helm install krateo-core-provider krateo/core-provider --namespace krateo-system --create-namespace
 ```
 
 #### Apply the CompositionDefinition Manifest
