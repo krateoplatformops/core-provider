@@ -14,6 +14,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+const (
+	HelmRegistryConfigPathDefault string = "/tmp"
+)
+
+var (
+	HelmRegistryConfigPath string = HelmRegistryConfigPathDefault
+)
+
 func FromReader(in io.Reader, pkgurl string) (*ChartFS, error) {
 	pkg, err := tgzfs.New(in)
 	if err != nil {
@@ -59,10 +67,10 @@ func ForSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.ChartInfo) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to get secret: %w", err)
 		}
-
 		opts.Username = nfo.Credentials.Username
 		opts.Password = secret
 		opts.PassCredentialsAll = true
+		opts.HelmRegistryConfigPath = HelmRegistryConfigPath
 	}
 	dat, url, err := getter.Get(opts)
 	if err != nil {

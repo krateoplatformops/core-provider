@@ -10,13 +10,14 @@ import (
 )
 
 type GetOptions struct {
-	URI                   string
-	Version               string
-	Repo                  string
-	InsecureSkipVerifyTLS bool
-	Username              string
-	Password              string
-	PassCredentialsAll    bool
+	URI                    string
+	Version                string
+	Repo                   string
+	InsecureSkipVerifyTLS  bool
+	Username               string
+	Password               string
+	PassCredentialsAll     bool
+	HelmRegistryConfigPath string
 }
 
 // Getter is an interface to support GET to the specified URI.
@@ -27,7 +28,7 @@ type Getter interface {
 
 func Get(opts GetOptions) ([]byte, string, error) {
 	if isOCI(opts.URI) {
-		g, err := newOCIGetter()
+		g, err := newOCIGetter(opts.HelmRegistryConfigPath)
 		if err != nil {
 			return nil, "", err
 		}

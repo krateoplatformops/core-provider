@@ -10,7 +10,7 @@ func TestOCI(t *testing.T) {
 		version = "18.0.1"
 	)
 
-	g, err := newOCIGetter()
+	g, err := newOCIGetter(".")
 	if err != nil {
 		t.Fatal(err)
 	}

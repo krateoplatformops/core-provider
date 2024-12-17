@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"time"
@@ -16,7 +17,7 @@ import (
 
 var _ Getter = (*ociGetter)(nil)
 
-func newOCIGetter() (Getter, error) {
+func newOCIGetter(helmRegistryConfigPath string) (Getter, error) {
 	transport := &http.Transport{
 		// From https://github.com/google/go-containerregistry/blob/31786c6cbb82d6ec4fb8eb79cd9387905130534e/pkg/v1/remote/options.go#L87
 		DisableCompression: true,
@@ -40,6 +41,7 @@ func newOCIGetter() (Getter, error) {
 			Transport: transport,
 			//Timeout:   g.opts.timeout,
 		}),
+		registry.ClientOptCredentialsFile(filepath.Join(helmRegistryConfigPath, registry.CredentialsFileBasename)),
 	)
 	if err != nil {
 		return nil, err
@@ -87,7 +89,7 @@ func (g *ociGetter) Get(opts GetOptions) ([]byte, string, error) {
 
 	result, err := g.client.Pull(u.String(), pullOpts...)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to pull: %w", err)
 	}
 
 	return result.Chart.Data, opts.URI, nil
