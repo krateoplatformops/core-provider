@@ -56,7 +56,8 @@ const (
 	reconcileTimeout               = 4 * time.Minute
 	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
 
-	cdcImageTagEnvVar = "CDC_IMAGE_TAG"
+	cdcImageTagEnvVar            = "CDC_IMAGE_TAG"
+	helmRegistryConfigPathEnvVar = "HELM_REGISTRY_CONFIG_PATH"
 )
 
 var (
@@ -87,6 +88,7 @@ var (
 	cabundle                     = GetCABundle()
 	webhookServiceName           = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
+	helmRegistryConfigPath       = env.GetEnvOrDefault(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
 )
 
 func GetCABundle() []byte {
@@ -126,6 +128,8 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		reconciler.WithPollInterval(o.PollInterval),
 		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
+
+	chartfs.HelmRegistryConfigPath = helmRegistryConfigPath
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
