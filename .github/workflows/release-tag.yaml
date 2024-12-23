@@ -11,6 +11,7 @@ jobs:
   build:
     name: Build and Push
     strategy:
+      fail-fast: false
       matrix:
         runner: [buildjet-2vcpu-ubuntu-2204-arm, buildjet-2vcpu-ubuntu-2204]
         include:
