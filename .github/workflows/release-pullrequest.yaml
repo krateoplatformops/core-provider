@@ -21,6 +21,10 @@ jobs:
             platform: linux/amd64
     runs-on: ${{ matrix.runner }}
 
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Prepare
         run: |
@@ -37,7 +41,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
@@ -50,4 +54,3 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: false
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ steps.meta.outputs.tags }}
