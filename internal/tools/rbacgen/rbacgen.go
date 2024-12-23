@@ -312,7 +312,7 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 
 			if strings.HasSuffix(file.Name(), ".tpl") {
 				for scanner.Scan() {
-					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}`)
+					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}|^\s*#.*$`)
 					finded := commentReg.ReplaceAllString(scanner.Text(), "")
 					if finded != scanner.Text() {
 						continue
@@ -332,7 +332,7 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 						if err != nil {
 							//Default to clusterRole
 							res.IsNamespaced = false
-							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
+							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s in filename %s: %w", res.Kind, res.APIVersion, file.Name(), err))
 						}
 
 						resources = append(resources, *res)
@@ -344,7 +344,7 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 			// ^{{\s*-?\s*else\s+}} else regex
 			if strings.HasSuffix(file.Name(), ".yaml") || strings.HasSuffix(file.Name(), ".yml") {
 				for scanner.Scan() {
-					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}`)
+					commentReg := regexp.MustCompile(`{{-?\s*\/\*[\s\S]*?\*\/\s*-?}}|^\s*#.*$`)
 					finded := commentReg.ReplaceAllString(scanner.Text(), "")
 					if finded != scanner.Text() {
 						continue
@@ -365,7 +365,7 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 						if err != nil {
 							//Default to clusterRole
 							res.IsNamespaced = false
-							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
+							errs = append(errs, fmt.Errorf("failed to get resource info for %s %s in filename %s: %w", res.Kind, res.APIVersion, file.Name(), err))
 						}
 
 						resources = append(resources, *res)
@@ -481,7 +481,7 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 				if err != nil {
 					//Default to clusterRole
 					res.IsNamespaced = false
-					errs = append(errs, fmt.Errorf("failed to get resource info for %s %s: %w", res.Kind, res.APIVersion, err))
+					errs = append(errs, fmt.Errorf("failed to get resource info for %s %s in filename %s: %w", res.Kind, res.APIVersion, file.Name(), err))
 				}
 
 				resources = append(resources, res)
