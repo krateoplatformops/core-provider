@@ -21,6 +21,10 @@ jobs:
             platform: linux/amd64
     runs-on: ${{ matrix.runner }}
 
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - name: Prepare
         run: |
