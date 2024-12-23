@@ -50,5 +50,4 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: false
           labels: ${{ steps.meta.outputs.labels }}
-          tags: ${{ steps.meta.outputs.tags }}
           outputs: type=image,"name=${{ env.GHCR_REPO }}",push-by-digest=true,name-canonical=true,push=true
