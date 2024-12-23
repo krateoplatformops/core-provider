@@ -45,7 +45,7 @@ jobs:
 
       - name: Build and NOT push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v5
         with:
           platforms: ${{ matrix.platform }}
           push: false
