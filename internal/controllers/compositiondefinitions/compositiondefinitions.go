@@ -57,6 +57,7 @@ const (
 	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
 
 	cdcImageTagEnvVar            = "CDC_IMAGE_TAG"
+	urlPluralsEnvVar             = "URL_PLURALS"
 	helmRegistryConfigPathEnvVar = "HELM_REGISTRY_CONFIG_PATH"
 )
 
@@ -223,10 +224,16 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
 
+	cdcEnvs := map[string]string{}
+	urlplurals := os.Getenv(urlPluralsEnvVar)
+	if urlplurals != "" {
+		cdcEnvs[urlPluralsEnvVar] = urlplurals
+	}
+
 	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
-	}, os.Getenv(cdcImageTagEnvVar))
+	}, os.Getenv(cdcImageTagEnvVar), cdcEnvs)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -418,6 +425,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		)
 	}
 
+	cdcEnvs := map[string]string{}
+	urlplurals := os.Getenv(urlPluralsEnvVar)
+	if urlplurals != "" {
+		cdcEnvs[urlPluralsEnvVar] = urlplurals
+	}
+
 	opts := deploy.DeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		KubeClient:      e.kube,
@@ -426,6 +439,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
 		CDCImageTag: os.Getenv(cdcImageTagEnvVar),
+		CDCEnvs:     cdcEnvs,
 		Spec:        cr.Spec.Chart.DeepCopy(),
 	}
 	if meta.IsVerbose(cr) {

@@ -19,9 +19,10 @@ type Renderoptions struct {
 	Namespace string
 	Name      string
 	Tag       string
+	Env       map[string]string
 }
 
-func Values(opts Renderoptions) map[string]string {
+func Values(opts Renderoptions) map[string]any {
 	if len(opts.Name) == 0 {
 		opts.Name = fmt.Sprintf("%s-controller", opts.Resource)
 	}
@@ -30,7 +31,7 @@ func Values(opts Renderoptions) map[string]string {
 		opts.Namespace = "default"
 	}
 
-	return map[string]string{
+	values := map[string]any{
 		"apiGroup":   opts.Group,
 		"apiVersion": opts.Version,
 		"resource":   opts.Resource,
@@ -38,9 +39,18 @@ func Values(opts Renderoptions) map[string]string {
 		"namespace":  opts.Namespace,
 		"tag":        opts.Tag,
 	}
+
+	if len(opts.Env) > 0 {
+		values["extraEnv"] = map[string]string{}
+		for k, v := range opts.Env {
+			values["extraEnv"].(map[string]string)[k] = v
+		}
+	}
+
+	return values
 }
 
-func RenderDeployment(values map[string]string) ([]byte, error) {
+func RenderDeployment(values map[string]any) ([]byte, error) {
 	tpl, err := template.New("deployment").Funcs(TxtFuncMap()).Parse(deploymentTpl)
 	if err != nil {
 		return nil, err

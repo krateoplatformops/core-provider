@@ -71,7 +71,7 @@ func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Depl
 	)
 }
 
-func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, cdcImageTag string) (appsv1.Deployment, error) {
+func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, cdcImageTag string, cdcEnv map[string]string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
@@ -79,6 +79,7 @@ func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, 
 		Namespace: nn.Namespace,
 		Name:      nn.Name,
 		Tag:       cdcImageTag,
+		Env:       cdcEnv,
 	})
 
 	dat, err := templates.RenderDeployment(values)
