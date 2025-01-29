@@ -20,7 +20,8 @@ kubectl create secret generic \
     ${WEBHOOK_NAME}-certs \
     --from-file=tls.key=./tls.key \
     --from-file=tls.crt=./tls.crt \
-    --dry-run=client -o yaml > ./webhook-certs.yaml
+    --dry-run=client -o yaml > ./webhook-certs.yaml\
+    -n demo-system
 
 
 # # Set the CABundle on the webhook registration

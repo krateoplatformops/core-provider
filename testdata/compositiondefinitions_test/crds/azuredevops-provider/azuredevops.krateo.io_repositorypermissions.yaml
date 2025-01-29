@@ -1,0 +1,202 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: repositorypermissions.azuredevops.krateo.io
+spec:
+  group: azuredevops.krateo.io
+  names:
+    categories:
+    - krateo
+    - azuredevops
+    kind: RepositoryPermission
+    listKind: RepositoryPermissionList
+    plural: repositorypermissions
+    singular: repositorypermission
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.allowPermissionBit
+      name: ALLOW
+      type: string
+    - jsonPath: .status.denyPermissionBit
+      name: DENY
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: READY
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Synced')].status
+      name: SYNCED
+      priority: 10
+      type: string
+    - jsonPath: .status.identityDescriptor
+      name: DESCRIPTOR
+      priority: 10
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RepositoryPermission is the Schema for the RepositoryPermissions
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RepositoryPermission defines the desired state of RepositoryPermission
+            properties:
+              connectorConfigRef:
+                description: 'ConnectorConfigRef: configuration spec for the REST
+                  API client.'
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced object.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              deletionPolicy:
+                default: Delete
+                description: |-
+                  DeletionPolicy specifies what will happen to the underlying external
+                  when this managed resource is deleted - either "Delete" or "Orphan" the
+                  external resource.
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              permissions:
+                description: Permissions - The permissions to set.
+                properties:
+                  allowList:
+                    description: |-
+                      AllowList - The permissions that this identity has.
+                      Possible (case insensitive) values are [administerpermission,genericread,genericcontribute,forcepush,createbranch,createtag,managenote,policyexempt,createrepository,deleterepository,renamerepository,editpolicies,removeotherslocks,managepermissions,pullrequestcontribute,pullrequestbypasspolicy,viewadvsecalerts,dismissadvsecalerts,manageadvsecscanning]
+                    items:
+                      type: string
+                    type: array
+                  denyList:
+                    description: |-
+                      DenyList - The permissions that this identity is explicitly denied.
+                      Possible values are [administerpermission,genericread,genericcontribute,forcepush,createbranch,createtag,managenote,policyexempt,createrepository,deleterepository,renamerepository,editpolicies,removeotherslocks,managepermissions,pullrequestcontribute,pullrequestbypasspolicy,viewadvsecalerts,dismissadvsecalerts,manageadvsecscanning]
+                    items:
+                      type: string
+                    type: array
+                  identity:
+                    description: Identity - The identity who has these permissions.
+                    properties:
+                      name:
+                        description: Name - The name of the group. This parameter
+                          is ignored if Type is build-service.
+                        type: string
+                      projectRef:
+                        description: ProjectRef - The reference to the project that
+                          contains the group.
+                        properties:
+                          name:
+                            description: Name of the referenced object.
+                            type: string
+                          namespace:
+                            description: Namespace of the referenced object.
+                            type: string
+                        required:
+                        - name
+                        - namespace
+                        type: object
+                      type:
+                        description: |-
+                          The user identity type to add
+                          [build-service, azure-group]
+                        type: string
+                    type: object
+                  merge:
+                    description: |-
+                      Merge
+                      If true, the permissions are added to existing permissions and only the setted perms are mantained by the controller.
+                      If false, the permissions are the only permissions for this identity and are mantained exaclty as the CR by the controller.
+                    type: boolean
+                type: object
+              repositoryRef:
+                description: RepositoryRef - The reference to the repository.
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced object.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+            type: object
+          status:
+            properties:
+              allowPermissionBit:
+                type: integer
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              denyPermissionBit:
+                type: integer
+              identityDescriptor:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
