@@ -2,14 +2,8 @@ package templates
 
 import (
 	"bytes"
-	_ "embed"
 	"fmt"
 	"text/template"
-)
-
-var (
-	//go:embed assets/deployment.yaml
-	deploymentTpl string
 )
 
 type Renderoptions struct {
@@ -18,8 +12,6 @@ type Renderoptions struct {
 	Resource  string
 	Namespace string
 	Name      string
-	Tag       string
-	Env       map[string]string
 }
 
 func Values(opts Renderoptions) map[string]any {
@@ -37,21 +29,15 @@ func Values(opts Renderoptions) map[string]any {
 		"resource":   opts.Resource,
 		"name":       opts.Name,
 		"namespace":  opts.Namespace,
-		"tag":        opts.Tag,
-	}
-
-	if len(opts.Env) > 0 {
-		values["extraEnv"] = map[string]string{}
-		for k, v := range opts.Env {
-			values["extraEnv"].(map[string]string)[k] = v
-		}
 	}
 
 	return values
 }
 
-func RenderDeployment(values map[string]any) ([]byte, error) {
-	tpl, err := template.New("deployment").Funcs(TxtFuncMap()).Parse(deploymentTpl)
+type Template string
+
+func (t Template) RenderDeployment(values map[string]any) ([]byte, error) {
+	tpl, err := template.New("deployment").Funcs(TxtFuncMap()).Parse(string(t))
 	if err != nil {
 		return nil, err
 	}

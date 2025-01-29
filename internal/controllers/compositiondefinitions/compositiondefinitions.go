@@ -55,10 +55,7 @@ const (
 	reconcileGracePeriod           = 1 * time.Minute
 	reconcileTimeout               = 4 * time.Minute
 	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
-
-	cdcImageTagEnvVar            = "CDC_IMAGE_TAG"
-	urlPluralsEnvVar             = "URL_PLURALS"
-	helmRegistryConfigPathEnvVar = "HELM_REGISTRY_CONFIG_PATH"
+	helmRegistryConfigPathEnvVar   = "HELM_REGISTRY_CONFIG_PATH"
 )
 
 var (
@@ -90,12 +87,17 @@ var (
 	webhookServiceName           = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
 	helmRegistryConfigPath       = env.GetEnvOrDefault(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
+	CDCtemplateFilePath          = path.Join(os.TempDir(), "assets/deployment.yaml")
 )
 
 func GetCABundle() []byte {
 	// CertDir is the directory that contains the server key and certificate. Defaults to
 	// <temp-dir>/k8s-webhook-server/serving-certs.
-	fb, err := os.ReadFile(path.Join(os.TempDir(), "k8s-webhook-server/serving-certs/tls.crt"))
+	dir, err := os.UserHomeDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	fb, err := os.ReadFile(path.Join(dir, "k8s-webhook-server/serving-certs/tls.crt"))
 	if err != nil {
 		return nil
 	}
@@ -224,16 +226,10 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
 
-	cdcEnvs := map[string]string{}
-	urlplurals := os.Getenv(urlPluralsEnvVar)
-	if urlplurals != "" {
-		cdcEnvs[urlPluralsEnvVar] = urlplurals
-	}
-
 	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
-	}, os.Getenv(cdcImageTagEnvVar), cdcEnvs)
+	}, CDCtemplateFilePath)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -425,12 +421,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		)
 	}
 
-	cdcEnvs := map[string]string{}
-	urlplurals := os.Getenv(urlPluralsEnvVar)
-	if urlplurals != "" {
-		cdcEnvs[urlPluralsEnvVar] = urlplurals
-	}
-
 	opts := deploy.DeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		KubeClient:      e.kube,
@@ -438,9 +428,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Namespace: cr.Namespace,
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
-		CDCImageTag: os.Getenv(cdcImageTagEnvVar),
-		CDCEnvs:     cdcEnvs,
-		Spec:        cr.Spec.Chart.DeepCopy(),
+		Spec:         cr.Spec.Chart.DeepCopy(),
+		TemplatePath: CDCtemplateFilePath,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug

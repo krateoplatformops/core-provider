@@ -173,8 +173,7 @@ type DeployOptions struct {
 	KubeClient      client.Client
 	NamespacedName  types.NamespacedName
 	Spec            *definitionsv1alpha1.ChartInfo
-	CDCImageTag     string
-	CDCEnvs         map[string]string
+	TemplatePath    string
 	Log             func(msg string, keysAndValues ...any)
 }
 
@@ -266,7 +265,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 		}
 	}
 
-	dep, err := deployment.CreateDeployment(gvr, opts.NamespacedName, opts.CDCImageTag, opts.CDCEnvs)
+	dep, err := deployment.CreateDeployment(gvr, opts.NamespacedName, opts.TemplatePath)
 	if err != nil {
 		return err, rbacErr
 	}
