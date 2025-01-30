@@ -450,7 +450,19 @@ func (r *RbacGenerator) getResourcesInfo(templatesDir string) ([]Resource, error
 					errs = append(errs, fmt.Errorf("failed to parse yaml in file %s : %w", file.Name(), err))
 					continue
 				}
+
+				if n == nil {
+					continue
+				}
 				if n.IsNilOrEmpty() {
+					continue
+				}
+
+				checkMap, err := n.Map()
+				if err != nil {
+					continue
+				}
+				if checkMap == nil || len(checkMap) == 0 {
 					continue
 				}
 
