@@ -22,13 +22,15 @@ spec:
       serviceAccountName: core-provider-dev
       containers:
       - name: core-provider-dev-container
-        image: matteogastaldello/core-provider:latest
-        imagePullPolicy: Always
+        image: ko.local/core-provider:latest
+        imagePullPolicy: IfNotPresent
         args:
           - --debug
         env:
           - name: CORE_PROVIDER_POLL_INTERVAL
             value: 30s
+          - name: CRDGEN_CLEAN_WORKDIR
+            value: "false"
         ports:
         - containerPort: 8080
         - containerPort: 9443

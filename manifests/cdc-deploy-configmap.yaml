@@ -35,7 +35,7 @@ data:
               {}
             containers:
               - name: {{ .resource }}-{{ .apiVersion }}-controller
-                image: "matteogastaldello/composition-dynamic-controller:latest"
+                image: "ko.local/composition-dynamic-controller:latest"
                 imagePullPolicy: IfNotPresent
                 envFrom:
                   - configMapRef:

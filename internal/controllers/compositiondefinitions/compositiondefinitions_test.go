@@ -56,6 +56,8 @@ func TestMain(m *testing.M) {
 
 	testenv.Setup(
 		envfuncs.CreateCluster(kind.NewProvider(), clusterName),
+		envfuncs.LoadImageToCluster(clusterName, "ko.local/core-provider:latest"),                  // This is a local image built by ko. See scripts/build_local.sh
+		envfuncs.LoadImageToCluster(clusterName, "ko.local/composition-dynamic-controller:latest"), // This is a local image built by ko. See scripts/build_local.sh
 		envfuncs.SetupCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
 		e2e.CreateNamespace(namespace),
 
