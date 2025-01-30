@@ -17,7 +17,7 @@ webhooks:
   sideEffects: None
   clientConfig:
     service:
-      namespace: default
+      namespace: demo-system
       name: core-provider-webhook-service
       path: /mutate
       port: 9443

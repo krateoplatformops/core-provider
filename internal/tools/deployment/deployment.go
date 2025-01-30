@@ -2,6 +2,8 @@ package deployment
 
 import (
 	"context"
+	"fmt"
+	"os"
 
 	"github.com/avast/retry-go"
 	"github.com/krateoplatformops/core-provider/internal/templates"
@@ -71,18 +73,22 @@ func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Depl
 	)
 }
 
-func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, cdcImageTag string, cdcEnv map[string]string) (appsv1.Deployment, error) {
+func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, templatePath string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
 		Resource:  gvr.Resource,
 		Namespace: nn.Namespace,
 		Name:      nn.Name,
-		Tag:       cdcImageTag,
-		Env:       cdcEnv,
 	})
 
-	dat, err := templates.RenderDeployment(values)
+	templateF, err := os.ReadFile(templatePath)
+	if err != nil {
+		return appsv1.Deployment{}, fmt.Errorf("failed to read template file: %w", err)
+	}
+
+	template := templates.Template(string(templateF))
+	dat, err := template.RenderDeployment(values)
 	if err != nil {
 		return appsv1.Deployment{}, err
 	}

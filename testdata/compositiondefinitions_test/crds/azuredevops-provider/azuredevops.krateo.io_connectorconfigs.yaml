@@ -1,0 +1,155 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: connectorconfigs.azuredevops.krateo.io
+spec:
+  group: azuredevops.krateo.io
+  names:
+    categories:
+    - krateo
+    - azuredevops
+    kind: ConnectorConfig
+    listKind: ConnectorConfigList
+    plural: connectorconfigs
+    singular: connectorconfig
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ConnectorConfigSpec is the Schema for the AzureDevops Client
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              apiUrl:
+                description: |-
+                  DEPRECATED: This field is deprecated and will be removed in a future version. Use the ApiUrls field instead.
+                  ApiUrl: the baseUrl for the REST API provider.
+                type: string
+              apiUrls:
+                description: 'ApiUrls: the baseUrl for the REST API provider.'
+                properties:
+                  default:
+                    description: 'Default: the baseUrl for the REST API provider.'
+                    type: string
+                  feeds:
+                    description: 'Feeds: the baseUrl for the REST API provider.'
+                    type: string
+                  vssps:
+                    description: 'Vssps: the baseUrl for the REST API provider.'
+                    type: string
+                type: object
+              apiVersionConfig:
+                description: 'APIVersionConfig: the API version configuration.'
+                properties:
+                  checkconfiguration:
+                    type: string
+                  definitions:
+                    type: string
+                  descriptors:
+                    type: string
+                  endpoints:
+                    type: string
+                  environments:
+                    type: string
+                  feedpermissions:
+                    type: string
+                  feeds:
+                    type: string
+                  groups:
+                    type: string
+                  identities:
+                    type: string
+                  memberships:
+                    type: string
+                  operations:
+                    type: string
+                  pipelinepermissions:
+                    type: string
+                  pipelines:
+                    type: string
+                  policies:
+                    type: string
+                  pools:
+                    type: string
+                  projects:
+                    type: string
+                  pullrequests:
+                    type: string
+                  queues:
+                    type: string
+                  repositories:
+                    type: string
+                  repositorypermissions:
+                    type: string
+                  runs:
+                    type: string
+                  securefiles:
+                    type: string
+                  teams:
+                    type: string
+                  users:
+                    type: string
+                  variablegroups:
+                    type: string
+                type: object
+              credentials:
+                description: Credentials required to authenticate ReST API server.
+                properties:
+                  env:
+                    description: |-
+                      Env is a reference to an environment variable that contains credentials
+                      that must be used to connect to the provider.
+                    properties:
+                      name:
+                        description: Name is the name of an environment variable.
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  secretRef:
+                    description: |-
+                      A SecretRef is a reference to a secret key that contains the credentials
+                      that must be used to connect to the provider.
+                    properties:
+                      key:
+                        description: The key to select.
+                        type: string
+                      name:
+                        description: Name of the referenced object.
+                        type: string
+                      namespace:
+                        description: Namespace of the referenced object.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    - namespace
+                    type: object
+                type: object
+            required:
+            - credentials
+            type: object
+        type: object
+    served: true
+    storage: true

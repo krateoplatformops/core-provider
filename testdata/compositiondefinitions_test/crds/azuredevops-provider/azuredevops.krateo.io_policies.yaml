@@ -1,0 +1,255 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.15.0
+  name: policies.azuredevops.krateo.io
+spec:
+  group: azuredevops.krateo.io
+  names:
+    categories:
+    - krateo
+    - azuredevops
+    kind: Policy
+    listKind: PolicyList
+    plural: policies
+    singular: policy
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.id
+      name: ID
+      type: string
+    - jsonPath: .status.url
+      name: URL
+      priority: 10
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Ready')].status
+      name: READY
+      type: string
+    - jsonPath: .status.conditions[?(@.type=='Synced')].status
+      name: SYNCED
+      priority: 10
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Policy is the Schema for the Policys API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: Policy defines the desired state of Policy
+            properties:
+              connectorConfigRef:
+                description: 'ConnectorConfigRef: configuration spec for the REST
+                  API client.'
+                properties:
+                  name:
+                    description: Name of the referenced object.
+                    type: string
+                  namespace:
+                    description: Namespace of the referenced object.
+                    type: string
+                required:
+                - name
+                - namespace
+                type: object
+              deletionPolicy:
+                default: Delete
+                description: |-
+                  DeletionPolicy specifies what will happen to the underlying external
+                  when this managed resource is deleted - either "Delete" or "Orphan" the
+                  external resource.
+                enum:
+                - Orphan
+                - Delete
+                type: string
+              policyBody:
+                description: PolicyBody - The policy configuration.
+                properties:
+                  id:
+                    description: ID - The policy configuration ID. You can specify
+                      this field when you need to retrieve or update an existing policy
+                      configuration.
+                    type: integer
+                  isBlocking:
+                    description: IsBlocking - Indicates whether the policy is blocking.
+                    type: boolean
+                  isDeleted:
+                    description: IsDeleted - Indicates whether the policy has been
+                      (soft) deleted.
+                    type: boolean
+                  isEnabled:
+                    description: IsEnabled - Indicates whether the policy is enabled.
+                    type: boolean
+                  isEnterpriseManaged:
+                    description: IsEnterpriseManaged - If set, this policy requires
+                      "Manage Enterprise Policies" permission to create, edit, or
+                      delete.
+                    type: boolean
+                  projectRef:
+                    description: ProjectRef - A reference to a TeamProject.
+                    properties:
+                      name:
+                        description: Name of the referenced object.
+                        type: string
+                      namespace:
+                        description: Namespace of the referenced object.
+                        type: string
+                    required:
+                    - name
+                    - namespace
+                    type: object
+                  settings:
+                    description: Settings - The policy configuration settings. Only
+                      'settings.scope' is compared when checking for configuration
+                      drift due to the api undocumented behavior.
+                    properties:
+                      addedFilesOnly:
+                        type: boolean
+                      buildDefinitionId:
+                        type: integer
+                      creatorVoteCounts:
+                        type: boolean
+                      enforceConsistentCase:
+                        type: boolean
+                      fileNamePatterns:
+                        items:
+                          type: string
+                        type: array
+                      manualQueueOnly:
+                        type: boolean
+                      maximumGitBlobSizeInBytes:
+                        type: integer
+                      message:
+                        type: string
+                      minimumApproverCount:
+                        type: integer
+                      queueOnSourceUpdateOnly:
+                        type: boolean
+                      requiredReviewerIds:
+                        items:
+                          type: integer
+                        type: array
+                      scope:
+                        items:
+                          properties:
+                            matchKind:
+                              type: string
+                            refName:
+                              type: string
+                            repositoryRef:
+                              description: 'RepositoryRef: reference to an existing
+                                CR of a repository.'
+                              properties:
+                                name:
+                                  description: Name of the referenced object.
+                                  type: string
+                                namespace:
+                                  description: Namespace of the referenced object.
+                                  type: string
+                              required:
+                              - name
+                              - namespace
+                              type: object
+                          required:
+                          - matchKind
+                          - refName
+                          type: object
+                        type: array
+                      useSquashMerge:
+                        type: boolean
+                      useUncompressedSize:
+                        type: boolean
+                      validDuration:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                    type: object
+                  type:
+                    description: Type - The policy configuration type.
+                    properties:
+                      displayName:
+                        description: Display name of the policy type.
+                        type: string
+                      id:
+                        description: The policy type ID.
+                        type: string
+                    required:
+                    - id
+                    type: object
+                required:
+                - isBlocking
+                type: object
+            required:
+            - policyBody
+            type: object
+          status:
+            properties:
+              conditions:
+                description: Conditions of the resource.
+                items:
+                  description: A Condition that may apply to a resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        LastTransitionTime is the last time this condition transitioned from one
+                        status to another.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        A Message containing details about this condition's last transition from
+                        one status to another, if any.
+                      type: string
+                    reason:
+                      description: A Reason for this condition's last transition from
+                        one status to another.
+                      type: string
+                    status:
+                      description: Status of this condition; is it currently True,
+                        False, or Unknown?
+                      type: string
+                    type:
+                      description: |-
+                        Type of this condition. At most one of each condition type may apply to
+                        a resource at any point in time.
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              id:
+                description: ID - The policy configuration ID.
+                type: integer
+              url:
+                description: URL - The URL where the policy configuration can be retrieved.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
