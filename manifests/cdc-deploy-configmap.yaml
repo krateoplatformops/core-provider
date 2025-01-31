@@ -39,7 +39,7 @@ data:
                 imagePullPolicy: IfNotPresent
                 envFrom:
                   - configMapRef:
-                      name: test-core-provider-cdc-configmap
+                      name: {{ .resource }}-{{ .apiVersion }}-configmap
                 securityContext:
                   {}
                 args:

@@ -135,7 +135,7 @@ func Update(ctx context.Context, kube client.Client, name string, newObj *apiext
 			err := kube.Get(ctx, client.ObjectKey{Name: name}, &obj, &client.GetOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					fmt.Println("CRD not found")
+					// fmt.Println("CRD not found")
 					return nil
 				}
 
