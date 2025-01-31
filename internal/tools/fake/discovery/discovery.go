@@ -33,9 +33,6 @@ func (c *FakeDiscovery) ServerResourcesForGroupVersion(groupVersion string) (*me
 	}
 	c.Invokes(action, nil)
 	for _, resourceList := range c.Resources {
-		fmt.Println(resourceList.GroupVersion)
-	}
-	for _, resourceList := range c.Resources {
 		if resourceList.GroupVersion == groupVersion {
 			return resourceList, nil
 		}

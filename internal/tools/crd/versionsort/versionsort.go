@@ -46,7 +46,7 @@ func NewVersion(versionString string) *Version {
 		if err != nil {
 			maj, err := strconv.Atoi(strings.SplitN(vString, "alpha", 2)[0])
 			if err != nil {
-				fmt.Println("Error parsing major version:", err)
+				// fmt.Println("Error parsing major version:", err)
 			}
 			v.Major = ptr(maj)
 		}

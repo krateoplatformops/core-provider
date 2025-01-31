@@ -6,7 +6,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 echo "CERTIFICATES_DIR: ${CERTIFICATES_DIR}"
 
 cd ${CERTIFICATES_DIR}
-./create-certs.sh default core-provider-webhook-service
+./create-certs.sh demo-system core-provider-webhook-service
 
 cd ${PROJECT_DIR}
 
