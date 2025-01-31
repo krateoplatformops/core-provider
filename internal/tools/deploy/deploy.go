@@ -8,6 +8,7 @@ import (
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	tools "github.com/krateoplatformops/core-provider/internal/tools"
 	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/configmap"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	deployment "github.com/krateoplatformops/core-provider/internal/tools/deployment"
 	"github.com/krateoplatformops/core-provider/internal/tools/rbacgen"
@@ -42,6 +43,11 @@ type UndeployOptions struct {
 	SkipCRD         bool
 }
 
+const (
+	controllerResourceSuffix = "-controller"
+	configmapResourceSuffix  = "-configmap"
+)
+
 func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) error {
 	if !opts.SkipCRD {
 		err := crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
@@ -74,9 +80,20 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		KubeClient: opts.KubeClient,
 		NamespacedName: types.NamespacedName{
 			Namespace: opts.NamespacedName.Namespace,
-			Name:      opts.NamespacedName.Name,
+			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		},
 		Log: opts.Log,
+	})
+	if err != nil {
+		return err
+	}
+
+	err = configmap.UninstallConfigmap(ctx, configmap.UninstallOptions{
+		KubeClient: opts.KubeClient,
+		NamespacedName: types.NamespacedName{
+			Namespace: opts.NamespacedName.Namespace,
+			Name:      opts.NamespacedName.Name + configmapResourceSuffix,
+		},
 	})
 	if err != nil {
 		return err
@@ -101,7 +118,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	rbgen := rbacgen.NewRbacGenerator(
 		opts.DiscoveryClient,
 		pkg,
-		opts.NamespacedName.Name,
+		opts.NamespacedName.Name+controllerResourceSuffix,
 		opts.NamespacedName.Namespace,
 		secretname,
 		secretns,
@@ -117,7 +134,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 		nsName := types.NamespacedName{
 			Namespace: ns,
-			Name:      opts.NamespacedName.Name,
+			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 		err = rbactools.UninstallClusterRoleBinding(ctx, rbactools.UninstallOptions{
 			KubeClient:     opts.KubeClient,
@@ -169,12 +186,13 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 }
 
 type DeployOptions struct {
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	KubeClient      client.Client
-	NamespacedName  types.NamespacedName
-	Spec            *definitionsv1alpha1.ChartInfo
-	TemplatePath    string
-	Log             func(msg string, keysAndValues ...any)
+	DiscoveryClient        discovery.CachedDiscoveryInterface
+	KubeClient             client.Client
+	NamespacedName         types.NamespacedName
+	Spec                   *definitionsv1alpha1.ChartInfo
+	DeploymentTemplatePath string
+	ConfigmapTemplatePath  string
+	Log                    func(msg string, keysAndValues ...any)
 }
 
 func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err error, rbacErr error) {
@@ -200,7 +218,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 	rbgen := rbacgen.NewRbacGenerator(
 		opts.DiscoveryClient,
 		pkg,
-		opts.NamespacedName.Name,
+		opts.NamespacedName.Name+controllerResourceSuffix,
 		opts.NamespacedName.Namespace,
 		secretname,
 		secretns,
@@ -265,7 +283,30 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 		}
 	}
 
-	dep, err := deployment.CreateDeployment(gvr, opts.NamespacedName, opts.TemplatePath)
+	cmNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
+	}
+	cm, err := configmap.CreateConfigmap(gvr, cmNSName, opts.ConfigmapTemplatePath)
+	if err != nil {
+		return err, rbacErr
+	}
+
+	err = configmap.InstallConfigmap(ctx, opts.KubeClient, &cm)
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("Configmap successfully installed",
+				"gvr", gvr.String(), "name", cm.Name, "namespace", cm.Namespace)
+		}
+	} else {
+		return fmt.Errorf("Error installing configmap: %v", err), rbacErr
+	}
+
+	deploymentNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+	}
+	dep, err := deployment.CreateDeployment(gvr, deploymentNSName, opts.DeploymentTemplatePath)
 	if err != nil {
 		return err, rbacErr
 	}

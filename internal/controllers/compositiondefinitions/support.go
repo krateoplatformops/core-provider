@@ -70,7 +70,7 @@ func (f *staticJsonSchemaGetter) Get() ([]byte, error) {
 }
 
 func resourceNamer(resourceName string, chartVersion string) string {
-	return fmt.Sprintf("%s-%s-controller", resourceName, chartVersion)
+	return fmt.Sprintf("%s-%s", resourceName, chartVersion)
 }
 
 // updateVersionInfo updates the version information of a CompositionDefinition custom resource

@@ -87,7 +87,8 @@ var (
 	webhookServiceName           = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
 	helmRegistryConfigPath       = env.GetEnvOrDefault(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
-	CDCtemplateFilePath          = path.Join(os.TempDir(), "assets/deployment.yaml")
+	CDCtemplateDeploymentPath    = path.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
+	CDCtemplateConfigmapPath     = path.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
 )
 
 func GetCABundle() []byte {
@@ -229,7 +230,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
-	}, CDCtemplateFilePath)
+	}, CDCtemplateDeploymentPath)
+
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -428,8 +430,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Namespace: cr.Namespace,
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
-		Spec:         cr.Spec.Chart.DeepCopy(),
-		TemplatePath: CDCtemplateFilePath,
+		Spec:                   cr.Spec.Chart.DeepCopy(),
+		DeploymentTemplatePath: CDCtemplateDeploymentPath,
+		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		Log:                    e.log.Info,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug
