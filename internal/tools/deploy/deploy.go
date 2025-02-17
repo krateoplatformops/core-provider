@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	tools "github.com/krateoplatformops/core-provider/internal/tools"
@@ -11,7 +12,6 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/configmap"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	deployment "github.com/krateoplatformops/core-provider/internal/tools/deployment"
-	"github.com/krateoplatformops/core-provider/internal/tools/rbacgen"
 	"github.com/krateoplatformops/core-provider/internal/tools/rbactools"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -39,6 +39,7 @@ type UndeployOptions struct {
 	NamespacedName  types.NamespacedName
 	GVR             schema.GroupVersionResource
 	Spec            *definitionsv1alpha1.ChartInfo
+	RBACFolderPath  string
 	Log             func(msg string, keysAndValues ...any)
 	SkipCRD         bool
 }
@@ -109,79 +110,149 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	}
 	gvr := tools.ToGroupVersionResource(gvk)
 
-	secretns, secretname := "", ""
-	if opts.Spec.Credentials != nil {
-		secretns = opts.Spec.Credentials.PasswordRef.Namespace
-		secretname = opts.Spec.Credentials.PasswordRef.Name
+	rbacNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
 
-	rbgen := rbacgen.NewRbacGenerator(
-		opts.DiscoveryClient,
-		pkg,
-		opts.NamespacedName.Name+controllerResourceSuffix,
-		opts.NamespacedName.Namespace,
-		secretname,
-		secretns,
-	)
-	rbMap, err := rbgen.PopulateRBAC(gvr.Resource)
-	if err != nil && !errors.Is(err, rbacgen.ErrKindApiVersion) {
-		return err
-	}
-
-	for ns := range rbMap {
-		if ns == "" {
-			ns = "default"
+	clusterrole, err := rbactools.CreateClusterRole(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "clusterrole.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating clusterrole", "error", err)
 		}
-		nsName := types.NamespacedName{
-			Namespace: ns,
+	}
+
+	err = rbactools.UninstallClusterRole(ctx, rbactools.UninstallOptions{
+		KubeClient: opts.KubeClient,
+		NamespacedName: types.NamespacedName{
+			Namespace: clusterrole.Namespace,
+			Name:      clusterrole.Name,
+		},
+		Log: opts.Log,
+	})
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("ClusterRole successfully uninstalled",
+				"gvr", gvr.String(), "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+		}
+	}
+
+	clusterrolebinding, err := rbactools.CreateClusterRoleBinding(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "clusterrolebinding.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating clusterrolebinding", "error", err)
+		}
+	}
+
+	err = rbactools.UninstallClusterRoleBinding(ctx, rbactools.UninstallOptions{
+		KubeClient: opts.KubeClient,
+		NamespacedName: types.NamespacedName{
+			Namespace: clusterrolebinding.Namespace,
+			Name:      clusterrolebinding.Name,
+		},
+		Log: opts.Log,
+	})
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("ClusterRoleBinding successfully uninstalled",
+				"gvr", gvr.String(), "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+		}
+	}
+
+	role, err := rbactools.CreateRole(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "compositiondefinition-role.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating role", "error", err)
+		}
+	}
+
+	err = rbactools.UninstallRole(ctx, rbactools.UninstallOptions{
+		KubeClient: opts.KubeClient,
+		NamespacedName: types.NamespacedName{
+			Namespace: role.Namespace,
+			Name:      role.Name,
+		},
+		Log: opts.Log,
+	})
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("Role successfully uninstalled",
+				"gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
+		}
+	}
+
+	rolebinding, err := rbactools.CreateRoleBinding(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "compositiondefinition-rolebinding.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating rolebinding", "error", err)
+		}
+	}
+
+	err = rbactools.UninstallRoleBinding(ctx, rbactools.UninstallOptions{
+		KubeClient: opts.KubeClient,
+		NamespacedName: types.NamespacedName{
+			Namespace: rolebinding.Namespace,
+			Name:      rolebinding.Name,
+		},
+		Log: opts.Log,
+	})
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("RoleBinding successfully uninstalled",
+				"gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+		}
+	}
+
+	if opts.Spec.Credentials != nil {
+		secretNSName := types.NamespacedName{
+			Namespace: opts.Spec.Credentials.PasswordRef.Namespace,
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
-		err = rbactools.UninstallClusterRoleBinding(ctx, rbactools.UninstallOptions{
-			KubeClient:     opts.KubeClient,
-			NamespacedName: nsName,
-			Log:            opts.Log,
-		})
-		if err != nil {
-			return err
-		}
 
-		err = rbactools.UninstallClusterRole(ctx, rbactools.UninstallOptions{
-			KubeClient:     opts.KubeClient,
-			NamespacedName: nsName,
-			Log:            opts.Log,
-		})
+		role, err := rbactools.CreateRole(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
 		if err != nil {
-			return err
-		}
-
-		err = rbactools.UninstallRoleBinding(ctx, rbactools.UninstallOptions{
-			KubeClient:     opts.KubeClient,
-			NamespacedName: nsName,
-			Log:            opts.Log,
-		})
-		if err != nil {
-			return err
+			if opts.Log != nil {
+				opts.Log("Error creating role", "error", err)
+			}
 		}
 
 		err = rbactools.UninstallRole(ctx, rbactools.UninstallOptions{
-			KubeClient:     opts.KubeClient,
-			NamespacedName: nsName,
-			Log:            opts.Log,
+			KubeClient: opts.KubeClient,
+			NamespacedName: types.NamespacedName{
+				Namespace: role.Namespace,
+				Name:      role.Name,
+			},
+			Log: opts.Log,
 		})
-		if err != nil {
-			return err
+		if err == nil {
+			if opts.Log != nil {
+				opts.Log("Role successfully uninstalled",
+					"gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
+			}
 		}
 
-		err = rbactools.UninstallServiceAccount(ctx, rbactools.UninstallOptions{
-			KubeClient:     opts.KubeClient,
-			NamespacedName: nsName,
-			Log:            opts.Log,
-		})
+		rolebinding, err := rbactools.CreateRoleBinding(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
 		if err != nil {
-			return err
+			if opts.Log != nil {
+				opts.Log("Error creating rolebinding", "error", err)
+			}
+		}
+
+		err = rbactools.UninstallRoleBinding(ctx, rbactools.UninstallOptions{
+			KubeClient: opts.KubeClient,
+			NamespacedName: types.NamespacedName{
+				Namespace: rolebinding.Namespace,
+				Name:      rolebinding.Name,
+			},
+			Log: opts.Log,
+		})
+		if err == nil {
+			if opts.Log != nil {
+				opts.Log("RoleBinding successfully uninstalled",
+					"gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+			}
 		}
 	}
-
 	return err
 }
 
@@ -190,6 +261,7 @@ type DeployOptions struct {
 	KubeClient             client.Client
 	NamespacedName         types.NamespacedName
 	Spec                   *definitionsv1alpha1.ChartInfo
+	RBACFolderPath         string
 	DeploymentTemplatePath string
 	ConfigmapTemplatePath  string
 	Log                    func(msg string, keysAndValues ...any)
@@ -208,78 +280,103 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 
 	gvr := tools.ToGroupVersionResource(gvk)
 
-	secretns, secretname := "", ""
-
 	if opts.Spec.Credentials != nil {
-		secretns = opts.Spec.Credentials.PasswordRef.Namespace
-		secretname = opts.Spec.Credentials.PasswordRef.Name
-	}
+		secretNSName := types.NamespacedName{
+			Namespace: opts.Spec.Credentials.PasswordRef.Namespace,
+			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+		}
 
-	rbgen := rbacgen.NewRbacGenerator(
-		opts.DiscoveryClient,
-		pkg,
-		opts.NamespacedName.Name+controllerResourceSuffix,
-		opts.NamespacedName.Namespace,
-		secretname,
-		secretns,
-	)
-
-	rbMap, err := rbgen.PopulateRBAC(gvr.Resource)
-	if errors.Is(err, rbacgen.ErrKindApiVersion) {
-		rbacErr = err
-		err = nil
-	} else if err != nil {
-		return err, nil
-	}
-
-	if opts.Log != nil {
-		opts.Log("RBAC successfully populated", "gvr", gvr.String(), "rbMap", len(rbMap))
-	}
-	for _, rb := range rbMap {
-		if rb.ServiceAccount != nil {
-			if err = rbactools.InstallServiceAccount(ctx, opts.KubeClient, rb.ServiceAccount); err != nil {
-				return err, rbacErr
-			}
+		role, err := rbactools.CreateRole(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
+		if err != nil {
 			if opts.Log != nil {
-				opts.Log("ServiceAccount successfully installed",
-					"gvr", gvr.String(), "name", rb.ServiceAccount.Name, "namespace", rb.ServiceAccount.Namespace)
+				opts.Log("Error creating role", "error", err)
 			}
 		}
-		if rb.Role != nil {
-			if err = rbactools.InstallRole(ctx, opts.KubeClient, rb.Role); err != nil {
-				return err, rbacErr
-			}
+
+		err = rbactools.InstallRole(ctx, opts.KubeClient, &role)
+		if err == nil {
 			if opts.Log != nil {
 				opts.Log("Role successfully installed",
-					"gvr", gvr.String(), "name", rb.Role.Name, "namespace", rb.Role.Namespace)
+					"gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
 			}
 		}
-		if rb.RoleBinding != nil {
-			if err = rbactools.InstallRoleBinding(ctx, opts.KubeClient, rb.RoleBinding); err != nil {
-				return err, rbacErr
+
+		rolebinding, err := rbactools.CreateRoleBinding(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
+		if err != nil {
+			if opts.Log != nil {
+				opts.Log("Error creating rolebinding", "error", err)
 			}
+		}
+
+		err = rbactools.InstallRoleBinding(ctx, opts.KubeClient, &rolebinding)
+		if err == nil {
 			if opts.Log != nil {
 				opts.Log("RoleBinding successfully installed",
-					"gvr", gvr.String(), "name", rb.RoleBinding.Name, "namespace", rb.RoleBinding.Namespace)
+					"gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 			}
 		}
-		if rb.ClusterRole != nil {
-			if err = rbactools.InstallClusterRole(ctx, opts.KubeClient, rb.ClusterRole); err != nil {
-				return err, rbacErr
-			}
-			if opts.Log != nil {
-				opts.Log("ClusterRole successfully installed",
-					"gvr", gvr.String(), "name", rb.ClusterRole.Name, "namespace", rb.ClusterRole.Namespace)
-			}
+	}
+
+	rbacNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+	}
+
+	clusterrole, err := rbactools.CreateClusterRole(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "clusterrole.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating clusterrole", "error", err)
 		}
-		if rb.ClusterRoleBinding != nil {
-			if err = rbactools.InstallClusterRoleBinding(ctx, opts.KubeClient, rb.ClusterRoleBinding); err != nil {
-				return err, rbacErr
-			}
-			if opts.Log != nil {
-				opts.Log("ClusterRoleBinding successfully installed",
-					"gvr", gvr.String(), "name", rb.ClusterRoleBinding.Name, "namespace", rb.ClusterRoleBinding.Namespace)
-			}
+	}
+	err = rbactools.InstallClusterRole(ctx, opts.KubeClient, &clusterrole)
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("ClusterRole successfully installed",
+				"gvr", gvr.String(), "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+		}
+	}
+
+	clusterrolebinding, err := rbactools.CreateClusterRoleBinding(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "clusterrolebinding.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating clusterrolebinding", "error", err)
+		}
+	}
+	err = rbactools.InstallClusterRoleBinding(ctx, opts.KubeClient, &clusterrolebinding)
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("ClusterRoleBinding successfully installed",
+				"gvr", gvr.String(), "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+		}
+	}
+
+	role, err := rbactools.CreateRole(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "compositiondefinition-role.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating role", "error", err)
+		}
+	}
+
+	err = rbactools.InstallRole(ctx, opts.KubeClient, &role)
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("Role successfully installed",
+				"gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
+		}
+	}
+
+	rolebinding, err := rbactools.CreateRoleBinding(gvr, rbacNSName, path.Join(opts.RBACFolderPath, "compositiondefinition-rolebinding.yaml"))
+	if err != nil {
+		if opts.Log != nil {
+			opts.Log("Error creating rolebinding", "error", err)
+		}
+	}
+
+	err = rbactools.InstallRoleBinding(ctx, opts.KubeClient, &rolebinding)
+	if err == nil {
+		if opts.Log != nil {
+			opts.Log("RoleBinding successfully installed",
+				"gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 		}
 	}
 
