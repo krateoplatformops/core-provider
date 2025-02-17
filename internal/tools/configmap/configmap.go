@@ -87,6 +87,8 @@ func CreateConfigmap(gvr schema.GroupVersionResource, nn types.NamespacedName, c
 		return corev1.ConfigMap{}, fmt.Errorf("failed to read configmap template file: %w", err)
 	}
 
+	fmt.Println(string(templateF))
+
 	template := templates.Template(string(templateF))
 	dat, err := template.RenderDeployment(values)
 	if err != nil {
