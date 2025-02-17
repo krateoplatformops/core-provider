@@ -5,43 +5,129 @@ package crd
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"github.com/krateoplatformops/snowplow/plumbing/e2e"
+	xenv "github.com/krateoplatformops/snowplow/plumbing/env"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/e2e-framework/klient/decoder"
+	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
+	"sigs.k8s.io/e2e-framework/pkg/env"
+	"sigs.k8s.io/e2e-framework/pkg/envconf"
+	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
+	"sigs.k8s.io/e2e-framework/pkg/features"
+	"sigs.k8s.io/e2e-framework/support/kind"
+)
+
+var (
+	testenv     env.Environment
+	clusterName string
+	namespace   string
 )
 
 const (
-	testCRD = "../../crds/core.krateo.io_formdefinitions.yaml"
+	crdPath       = "../../../crds"
+	testdataPath  = "../../../testdata"
+	manifestsPath = "../../../manifests"
+	scriptsPath   = "../../../scripts"
+
+	testFileName = "compositiondefinition-common.yaml"
 )
 
+func TestMain(m *testing.M) {
+	xenv.SetTestMode(true)
+
+	namespace = "demo-system"
+	clusterName = "krateo"
+	testenv = env.New()
+
+	testenv.Setup(
+		envfuncs.CreateCluster(kind.NewProvider(), clusterName),
+		envfuncs.SetupCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
+		e2e.CreateNamespace(namespace),
+		e2e.CreateNamespace("krateo-system"),
+
+		func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
+			r, err := resources.New(cfg.Client().RESTConfig())
+			if err != nil {
+				return ctx, err
+			}
+			r.WithNamespace(namespace)
+
+			// Install CRDs
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/finops")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/argocd")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/azuredevops-provider")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/git-provider")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/github-provider")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/resourcetree")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
+
+			return ctx, nil
+		},
+	).Finish(
+		envfuncs.DeleteNamespace(namespace),
+		envfuncs.DestroyCluster(clusterName),
+	)
+
+	os.Exit(testenv.Run(m))
+}
 func TestLookup(t *testing.T) {
-	kube, err := setupKubeClient()
-	if err != nil {
-		t.Fatal(err)
-	}
+	os.Setenv("DEBUG", "1")
 
-	gvk := schema.GroupVersionKind{
-		Group:   "core.krateo.io",
-		Version: "v1alpha1",
-		Kind:    "FormDefinition",
-	}
+	f := features.New("Setup").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			return ctx
+		}).Assess("Lookup", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		kube, err := client.New(cfg.Client().RESTConfig(), client.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	gvr := InferGroupResource(gvk.GroupKind()).WithVersion(gvk.Version)
+		gvk := schema.GroupVersionKind{
+			Group:   "core.krateo.io",
+			Version: "v1alpha1",
+			Kind:    "CompositionDefinition",
+		}
 
-	ok, err := Lookup(context.Background(), kube, gvr)
-	if err != nil {
-		t.Fatal(err)
-	}
+		gvr := InferGroupResource(gvk.GroupKind()).WithVersion(gvk.Version)
 
-	if ok {
-		t.Logf("crd: %v, exists", gvk)
-	} else {
-		t.Logf("crd: %v, does not exists", gvk)
-	}
+		ok, err := Lookup(context.Background(), kube, gvr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if ok {
+			t.Logf("crd: %v, exists", gvk)
+		} else {
+			t.Logf("crd: %v, does not exists", gvk)
+		}
+		return ctx
+	}).Feature()
+
+	testenv.Test(t, f)
 }
 
 func TestInferGroupResource(t *testing.T) {
@@ -62,119 +148,38 @@ func TestInferGroupResource(t *testing.T) {
 		}
 	}
 }
-func TestAppendVersion(t *testing.T) {
-	crd := &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name: "v1alpha1",
-				},
-			},
-		},
-	}
-
-	toAdd := &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name: "v1alpha2",
-				},
-				{
-					Name: "v1alpha3",
-				},
-			},
-		},
-	}
-
-	expected := &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name:    "v1alpha1",
-					Served:  false,
-					Storage: false,
-				},
-				{
-					Name:    "v1alpha2",
-					Served:  false,
-					Storage: false,
-				},
-				{
-					Name:    "v1alpha3",
-					Served:  true,
-					Storage: true,
-				},
-			},
-		},
-	}
-
-	expected2 := &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name:    "v1alpha1",
-					Served:  false,
-					Storage: false,
-				},
-				{
-					Name:    "v1alpha2",
-					Served:  true,
-					Storage: true,
-				},
-			},
-		},
-	}
-
-	result, err := AppendVersion(*crd, *toAdd)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	b, _ := json.MarshalIndent(result, "", "  ")
-	fmt.Println(string(b))
-	if diff := cmp.Diff(result, expected); len(diff) > 0 {
-		t.Fatalf("Unexpected result (-got +want):\n%s", diff)
-	}
-
-	crd = &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name: "v1alpha1",
-				},
-			},
-		},
-	}
-
-	result, err = AppendVersion(*crd, *expected2)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if diff := cmp.Diff(result, expected2); len(diff) > 0 {
-		t.Fatalf("Unexpected result (-got +want):\n%s", diff)
-	}
-}
 
 func TestGet(t *testing.T) {
-	kube, err := setupKubeClient()
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	gvr := schema.GroupVersionResource{
-		Group:    "core.krateo.io",
-		Version:  "v1alpha1",
-		Resource: "FormDefinition",
-	}
+	f := features.New("Setup").
+		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+			kube, err := client.New(cfg.Client().RESTConfig(), client.Options{})
 
-	crd, err := Get(context.Background(), kube, gvr)
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	if crd != nil {
-		t.Logf("CRD exists: %v", crd.Name)
-	} else {
-		t.Logf("CRD does not exist")
-	}
+			gvr := schema.GroupVersionResource{
+				Group:    "core.krateo.io",
+				Version:  "v1alpha1",
+				Resource: "CompositionDefinition",
+			}
+
+			crd, err := Get(context.Background(), kube, gvr)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if crd != nil {
+				t.Logf("CRD exists: %v", crd.Name)
+			} else {
+				t.Logf("CRD does not exist")
+			}
+			return ctx
+		}).Assess("Lookup", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		return ctx
+	}).Feature()
+
+	testenv.Test(t, f)
+
 }
