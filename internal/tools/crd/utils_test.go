@@ -1,15 +1,11 @@
 package crd
 
 import (
-	"os"
-	"path"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/client-go/tools/clientcmd"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func TestConversionConf(t *testing.T) {
@@ -247,20 +243,6 @@ func TestAppendVersion(t *testing.T) {
 			// }
 		})
 	}
-}
-
-func setupKubeClient() (client.Client, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg, err := clientcmd.BuildConfigFromFlags("", path.Join(home, ".kube/config"))
-	if err != nil {
-		return nil, err
-	}
-
-	return client.New(cfg, client.Options{})
 }
 
 func TestSetServedStorage(t *testing.T) {

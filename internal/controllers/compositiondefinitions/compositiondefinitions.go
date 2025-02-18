@@ -89,6 +89,7 @@ var (
 	helmRegistryConfigPath       = env.GetEnvOrDefault(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
 	CDCtemplateDeploymentPath    = path.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath     = path.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
+	CDCrbacConfigFolder          = path.Join(os.TempDir(), "assets/cdc-rbac/")
 )
 
 func GetCABundle() []byte {
@@ -424,12 +425,14 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	opts := deploy.DeployOptions{
+		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
 			Namespace: cr.Namespace,
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
+		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
@@ -511,6 +514,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
 				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+				RBACFolderPath:  CDCrbacConfigFolder,
 				DynamicClient:   e.dynamic,
 				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 				KubeClient:      e.kube,

@@ -54,11 +54,10 @@ func TestMain(m *testing.M) {
 	namespace = "demo-system"
 	clusterName = "krateo"
 	testenv = env.New()
+	kindCluster := kind.NewCluster(clusterName)
 
 	testenv.Setup(
-		envfuncs.CreateCluster(kind.NewProvider(), clusterName),
-		envfuncs.LoadImageToCluster(clusterName, "ko.local/core-provider:latest"),                  // This is a local image built by ko. See scripts/build_local.sh
-		envfuncs.LoadImageToCluster(clusterName, "ko.local/composition-dynamic-controller:latest"), // This is a local image built by ko. See scripts/build_local.sh
+		envfuncs.CreateCluster(kindCluster, clusterName),
 		envfuncs.SetupCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
 		e2e.CreateNamespace(namespace),
 		e2e.CreateNamespace("krateo-system"),
@@ -69,6 +68,13 @@ func TestMain(m *testing.M) {
 				return ctx, err
 			}
 			r.WithNamespace(namespace)
+
+			// Build the docker image
+			if p := utils.RunCommand(
+				fmt.Sprintf("docker build -t %s ../../..", "kind.local/core-provider:latest"),
+			); p.Err() != nil {
+				return ctx, p.Err()
+			}
 
 			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
 
@@ -85,6 +91,10 @@ func TestMain(m *testing.M) {
 			}
 
 			// Install CRDs
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/finops")), "*.yaml",
+				decoder.CreateHandler(r),
+			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/argocd")), "*.yaml",
 				decoder.CreateHandler(r),
@@ -134,6 +144,12 @@ func TestMain(m *testing.M) {
 
 			// Install backend
 			err = helmmgr.RunInstall(helm.WithReleaseName("krateo/backend"), helm.WithName("backend"), helm.WithNamespace(namespace))
+			if err != nil {
+				return ctx, fmt.Errorf("Error installing backend: %v", err)
+			}
+
+			// Install bff
+			err = helmmgr.RunInstall(helm.WithReleaseName("krateo/bff"), helm.WithName("bff"), helm.WithNamespace(namespace))
 			if err != nil {
 				return ctx, fmt.Errorf("Error installing backend: %v", err)
 			}

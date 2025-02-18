@@ -8,6 +8,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -73,9 +74,14 @@ func TestInstallRoleBinding(t *testing.T) {
 
 func TestCreateRoleBinding(t *testing.T) {
 	sa := types.NamespacedName{Name: "test-sa", Namespace: "test-namespace"}
-	opts := types.NamespacedName{Name: "test-name", Namespace: "test-namespace"}
+	gvr := schema.GroupVersionResource{
+		Group:    "rbac.authorization.k8s.io",
+		Version:  "v1",
+		Resource: "rolebindings",
+	}
+	roleBinding, err := CreateRoleBinding(gvr, sa, "testdata/rolebinding_template.yaml", "serviceAccount", "test-sa")
 
-	roleBinding := CreateRoleBinding(sa, opts)
+	assert.NoError(t, err)
 
 	expectedRoleBinding := rbacv1.RoleBinding{
 		TypeMeta: metav1.TypeMeta{
@@ -83,22 +89,25 @@ func TestCreateRoleBinding(t *testing.T) {
 			Kind:       "RoleBinding",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-name",
-			Namespace: "test-namespace",
+			Name:      gvr.Resource + "-" + gvr.Version,
+			Namespace: sa.Namespace,
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "Role",
-			Name:     "test-name",
+			Name:     gvr.Resource + "-" + gvr.Version,
 		},
 		Subjects: []rbacv1.Subject{
 			{
 				Kind:      "ServiceAccount",
 				Name:      "test-sa",
-				Namespace: "test-namespace",
+				Namespace: sa.Namespace,
 			},
 		},
 	}
 
-	assert.Equal(t, expectedRoleBinding, roleBinding)
+	assert.Equal(t, expectedRoleBinding.RoleRef, roleBinding.RoleRef)
+	assert.Equal(t, expectedRoleBinding.Subjects, roleBinding.Subjects)
+	assert.Equal(t, expectedRoleBinding.ObjectMeta.Name, roleBinding.ObjectMeta.Name)
+	assert.Equal(t, expectedRoleBinding.ObjectMeta.Namespace, roleBinding.ObjectMeta.Namespace)
 }

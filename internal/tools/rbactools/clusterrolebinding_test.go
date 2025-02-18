@@ -8,10 +8,51 @@ import (
 	"github.com/stretchr/testify/require"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func TestCreateClusterRoleBinding(t *testing.T) {
+	sa := types.NamespacedName{Name: "test-sa", Namespace: "test-namespace"}
+	gvr := schema.GroupVersionResource{
+		Group:    "rbac.authorization.k8s.io",
+		Version:  "v1",
+		Resource: "rolebindings",
+	}
+	roleBinding, err := CreateClusterRoleBinding(gvr, sa, "testdata/clusterrolebinding_template.yaml", "serviceAccount", "test-sa")
+
+	assert.NoError(t, err)
+
+	expectedRoleBinding := rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "rbac.authorization.k8s.io/v1",
+			Kind:       "ClusterRoleBinding",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      gvr.Resource + "-" + gvr.Version,
+			Namespace: sa.Namespace,
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "ClusterRole",
+			Name:     gvr.Resource + "-" + gvr.Version,
+		},
+		Subjects: []rbacv1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      "test-sa",
+				Namespace: sa.Namespace,
+			},
+		},
+	}
+
+	assert.Equal(t, expectedRoleBinding.RoleRef, roleBinding.RoleRef)
+	assert.Equal(t, expectedRoleBinding.Subjects, roleBinding.Subjects)
+	assert.Equal(t, expectedRoleBinding.ObjectMeta.Name, roleBinding.ObjectMeta.Name)
+}
 
 func TestUninstallClusterRoleBinding(t *testing.T) {
 	ctx := context.TODO()
@@ -19,20 +60,26 @@ func TestUninstallClusterRoleBinding(t *testing.T) {
 	// Create a fake client
 	fakeClient := fake.NewClientBuilder().Build()
 
+	gvr := schema.GroupVersionResource{
+		Group:    "testgroup",
+		Version:  "v1",
+		Resource: "testresource",
+	}
 	// Create a ClusterRoleBinding object
-	clusterRoleBinding := CreateClusterRoleBinding(types.NamespacedName{
+	clusterRoleBinding, err := CreateClusterRoleBinding(gvr, types.NamespacedName{
 		Name: "test-clusterrolebinding",
-	})
+	}, "testdata/clusterrolebinding_template.yaml")
+	require.NoError(t, err)
 
 	// Install the ClusterRoleBinding
-	err := InstallClusterRoleBinding(ctx, fakeClient, &clusterRoleBinding)
+	err = InstallClusterRoleBinding(ctx, fakeClient, &clusterRoleBinding)
 	require.NoError(t, err)
 
 	// Uninstall the ClusterRoleBinding
 	err = UninstallClusterRoleBinding(ctx, UninstallOptions{
 		KubeClient: fakeClient,
 		NamespacedName: types.NamespacedName{
-			Name: "test-clusterrolebinding",
+			Name: gvr.Resource + "-" + gvr.Version,
 		},
 		Log: nil,
 	})
