@@ -9,8 +9,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	tools "github.com/krateoplatformops/core-provider/internal/tools"
-	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
 	"github.com/krateoplatformops/core-provider/internal/tools/configmap"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	deployment "github.com/krateoplatformops/core-provider/internal/tools/deployment"
@@ -50,6 +48,7 @@ type UndeployOptions struct {
 }
 
 type DeployOptions struct {
+	GVR                    schema.GroupVersionResource
 	DiscoveryClient        discovery.CachedDiscoveryInterface
 	KubeClient             client.Client
 	NamespacedName         types.NamespacedName
@@ -208,25 +207,13 @@ func uninstallRBACResources(ctx context.Context, kubeClient client.Client, clust
 	return nil
 }
 
-func Deploy(ctx context.Context, gvr schema.GroupVersionResource, kube client.Client, opts DeployOptions) (err error, rbacErr error) {
-	// pkg, err := chartfs.ForSpec(ctx, kube, opts.Spec)
-	// if err != nil {
-	// 	return err, nil
-	// }
-
-	// gvk, err := tools.GroupVersionKind(pkg)
-	// if err != nil {
-	// 	return err, nil
-	// }
-
-	// gvr := tools.ToGroupVersionResource(gvk)
-
+func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err error, rbacErr error) {
 	rbacNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
 
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(gvr, rbacNSName, opts.RBACFolderPath)
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, rbacNSName, opts.RBACFolderPath)
 	if err != nil {
 		return err, rbacErr
 	}
@@ -237,24 +224,24 @@ func Deploy(ctx context.Context, gvr schema.GroupVersionResource, kube client.Cl
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 
-		role, err := rbactools.CreateRole(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
+		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 		}
 
 		err = rbactools.InstallRole(ctx, opts.KubeClient, &role)
 		if err == nil {
-			opts.Log("Role successfully installed", "gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
+			opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 		}
 
-		rolebinding, err := rbactools.CreateRoleBinding(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 		}
 
 		err = rbactools.InstallRoleBinding(ctx, opts.KubeClient, &rolebinding)
 		if err == nil {
-			opts.Log("RoleBinding successfully installed", "gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+			opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 		}
 	}
 
@@ -268,8 +255,7 @@ func Deploy(ctx context.Context, gvr schema.GroupVersionResource, kube client.Cl
 		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
 	}
 
-	fmt.Println("Creating configmap", "name", cmNSName.Name, "namespace", cmNSName.Namespace)
-	cm, err := configmap.CreateConfigmap(gvr, cmNSName, opts.ConfigmapTemplatePath)
+	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath)
 	if err != nil {
 		return err, rbacErr
 	}
@@ -278,13 +264,13 @@ func Deploy(ctx context.Context, gvr schema.GroupVersionResource, kube client.Cl
 	if err != nil {
 		return fmt.Errorf("Error installing configmap: %v", err), rbacErr
 	}
-	opts.Log("Configmap successfully installed", "gvr", gvr.String(), "name", cm.Name, "namespace", cm.Namespace)
+	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
 
 	deploymentNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-	dep, err := deployment.CreateDeployment(gvr, deploymentNSName, opts.DeploymentTemplatePath)
+	dep, err := deployment.CreateDeployment(opts.GVR, deploymentNSName, opts.DeploymentTemplatePath)
 	if err != nil {
 		return err, rbacErr
 	}
@@ -293,7 +279,7 @@ func Deploy(ctx context.Context, gvr schema.GroupVersionResource, kube client.Cl
 	if err != nil {
 		return err, rbacErr
 	}
-	opts.Log("Deployment successfully installed", "gvr", gvr.String(), "name", dep.Name, "namespace", dep.Namespace)
+	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
 
 	return nil, nil
 }
@@ -346,22 +332,12 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		return err
 	}
 
-	pkg, err := chartfs.ForSpec(ctx, kube, opts.Spec)
-	if err != nil {
-		return err
-	}
-	gvk, err := tools.GroupVersionKind(pkg)
-	if err != nil {
-		return err
-	}
-	gvr := tools.ToGroupVersionResource(gvk)
-
 	rbacNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
 
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(gvr, rbacNSName, opts.RBACFolderPath)
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, rbacNSName, opts.RBACFolderPath)
 	if err != nil {
 		return err
 	}
@@ -377,7 +353,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 
-		role, err := rbactools.CreateRole(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
+		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml", "secretName", opts.Spec.Credentials.PasswordRef.Name))
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 		}
@@ -391,10 +367,10 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 			Log: opts.Log,
 		})
 		if err == nil {
-			opts.Log("Role successfully uninstalled", "gvr", gvr.String(), "name", role.Name, "namespace", role.Namespace)
+			opts.Log("Role successfully uninstalled", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 		}
 
-		rolebinding, err := rbactools.CreateRoleBinding(gvr, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
+		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 		}
@@ -408,7 +384,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 			Log: opts.Log,
 		})
 		if err == nil {
-			opts.Log("RoleBinding successfully uninstalled", "gvr", gvr.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+			opts.Log("RoleBinding successfully uninstalled", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 		}
 	}
 

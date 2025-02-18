@@ -432,6 +432,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Namespace: cr.Namespace,
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
+		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,

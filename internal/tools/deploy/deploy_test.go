@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -65,8 +66,8 @@ func TestMain(m *testing.M) {
 			return ctx, nil
 		},
 	).Finish(
-	// envfuncs.DeleteNamespace(namespace),
-	// envfuncs.DestroyCluster(clusterName),
+		envfuncs.DeleteNamespace(namespace),
+		envfuncs.DestroyCluster(clusterName),
 	)
 
 	os.Exit(testenv.Run(m))
@@ -94,6 +95,11 @@ func TestDeploy(t *testing.T) {
 				Namespace: "default",
 				Name:      "test-deploy",
 			},
+			GVR: schema.GroupVersionResource{
+				Group:    "compositions.krateo.io",
+				Version:  "v1alpha1",
+				Resource: "fireworksapps",
+			},
 			Spec: &v1alpha1.ChartInfo{
 				InsecureSkipVerifyTLS: true,
 				Version:               "1.1.10",
@@ -113,16 +119,58 @@ func TestDeploy(t *testing.T) {
 			Log: func(msg string, keysAndValues ...any) {},
 		}
 
-		err, rbacErr := Deploy(context.Background(), schema.GroupVersionResource{
-			Group:    "compositions.krateo.io",
-			Version:  "v1alpha1",
-			Resource: "fireworksapps",
-		}, cli, opts)
+		err, rbacErr := Deploy(context.Background(), cli, opts)
 		assert.NoError(t, err)
 		assert.NoError(t, rbacErr)
 
 		return ctx
-	}).Feature()
+	}).Assess("Undeploy", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		cli, err := client.New(cfg.Client().RESTConfig(), client.Options{})
+		if err != nil {
+			t.Fatalf("failed to create client: %v", err)
+			return ctx
+		}
+
+		opts := UndeployOptions{
+			DiscoveryClient: memory.NewMemCacheClient(discovery.NewDiscoveryClientForConfigOrDie(cfg.Client().RESTConfig())),
+			RBACFolderPath:  "testdata",
+			KubeClient:      cli,
+			NamespacedName: types.NamespacedName{
+				Namespace: "default",
+				Name:      "test-deploy",
+			},
+			Spec: &v1alpha1.ChartInfo{
+				InsecureSkipVerifyTLS: true,
+				Version:               "1.1.10",
+				Repo:                  "fireworks-app",
+				Url:                   "https://charts.krateo.io",
+				Credentials: &v1alpha1.Credentials{
+					Username: "admin",
+					PasswordRef: rtv1.SecretKeySelector{
+						Key: "password",
+						Reference: rtv1.Reference{
+							Name:      "test",
+							Namespace: "default",
+						},
+					},
+				},
+			},
+			Log:           func(msg string, keysAndValues ...any) {},
+			SkipCRD:       true,
+			DynamicClient: dynamic.NewForConfigOrDie(cfg.Client().RESTConfig()),
+			GVR: schema.GroupVersionResource{
+				Group:    "compositions.krateo.io",
+				Version:  "v1alpha1",
+				Resource: "fireworksapps",
+			},
+		}
+
+		err = Undeploy(context.Background(), opts.KubeClient, opts)
+		assert.NoError(t, err)
+
+		return ctx
+	},
+	).Feature()
 
 	testenv.Test(t, f)
 }
