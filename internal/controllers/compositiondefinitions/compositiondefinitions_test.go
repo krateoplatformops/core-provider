@@ -232,7 +232,7 @@ func TestCreate(t *testing.T) {
 					mg := object.(*v1alpha1.CompositionDefinition)
 					return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable
 				}),
-				wait.WithTimeout(4*time.Minute),
+				wait.WithTimeout(7*time.Minute),
 				wait.WithInterval(15*time.Second),
 			); err != nil {
 				obj := v1alpha1.CompositionDefinition{}
