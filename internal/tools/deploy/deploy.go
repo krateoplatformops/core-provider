@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
 
 	corev1 "k8s.io/api/core/v1"
@@ -66,6 +67,13 @@ func logError(log func(msg string, keysAndValues ...any), msg string, err error)
 }
 
 func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.NamespacedName, rbacFolderPath string) (corev1.ServiceAccount, rbacv1.ClusterRole, rbacv1.ClusterRoleBinding, rbacv1.Role, rbacv1.RoleBinding, error) {
+	li, err := os.ReadDir(rbacFolderPath)
+	if err != nil {
+		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
+	}
+	for _, fi := range li {
+		fmt.Println("F name: ", fi.Name(), fi.IsDir())
+	}
 	sa, err := rbactools.CreateServiceAccount(gvr, rbacNSName, path.Join(rbacFolderPath, "serviceaccount.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
@@ -76,7 +84,7 @@ func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.Names
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
-	clusterrolebinding, err := rbactools.CreateClusterRoleBinding(gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name)
+	clusterrolebinding, err := rbactools.CreateClusterRoleBinding(gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
@@ -255,7 +263,9 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
 	}
 
-	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath)
+	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+		"composition_controller_sa_name", sa.Name,
+		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
 		return err, rbacErr
 	}
@@ -270,7 +280,11 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (err er
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-	dep, err := deployment.CreateDeployment(opts.GVR, deploymentNSName, opts.DeploymentTemplatePath)
+	dep, err := deployment.CreateDeployment(
+		opts.GVR,
+		deploymentNSName,
+		opts.DeploymentTemplatePath,
+		"serviceAccountName", sa.Name)
 	if err != nil {
 		return err, rbacErr
 	}
@@ -289,6 +303,10 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		err := crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
 		if err == nil && opts.Log != nil {
 			opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
+		}
+		if err != nil {
+			opts.Log("Error uninstalling CRD", "name", opts.GVR.GroupResource().String(), "error", err)
+			return err
 		}
 
 		labelreq, err := labels.NewRequirement(CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})

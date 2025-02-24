@@ -17,7 +17,6 @@ import (
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/snowplow/plumbing/e2e"
 	xenv "github.com/krateoplatformops/snowplow/plumbing/env"
-	"k8s.io/client-go/discovery"
 
 	"sigs.k8s.io/e2e-framework/klient/decoder"
 	"sigs.k8s.io/e2e-framework/klient/k8s"
@@ -58,7 +57,6 @@ func TestMain(m *testing.M) {
 
 	testenv.Setup(
 		envfuncs.CreateCluster(kindCluster, clusterName),
-		envfuncs.SetupCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
 		e2e.CreateNamespace(namespace),
 		e2e.CreateNamespace("krateo-system"),
 
@@ -76,44 +74,51 @@ func TestMain(m *testing.M) {
 				return ctx, p.Err()
 			}
 
-			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
-
-			if err := certificatesProc.Err(); err != nil {
+			err = kindCluster.LoadImage(ctx, "kind.local/core-provider:latest")
+			if err != nil {
 				return ctx, err
 			}
 
-			if err := wait.For(
-				conditions.New(r).DeploymentAvailable("core-provider-dev", namespace),
-				wait.WithTimeout(5*time.Minute),
-				wait.WithInterval(15*time.Second),
-			); err != nil {
+			// uncomment to build and load the image in local testing
+			// err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
+			// if err != nil {
+			// 	return ctx, err
+			// }
+
+			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
+			if err := certificatesProc.Err(); err != nil {
 				return ctx, err
 			}
 
 			// Install CRDs
 			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(crdPath)), "*.yaml",
+				decoder.CreateIgnoreAlreadyExists(r),
+			)
+
+			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/finops")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/argocd")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/azuredevops-provider")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/git-provider")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/github-provider")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			err = decoder.DecodeEachFile(
 				ctx, os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test/crds/resourcetree")), "*.yaml",
-				decoder.CreateHandler(r),
+				decoder.CreateIgnoreAlreadyExists(r),
 			)
 			// Additional Krateo Setup
 			// Add helm repos
@@ -154,36 +159,38 @@ func TestMain(m *testing.M) {
 				return ctx, fmt.Errorf("Error installing backend: %v", err)
 			}
 
-			discoveryCli, err := discovery.NewDiscoveryClientForConfig(r.GetConfig())
-			if err != nil {
-				return ctx, fmt.Errorf("Error creating discovery client: %v", err)
-			}
+			// discoveryCli, err := discovery.NewDiscoveryClientForConfig(r.GetConfig())
+			// if err != nil {
+			// 	return ctx, fmt.Errorf("Error creating discovery client: %v", err)
+			// }
 
-			wait.For(
-				func(context.Context) (done bool, err error) {
-					groups, err := discoveryCli.ServerGroups()
-					if err != nil {
-						return false, err
-					}
+			// wait.For(
+			// 	func(context.Context) (done bool, err error) {
+			// 		groups, err := discoveryCli.ServerGroups()
+			// 		if err != nil {
+			// 			return false, err
+			// 		}
 
-					for _, group := range groups.Groups {
-						if group.APIVersion == "templates.krateo.io/v1alpha1" {
-							return true, nil
-						}
-					}
+			// 		for _, group := range groups.Groups {
+			// 			if group.APIVersion == "templates.krateo.io/v1alpha1" {
+			// 				return true, nil
+			// 			}
+			// 		}
 
-					return false, nil
-				},
-				wait.WithTimeout(5*time.Minute),
-				wait.WithInterval(15*time.Second),
-			)
+			// 		return false, nil
+			// 	},
+			// 	wait.WithTimeout(5*time.Minute),
+			// 	wait.WithInterval(2*time.Second),
+			// )
+
+			time.Sleep(2 * time.Minute)
 
 			return ctx, nil
 		},
 	).Finish(
-	// envfuncs.DeleteNamespace(namespace),
-	// envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
-	// envfuncs.DestroyCluster(clusterName),
+		envfuncs.DeleteNamespace(namespace),
+		envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
+		envfuncs.DestroyCluster(clusterName),
 	)
 
 	os.Exit(testenv.Run(m))
@@ -191,10 +198,10 @@ func TestMain(m *testing.M) {
 
 func TestCreate(t *testing.T) {
 	os.Setenv("DEBUG", "1")
+	resource_ns := "krateo-system"
 
 	f := features.New("Setup").
-		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			resource_ns := "krateo-system"
+		Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			r, err := resources.New(cfg.Client().RESTConfig())
 			if err != nil {
 				t.Fail()
@@ -234,19 +241,9 @@ func TestCreate(t *testing.T) {
 				t.Logf("CompositionDefinition Status: %s", string(b))
 				t.Fatal(err)
 			}
-
 			return ctx
-		}).Feature()
-
-	testenv.Test(t, f)
-}
-
-func TestDelete(t *testing.T) {
-	os.Setenv("DEBUG", "1")
-
-	f := features.New("Setup").
-		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			resource_ns := "krateo-system"
+		}).
+		Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			r, err := resources.New(cfg.Client().RESTConfig())
 			if err != nil {
 				t.Fail()
@@ -264,29 +261,6 @@ func TestDelete(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
-			// Create CompositionDefinition
-			err = r.Create(ctx, &res)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			//wait for resource to be created
-			if err := wait.For(
-				conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-					mg := object.(*v1alpha1.CompositionDefinition)
-					return mg.GetCondition(rtv1.TypeSynced).Reason == rtv1.ReasonReconcileSuccess
-				}),
-				wait.WithTimeout(4*time.Minute),
-				wait.WithInterval(15*time.Second),
-			); err != nil {
-				obj := v1alpha1.CompositionDefinition{}
-				r.Get(ctx, res.Name, resource_ns, &obj)
-				b, _ := json.MarshalIndent(obj.Status, "", "  ")
-				t.Logf("CompositionDefinition Status: %s", string(b))
-				t.Fatal(err)
-			}
-
 			// Delete CompositionDefinition
 			err = r.Delete(ctx, &res)
 			if err != nil {
@@ -301,9 +275,9 @@ func TestDelete(t *testing.T) {
 			); err != nil {
 				t.Fatal(err)
 			}
-
 			return ctx
-		}).Feature()
+		}).
+		Feature()
 
 	testenv.Test(t, f)
 }

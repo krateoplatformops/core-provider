@@ -73,7 +73,7 @@ func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Depl
 	)
 }
 
-func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, templatePath string) (appsv1.Deployment, error) {
+func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, templatePath string, additionalvalues ...string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
@@ -81,6 +81,13 @@ func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, 
 		Namespace: nn.Namespace,
 		Name:      nn.Name,
 	})
+
+	if len(additionalvalues)%2 != 0 {
+		return appsv1.Deployment{}, fmt.Errorf("additionalvalues must be in pairs")
+	}
+	for i := 0; i < len(additionalvalues); i += 2 {
+		values[additionalvalues[i]] = additionalvalues[i+1]
+	}
 
 	templateF, err := os.ReadFile(templatePath)
 	if err != nil {

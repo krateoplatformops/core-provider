@@ -61,7 +61,7 @@ func main() {
 		ctrl.SetLogger(zl)
 	}
 
-	log.Debug("Starting", "sync-period", syncPeriod.String(), "cdc-image-tag", os.Getenv("CDC_IMAGE_TAG"))
+	log.Debug("Starting", "sync-period", syncPeriod.String(), "poll-interval", pollInterval.String(), "max-reconcile-rate", *maxReconcileRate, "leader-election", *leaderElection)
 
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")

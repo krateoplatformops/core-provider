@@ -22,15 +22,15 @@ spec:
       serviceAccountName: core-provider-dev
       containers:
       - name: core-provider-dev-container
-        image: ko.local/core-provider:latest
+        image: kind.local/core-provider:latest
         imagePullPolicy: IfNotPresent
         args:
           - --debug
         env:
           - name: CORE_PROVIDER_POLL_INTERVAL
             value: 30s
-          - name: CRDGEN_CLEAN_WORKDIR
-            value: "false"
+          # - name: CRDGEN_CLEAN_WORKDIR
+          #   value: "false"
         ports:
         - containerPort: 8080
         - containerPort: 9443
@@ -46,6 +46,9 @@ spec:
         - mountPath: /tmp/assets/cdc-configmap
           name: cdc-configmap
           readOnly: true
+        - mountPath: /tmp/assets/cdc-rbac
+          name: cdc-rbac
+          readOnly: true
       volumes:
       - name: cert
         secret:
@@ -57,3 +60,6 @@ spec:
       - name: cdc-configmap
         configMap:
           name: test-core-provider-cdc-configmap
+      - name: cdc-rbac
+        configMap:
+          name: cdc-rbac-configmap
