@@ -236,7 +236,7 @@ func TestCreate(t *testing.T) {
 			if err != nil {
 				depl := appsv1.Deployment{}
 				r.Get(ctx, res.Name, resource_ns, &depl)
-				b, _ := json.MarshalIndent(res, "", "  ")
+				b, _ := json.MarshalIndent(depl, "", "  ")
 				fmt.Println(string(b))
 				t.Fatal(err)
 			}
