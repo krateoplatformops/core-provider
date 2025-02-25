@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+
 	"github.com/krateoplatformops/core-provider/apis"
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
@@ -232,6 +234,10 @@ func TestCreate(t *testing.T) {
 				wait.WithInterval(15*time.Second),
 			)
 			if err != nil {
+				depl := appsv1.Deployment{}
+				r.Get(ctx, res.Name, resource_ns, &depl)
+				b, _ := json.MarshalIndent(res, "", "  ")
+				fmt.Println(string(b))
 				t.Fatal(err)
 			}
 
