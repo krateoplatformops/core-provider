@@ -73,7 +73,7 @@ func InstallConfigmap(ctx context.Context, kube client.Client, obj *corev1.Confi
 	)
 }
 
-func CreateConfigmap(gvr schema.GroupVersionResource, nn types.NamespacedName, configmapTemplatePath string) (corev1.ConfigMap, error) {
+func CreateConfigmap(gvr schema.GroupVersionResource, nn types.NamespacedName, configmapTemplatePath string, additionalvalues ...string) (corev1.ConfigMap, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,
 		Version:   gvr.Version,
@@ -81,6 +81,13 @@ func CreateConfigmap(gvr schema.GroupVersionResource, nn types.NamespacedName, c
 		Namespace: nn.Namespace,
 		Name:      nn.Name,
 	})
+
+	if len(additionalvalues)%2 != 0 {
+		return corev1.ConfigMap{}, fmt.Errorf("additionalvalues must be in pairs")
+	}
+	for i := 0; i < len(additionalvalues); i += 2 {
+		values[additionalvalues[i]] = additionalvalues[i+1]
+	}
 
 	templateF, err := os.ReadFile(configmapTemplatePath)
 	if err != nil {

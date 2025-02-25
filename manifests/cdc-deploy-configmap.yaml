@@ -30,12 +30,13 @@ data:
             labels:
               app.kubernetes.io/name: {{ .name }}
           spec:
-            serviceAccountName: {{ .name }}
+            serviceAccountName: {{ .serviceAccountName}}
             securityContext:
               {}
             containers:
               - name: {{ .resource }}-{{ .apiVersion }}-controller
-                image: "ko.local/composition-dynamic-controller:latest"
+                image: "ghcr.io/krateoplatformops/composition-dynamic-controller:0.16.0"
+                # image: "kind.local/composition-dynamic-controller:latest" # uncomment this line to use local image
                 imagePullPolicy: IfNotPresent
                 envFrom:
                   - configMapRef:

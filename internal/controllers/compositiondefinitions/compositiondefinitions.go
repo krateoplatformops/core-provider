@@ -83,27 +83,21 @@ var (
 		}),
 	}
 	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
-	cabundle                     = GetCABundle()
 	webhookServiceName           = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.GetEnvOrDefault("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
 	helmRegistryConfigPath       = env.GetEnvOrDefault(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
 	CDCtemplateDeploymentPath    = path.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath     = path.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
+	CDCrbacConfigFolder          = path.Join(os.TempDir(), "assets/cdc-rbac/")
 )
 
-func GetCABundle() []byte {
-	// CertDir is the directory that contains the server key and certificate. Defaults to
-	// <temp-dir>/k8s-webhook-server/serving-certs.
-	dir, err := os.UserHomeDir()
+func GetCABundle() ([]byte, error) {
+	fb, err := os.ReadFile(path.Join(os.TempDir(), "k8s-webhook-server/serving-certs/tls.crt"))
 	if err != nil {
-		dir = os.TempDir()
-	}
-	fb, err := os.ReadFile(path.Join(dir, "k8s-webhook-server/serving-certs/tls.crt"))
-	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return fb
+	return fb, nil
 }
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	_ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
@@ -381,6 +375,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		whport := int32(9443)
 		whpath := "/convert"
 
+		cabundle, err := GetCABundle()
+		if err != nil {
+			return fmt.Errorf("error getting CA bundle: %w", err)
+		}
 		crd = crdtools.ConversionConf(*crd, &apiextensionsv1.CustomResourceConversion{
 			Strategy: apiextensionsv1.WebhookConverter,
 			Webhook: &apiextensionsv1.WebhookConversion{
@@ -424,12 +422,14 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	opts := deploy.DeployOptions{
+		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		KubeClient:      e.kube,
 		NamespacedName: types.NamespacedName{
 			Namespace: cr.Namespace,
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 		},
+		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
@@ -511,6 +511,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
 				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+				RBACFolderPath:  CDCrbacConfigFolder,
 				DynamicClient:   e.dynamic,
 				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 				KubeClient:      e.kube,
@@ -519,6 +520,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
+				Log:     e.log.Debug,
 			})
 			if err != nil {
 				return err
@@ -609,8 +611,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
-		SkipCRD:       skipCRD,
-		DynamicClient: e.dynamic,
+		SkipCRD:        skipCRD,
+		DynamicClient:  e.dynamic,
+		RBACFolderPath: CDCrbacConfigFolder,
+		Log:            e.log.Debug,
 	}
 	if meta.IsVerbose(cr) {
 		opts.Log = e.log.Debug
@@ -628,6 +632,8 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 				}
 			}
 		}
+
+		return fmt.Errorf("error undeploying CompositionDefinition: %w", err)
 	}
 
 	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
