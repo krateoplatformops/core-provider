@@ -38,8 +38,6 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 
 ![core-provider Architecture Image](_diagrams/core-provider.png "core-provider Architecture")
 
-Here's the updated Overview section with more details about authentication and RBAC generation:
-
 ## Overview
 
 The `core-provider` is a Kubernetes operator that downloads and manages Helm charts. It checks for the existence of `values.schema.json` and uses it to generate a Custom Resource Definition (CRD) in Kubernetes, accurately representing the possible values that can be expressed for the installation of the chart.
@@ -50,9 +48,20 @@ Kubernetes is designed to validate resource inputs before applying them to the c
 
 The `core-provider` also handles authentication to private OCI registries and Helm repositories. Users can provide their credentials through Kubernetes secrets, and the `core-provider` will use them to download the necessary chart resources.
 
-### RBAC Generation
+### RBAC Generation  
 
-When the `CompositionDefinition` manifest is applied to the cluster, the `core-provider` not only generates the CRDs but also deploys an instance of the `composition-dynamic-controller`. This controller is instructed to manage resources of the type defined by the CRD, and the deployment applies the most restrictive RBAC policy possible to ensure that the `composition-dynamic-controller` instance can only manage the resources contained within the chart. Upon deleting the CR, the `composition-dynamic-controller` instance is undeployed, and the RBAC policy is removed.
+Starting from version **0.22.0** of `core-provider`, the RBAC generation process has been updated for the following reasons:  
+
+- **Auto-healing of the RBAC policy for `composition-dynamic-controller`**: The previous RBAC generation strategy made it difficult to automatically update the RBAC policy for `composition-dynamic-controller` when cluster conditions changed (e.g., when CRD installation was required). The new approach enhances resilience by dynamically adjusting RBAC policies as needed.  
+
+- **More reliable retrieval of `apiVersion` and `kind` from templates**: In earlier versions, `core-provider` extracted resource information by parsing raw Helm chart templates. This method was unreliable, as it could result in incomplete RBAC policies due to parsing errors or edge cases (e.g., templated `apiVersion` or `kind`). The updated approach ensures more accurate and comprehensive RBAC generation.  
+
+Starting from version **0.22.0**, RBAC generation is now handled directly by `composition-dynamic-controller` with the help of [`chart-inspector`](https://github.com/krateoplatformops/chart-inspector). As a result, `core-provider` only generates a **base (static) RBAC policy**, granting `composition-dynamic-controller` the necessary permissions to generate its own RBAC dynamically.  
+
+For more details on RBAC generation, refer to:  
+- [`chart-inspector` README](https://github.com/krateoplatformops/chart-inspector)  
+- [`composition-dynamic-controller` README](https://github.com/krateoplatformops/chart-inspector/blob/main/README.md)  
+
 
 ### Multi-Version Support
 
