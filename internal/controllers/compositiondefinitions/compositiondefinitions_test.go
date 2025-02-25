@@ -226,6 +226,15 @@ func TestCreate(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			err = wait.For(
+				conditions.New(r).DeploymentAvailable("core-provider-dev", "demo-system"),
+				wait.WithTimeout(1*time.Minute),
+				wait.WithInterval(15*time.Second),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			//wait for resource to be created
 			if err := wait.For(
 				conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
