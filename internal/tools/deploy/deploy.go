@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path"
 
 	corev1 "k8s.io/api/core/v1"
@@ -67,13 +66,6 @@ func logError(log func(msg string, keysAndValues ...any), msg string, err error)
 }
 
 func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.NamespacedName, rbacFolderPath string) (corev1.ServiceAccount, rbacv1.ClusterRole, rbacv1.ClusterRoleBinding, rbacv1.Role, rbacv1.RoleBinding, error) {
-	li, err := os.ReadDir(rbacFolderPath)
-	if err != nil {
-		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
-	}
-	for _, fi := range li {
-		fmt.Println("F name: ", fi.Name(), fi.IsDir())
-	}
 	sa, err := rbactools.CreateServiceAccount(gvr, rbacNSName, path.Join(rbacFolderPath, "serviceaccount.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err

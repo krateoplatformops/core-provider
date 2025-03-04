@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -82,10 +83,10 @@ func TestMain(m *testing.M) {
 			}
 
 			// uncomment to build and load the image in local testing
-			// err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
-			// if err != nil {
-			// 	return ctx, err
-			// }
+			err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
+			if err != nil {
+				return ctx, err
+			}
 
 			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
 			if err := certificatesProc.Err(); err != nil {
@@ -161,30 +162,6 @@ func TestMain(m *testing.M) {
 				return ctx, fmt.Errorf("Error installing backend: %v", err)
 			}
 
-			// discoveryCli, err := discovery.NewDiscoveryClientForConfig(r.GetConfig())
-			// if err != nil {
-			// 	return ctx, fmt.Errorf("Error creating discovery client: %v", err)
-			// }
-
-			// wait.For(
-			// 	func(context.Context) (done bool, err error) {
-			// 		groups, err := discoveryCli.ServerGroups()
-			// 		if err != nil {
-			// 			return false, err
-			// 		}
-
-			// 		for _, group := range groups.Groups {
-			// 			if group.APIVersion == "templates.krateo.io/v1alpha1" {
-			// 				return true, nil
-			// 			}
-			// 		}
-
-			// 		return false, nil
-			// 	},
-			// 	wait.WithTimeout(5*time.Minute),
-			// 	wait.WithInterval(2*time.Second),
-			// )
-
 			time.Sleep(2 * time.Minute)
 
 			return ctx, nil
@@ -257,41 +234,92 @@ func TestCreate(t *testing.T) {
 				t.Fatal(err)
 			}
 			return ctx
-		}).
-		Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			r, err := resources.New(cfg.Client().RESTConfig())
-			if err != nil {
-				t.Fail()
-			}
-			apis.AddToScheme(r.GetScheme())
-			r.WithNamespace(resource_ns)
+		}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		const NewVersion = "1.1.13"
+		r, err := resources.New(cfg.Client().RESTConfig())
+		if err != nil {
+			t.Fail()
+		}
+		apis.AddToScheme(r.GetScheme())
+		r.WithNamespace(resource_ns)
 
-			res := v1alpha1.CompositionDefinition{}
+		var res v1alpha1.CompositionDefinition
+		err = decoder.DecodeFile(
+			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+			&res,
+			decoder.MutateNamespace(resource_ns),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			err = decoder.DecodeFile(
-				os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-				&res,
-				decoder.MutateNamespace(resource_ns),
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
-			// Delete CompositionDefinition
-			err = r.Delete(ctx, &res)
-			if err != nil {
-				t.Fatal(err)
-			}
+		err = r.Get(ctx, res.Name, resource_ns, &res)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			//wait for resource to be deleted
-			if err := wait.For(
-				conditions.New(r).ResourceDeleted(&res),
-				wait.WithTimeout(4*time.Minute),
-				wait.WithInterval(15*time.Second),
-			); err != nil {
-				t.Fatal(err)
-			}
-			return ctx
-		}).
+		res.Spec.Chart.Version = NewVersion
+		// Update CompositionDefinition
+		err = r.Update(ctx, &res)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		//wait for resource to be created
+		if err := wait.For(
+			conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
+				mg := object.(*v1alpha1.CompositionDefinition)
+				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
+					len(mg.Status.Managed.VersionInfo) == 3 &&
+					slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
+						return v.Version == NewVersion
+					})
+			}),
+			wait.WithTimeout(7*time.Minute),
+			wait.WithInterval(15*time.Second),
+		); err != nil {
+			obj := v1alpha1.CompositionDefinition{}
+			r.Get(ctx, res.Name, resource_ns, &obj)
+			b, _ := json.MarshalIndent(obj.Status, "", "  ")
+			t.Logf("CompositionDefinition Status: %s", string(b))
+			t.Fatal(err)
+		}
+
+		return ctx
+	}).Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		r, err := resources.New(cfg.Client().RESTConfig())
+		if err != nil {
+			t.Fail()
+		}
+		apis.AddToScheme(r.GetScheme())
+		r.WithNamespace(resource_ns)
+
+		res := v1alpha1.CompositionDefinition{}
+
+		err = decoder.DecodeFile(
+			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+			&res,
+			decoder.MutateNamespace(resource_ns),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Delete CompositionDefinition
+		err = r.Delete(ctx, &res)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		//wait for resource to be deleted
+		if err := wait.For(
+			conditions.New(r).ResourceDeleted(&res),
+			wait.WithTimeout(4*time.Minute),
+			wait.WithInterval(15*time.Second),
+		); err != nil {
+			t.Fatal(err)
+		}
+		return ctx
+	}).
 		Feature()
 
 	testenv.Test(t, f)

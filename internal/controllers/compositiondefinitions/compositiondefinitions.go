@@ -509,11 +509,17 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	// Undeploy olders versions of the CRD
 	for _, vi := range cr.Status.Managed.VersionInfo {
 		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
+			gvr := schema.GroupVersionResource{
+				Group:    oldGVK.Group,
+				Version:  oldGVK.Version,
+				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
+			}
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
 				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 				RBACFolderPath:  CDCrbacConfigFolder,
 				DynamicClient:   e.dynamic,
 				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
+				GVR:             gvr,
 				KubeClient:      e.kube,
 				NamespacedName: types.NamespacedName{
 					Name:      resourceNamer(gvr.Resource, oldGVK.Version),
