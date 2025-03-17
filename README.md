@@ -314,11 +314,24 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 
 ### `CORE_PROVIDER_LEADER_ELECTION`
 - **Description**: Enables leader election for the controller manager. This ensures that only one instance of the controller manager is active at a time.
-- **Flag**: `--leader-election` or `-l`
+- **Flag**: `--leader-election` 
 - **Type**: `Bool`
 - **Default**: `false`
 
 
+
+### `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL`
+- **Description**: The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.
+- **Flag**: `--max-error-retry-interval` 
+- **Type**: `Duration`
+- **Default**: `1m`
+
+
+### `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL`
+- **Description**: The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.
+- **Flag**: `--min-error-retry-interval` 
+- **Type**: `Duration`
+- **Default**: `1s`
 
 ## Security Features
 

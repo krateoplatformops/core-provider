@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
+	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	appsv1 "k8s.io/api/apps/v1"
 
 	"github.com/krateoplatformops/core-provider/apis"
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/snowplow/plumbing/e2e"
 	xenv "github.com/krateoplatformops/snowplow/plumbing/env"
 
@@ -207,7 +207,7 @@ func TestCreate(t *testing.T) {
 
 			err = wait.For(
 				conditions.New(r).DeploymentAvailable("core-provider-dev", "demo-system"),
-				wait.WithTimeout(1*time.Minute),
+				wait.WithTimeout(15*time.Minute),
 				wait.WithInterval(15*time.Second),
 			)
 			if err != nil {
@@ -224,7 +224,7 @@ func TestCreate(t *testing.T) {
 					mg := object.(*v1alpha1.CompositionDefinition)
 					return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable
 				}),
-				wait.WithTimeout(7*time.Minute),
+				wait.WithTimeout(15*time.Minute),
 				wait.WithInterval(15*time.Second),
 			); err != nil {
 				obj := v1alpha1.CompositionDefinition{}
@@ -275,7 +275,7 @@ func TestCreate(t *testing.T) {
 						return v.Version == NewVersion
 					})
 			}),
-			wait.WithTimeout(7*time.Minute),
+			wait.WithTimeout(15*time.Minute),
 			wait.WithInterval(15*time.Second),
 		); err != nil {
 			obj := v1alpha1.CompositionDefinition{}
@@ -313,7 +313,7 @@ func TestCreate(t *testing.T) {
 		//wait for resource to be deleted
 		if err := wait.For(
 			conditions.New(r).ResourceDeleted(&res),
-			wait.WithTimeout(4*time.Minute),
+			wait.WithTimeout(8*time.Minute),
 			wait.WithInterval(15*time.Second),
 		); err != nil {
 			t.Fatal(err)

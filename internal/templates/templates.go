@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"text/template"
+
+	"github.com/Masterminds/sprig/v3"
 )
 
 type Renderoptions struct {
@@ -30,14 +32,13 @@ func Values(opts Renderoptions) map[string]any {
 		"name":       opts.Name,
 		"namespace":  opts.Namespace,
 	}
-
 	return values
 }
 
 type Template string
 
 func (t Template) RenderDeployment(values map[string]any) ([]byte, error) {
-	tpl, err := template.New("deployment").Funcs(TxtFuncMap()).Parse(string(t))
+	tpl, err := template.New("deployment").Funcs(sprig.FuncMap()).Parse(string(t))
 	if err != nil {
 		return nil, err
 	}
