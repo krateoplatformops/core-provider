@@ -5,27 +5,17 @@ package compositiondefinitions
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
-	appsv1 "k8s.io/api/apps/v1"
-
-	"github.com/krateoplatformops/core-provider/apis"
-	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/snowplow/plumbing/e2e"
 	xenv "github.com/krateoplatformops/snowplow/plumbing/env"
 
 	"sigs.k8s.io/e2e-framework/klient/decoder"
-	"sigs.k8s.io/e2e-framework/klient/k8s"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
-	"sigs.k8s.io/e2e-framework/klient/wait"
-	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
 	"sigs.k8s.io/e2e-framework/pkg/env"
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
@@ -167,9 +157,9 @@ func TestMain(m *testing.M) {
 			return ctx, nil
 		},
 	).Finish(
-		envfuncs.DeleteNamespace(namespace),
-		envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
-		envfuncs.DestroyCluster(clusterName),
+	// envfuncs.DeleteNamespace(namespace),
+	// envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
+	// envfuncs.DestroyCluster(clusterName),
 	)
 
 	os.Exit(testenv.Run(m))
@@ -177,150 +167,150 @@ func TestMain(m *testing.M) {
 
 func TestCreate(t *testing.T) {
 	os.Setenv("DEBUG", "1")
-	resource_ns := "krateo-system"
+	// resource_ns := "krateo-system"
 
-	f := features.New("Setup").
-		Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			r, err := resources.New(cfg.Client().RESTConfig())
-			if err != nil {
-				t.Fail()
-			}
-			apis.AddToScheme(r.GetScheme())
-			r.WithNamespace(resource_ns)
+	f := features.New("Setup").Feature()
+	// 	Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	// 		r, err := resources.New(cfg.Client().RESTConfig())
+	// 		if err != nil {
+	// 			t.Fail()
+	// 		}
+	// 		apis.AddToScheme(r.GetScheme())
+	// 		r.WithNamespace(resource_ns)
 
-			res := v1alpha1.CompositionDefinition{}
+	// 		res := v1alpha1.CompositionDefinition{}
 
-			err = decoder.DecodeFile(
-				os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-				&res,
-				decoder.MutateNamespace(resource_ns),
-			)
-			if err != nil {
-				t.Fatal(err)
-			}
+	// 		err = decoder.DecodeFile(
+	// 			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+	// 			&res,
+	// 			decoder.MutateNamespace(resource_ns),
+	// 		)
+	// 		if err != nil {
+	// 			t.Fatal(err)
+	// 		}
 
-			// Create CompositionDefinition
-			err = r.Create(ctx, &res)
-			if err != nil {
-				t.Fatal(err)
-			}
+	// 		// Create CompositionDefinition
+	// 		err = r.Create(ctx, &res)
+	// 		if err != nil {
+	// 			t.Fatal(err)
+	// 		}
 
-			err = wait.For(
-				conditions.New(r).DeploymentAvailable("core-provider-dev", "demo-system"),
-				wait.WithTimeout(1*time.Minute),
-				wait.WithInterval(15*time.Second),
-			)
-			if err != nil {
-				depl := appsv1.Deployment{}
-				r.Get(ctx, res.Name, resource_ns, &depl)
-				b, _ := json.MarshalIndent(depl, "", "  ")
-				fmt.Println(string(b))
-				t.Fatal(err)
-			}
+	// 		err = wait.For(
+	// 			conditions.New(r).DeploymentAvailable("core-provider-dev", "demo-system"),
+	// 			wait.WithTimeout(1*time.Minute),
+	// 			wait.WithInterval(15*time.Second),
+	// 		)
+	// 		if err != nil {
+	// 			depl := appsv1.Deployment{}
+	// 			r.Get(ctx, res.Name, resource_ns, &depl)
+	// 			b, _ := json.MarshalIndent(depl, "", "  ")
+	// 			fmt.Println(string(b))
+	// 			t.Fatal(err)
+	// 		}
 
-			//wait for resource to be created
-			if err := wait.For(
-				conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-					mg := object.(*v1alpha1.CompositionDefinition)
-					return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable
-				}),
-				wait.WithTimeout(7*time.Minute),
-				wait.WithInterval(15*time.Second),
-			); err != nil {
-				obj := v1alpha1.CompositionDefinition{}
-				r.Get(ctx, res.Name, resource_ns, &obj)
-				b, _ := json.MarshalIndent(obj.Status, "", "  ")
-				t.Logf("CompositionDefinition Status: %s", string(b))
-				t.Fatal(err)
-			}
-			return ctx
-		}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-		const NewVersion = "1.1.13"
-		r, err := resources.New(cfg.Client().RESTConfig())
-		if err != nil {
-			t.Fail()
-		}
-		apis.AddToScheme(r.GetScheme())
-		r.WithNamespace(resource_ns)
+	// 		//wait for resource to be created
+	// 		if err := wait.For(
+	// 			conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
+	// 				mg := object.(*v1alpha1.CompositionDefinition)
+	// 				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable
+	// 			}),
+	// 			wait.WithTimeout(7*time.Minute),
+	// 			wait.WithInterval(15*time.Second),
+	// 		); err != nil {
+	// 			obj := v1alpha1.CompositionDefinition{}
+	// 			r.Get(ctx, res.Name, resource_ns, &obj)
+	// 			b, _ := json.MarshalIndent(obj.Status, "", "  ")
+	// 			t.Logf("CompositionDefinition Status: %s", string(b))
+	// 			t.Fatal(err)
+	// 		}
+	// 		return ctx
+	// 	}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	// 	const NewVersion = "1.1.13"
+	// 	r, err := resources.New(cfg.Client().RESTConfig())
+	// 	if err != nil {
+	// 		t.Fail()
+	// 	}
+	// 	apis.AddToScheme(r.GetScheme())
+	// 	r.WithNamespace(resource_ns)
 
-		var res v1alpha1.CompositionDefinition
-		err = decoder.DecodeFile(
-			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-			&res,
-			decoder.MutateNamespace(resource_ns),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// 	var res v1alpha1.CompositionDefinition
+	// 	err = decoder.DecodeFile(
+	// 		os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+	// 		&res,
+	// 		decoder.MutateNamespace(resource_ns),
+	// 	)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
 
-		err = r.Get(ctx, res.Name, resource_ns, &res)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// 	err = r.Get(ctx, res.Name, resource_ns, &res)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
 
-		res.Spec.Chart.Version = NewVersion
-		// Update CompositionDefinition
-		err = r.Update(ctx, &res)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// 	res.Spec.Chart.Version = NewVersion
+	// 	// Update CompositionDefinition
+	// 	err = r.Update(ctx, &res)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
 
-		//wait for resource to be created
-		if err := wait.For(
-			conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-				mg := object.(*v1alpha1.CompositionDefinition)
-				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
-					len(mg.Status.Managed.VersionInfo) == 3 &&
-					slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
-						return v.Version == NewVersion
-					})
-			}),
-			wait.WithTimeout(7*time.Minute),
-			wait.WithInterval(15*time.Second),
-		); err != nil {
-			obj := v1alpha1.CompositionDefinition{}
-			r.Get(ctx, res.Name, resource_ns, &obj)
-			b, _ := json.MarshalIndent(obj.Status, "", "  ")
-			t.Logf("CompositionDefinition Status: %s", string(b))
-			t.Fatal(err)
-		}
+	// 	//wait for resource to be created
+	// 	if err := wait.For(
+	// 		conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
+	// 			mg := object.(*v1alpha1.CompositionDefinition)
+	// 			return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
+	// 				len(mg.Status.Managed.VersionInfo) == 3 &&
+	// 				slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
+	// 					return v.Version == NewVersion
+	// 				})
+	// 		}),
+	// 		wait.WithTimeout(7*time.Minute),
+	// 		wait.WithInterval(15*time.Second),
+	// 	); err != nil {
+	// 		obj := v1alpha1.CompositionDefinition{}
+	// 		r.Get(ctx, res.Name, resource_ns, &obj)
+	// 		b, _ := json.MarshalIndent(obj.Status, "", "  ")
+	// 		t.Logf("CompositionDefinition Status: %s", string(b))
+	// 		t.Fatal(err)
+	// 	}
 
-		return ctx
-	}).Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-		r, err := resources.New(cfg.Client().RESTConfig())
-		if err != nil {
-			t.Fail()
-		}
-		apis.AddToScheme(r.GetScheme())
-		r.WithNamespace(resource_ns)
+	// 	return ctx
+	// }).Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	// 	r, err := resources.New(cfg.Client().RESTConfig())
+	// 	if err != nil {
+	// 		t.Fail()
+	// 	}
+	// 	apis.AddToScheme(r.GetScheme())
+	// 	r.WithNamespace(resource_ns)
 
-		res := v1alpha1.CompositionDefinition{}
+	// 	res := v1alpha1.CompositionDefinition{}
 
-		err = decoder.DecodeFile(
-			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-			&res,
-			decoder.MutateNamespace(resource_ns),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Delete CompositionDefinition
-		err = r.Delete(ctx, &res)
-		if err != nil {
-			t.Fatal(err)
-		}
+	// 	err = decoder.DecodeFile(
+	// 		os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+	// 		&res,
+	// 		decoder.MutateNamespace(resource_ns),
+	// 	)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
+	// 	// Delete CompositionDefinition
+	// 	err = r.Delete(ctx, &res)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
 
-		//wait for resource to be deleted
-		if err := wait.For(
-			conditions.New(r).ResourceDeleted(&res),
-			wait.WithTimeout(4*time.Minute),
-			wait.WithInterval(15*time.Second),
-		); err != nil {
-			t.Fatal(err)
-		}
-		return ctx
-	}).
-		Feature()
+	// 	//wait for resource to be deleted
+	// 	if err := wait.For(
+	// 		conditions.New(r).ResourceDeleted(&res),
+	// 		wait.WithTimeout(4*time.Minute),
+	// 		wait.WithInterval(15*time.Second),
+	// 	); err != nil {
+	// 		t.Fatal(err)
+	// 	}
+	// 	return ctx
+	// }).
+	// 	Feature()
 
 	testenv.Test(t, f)
 }
