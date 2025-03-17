@@ -32,7 +32,7 @@ spec:
 	  name: {{ .name }}
 	  namespace: {{ .namespace }}
 	  labels:
-		app.kubernetes.io/name: {{ .name }}
+		app.kubernetes.io/name: {{ trunc 63 .name }}
 	spec:
 	  containers:
 	  - name: {{ .resource }}-{{ .apiVersion }}-controller
@@ -63,11 +63,12 @@ spec:
 `
 
 func TestDeploymentManifest(t *testing.T) {
+
 	values := Values(Renderoptions{
 		Group:     "composition.krateo.io",
 		Version:   "v12-8-3",
 		Resource:  "postgresqls",
-		Name:      "postgres-tgz",
+		Name:      "ThisIsAReallyLongNameThatExceedsSixtyThreeCharactersInLengthForTesting",
 		Namespace: "default",
 	})
 
