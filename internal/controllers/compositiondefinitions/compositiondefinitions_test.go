@@ -83,10 +83,10 @@ func TestMain(m *testing.M) {
 			}
 
 			// uncomment to build and load the image in local testing
-			err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
-			if err != nil {
-				return ctx, err
-			}
+			// err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
+			// if err != nil {
+			// 	return ctx, err
+			// }
 
 			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
 			if err := certificatesProc.Err(); err != nil {

@@ -35,8 +35,8 @@ data:
               {}
             containers:
               - name: {{ .resource }}-{{ .apiVersion }}-controller
-                # image: "ghcr.io/krateoplatformops/composition-dynamic-controller:0.16.0"
-                image: "kind.local/composition-dynamic-controller:latest" # uncomment this line to use local image
+                image: "ghcr.io/krateoplatformops/composition-dynamic-controller:0.16.3"
+                #image: "kind.local/composition-dynamic-controller:latest" # uncomment this line to use local image
                 imagePullPolicy: IfNotPresent
                 envFrom:
                   - configMapRef:
