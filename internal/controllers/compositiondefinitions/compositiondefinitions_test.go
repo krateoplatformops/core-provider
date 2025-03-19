@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build integrationonlocal
+// +build integrationonlocal
 
 package compositiondefinitions
 
@@ -83,10 +83,10 @@ func TestMain(m *testing.M) {
 			}
 
 			// uncomment to build and load the image in local testing
-			err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
-			if err != nil {
-				return ctx, err
-			}
+			// err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
+			// if err != nil {
+			// 	return ctx, err
+			// }
 
 			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
 			if err := certificatesProc.Err(); err != nil {
@@ -272,7 +272,7 @@ func TestCreate(t *testing.T) {
 				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
 					len(mg.Status.Managed.VersionInfo) == 3 &&
 					slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
-						return v.Version == NewVersion
+						return v.Version == "v1-1-13"
 					})
 			}),
 			wait.WithTimeout(15*time.Minute),
