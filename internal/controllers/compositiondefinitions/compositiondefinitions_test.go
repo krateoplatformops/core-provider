@@ -272,7 +272,7 @@ func TestCreate(t *testing.T) {
 				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
 					len(mg.Status.Managed.VersionInfo) == 3 &&
 					slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
-						return v.Version == NewVersion
+						return v.Version == "v1-1-13"
 					})
 			}),
 			wait.WithTimeout(15*time.Minute),
