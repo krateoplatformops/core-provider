@@ -11,7 +11,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.6.0
-	github.com/krateoplatformops/crdgen v0.3.9
+	github.com/krateoplatformops/crdgen v0.4.0
 	github.com/krateoplatformops/provider-runtime v0.9.1
 	github.com/krateoplatformops/snowplow v0.0.0-20250127102918-73b8298c0737
 	github.com/pkg/errors v0.9.1
