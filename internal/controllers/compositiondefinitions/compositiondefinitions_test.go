@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build integrationonlocal
+// +build integrationonlocal
 
 package compositiondefinitions
 
