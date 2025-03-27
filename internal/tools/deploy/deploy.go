@@ -37,15 +37,17 @@ var (
 )
 
 type UndeployOptions struct {
-	DiscoveryClient discovery.CachedDiscoveryInterface
-	KubeClient      client.Client
-	DynamicClient   dynamic.Interface
-	NamespacedName  types.NamespacedName
-	GVR             schema.GroupVersionResource
-	Spec            *definitionsv1alpha1.ChartInfo
-	RBACFolderPath  string
-	Log             func(msg string, keysAndValues ...any)
-	SkipCRD         bool
+	DiscoveryClient        discovery.CachedDiscoveryInterface
+	KubeClient             client.Client
+	DynamicClient          dynamic.Interface
+	NamespacedName         types.NamespacedName
+	GVR                    schema.GroupVersionResource
+	Spec                   *definitionsv1alpha1.ChartInfo
+	RBACFolderPath         string
+	Log                    func(msg string, keysAndValues ...any)
+	SkipCRD                bool
+	DeploymentTemplatePath string
+	ConfigmapTemplatePath  string
 }
 
 type DeployOptions struct {
@@ -313,6 +315,16 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		return fmt.Errorf("log function is required")
 	}
 
+	rbacNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+	}
+
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, rbacNSName, opts.RBACFolderPath)
+	if err != nil {
+		return err
+	}
+
 	if !opts.SkipCRD {
 		err := crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
 		if err != nil {
@@ -339,38 +351,44 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 	}
 
-	err := deployment.UninstallDeployment(ctx, deployment.UninstallOptions{
-		KubeClient: opts.KubeClient,
-		NamespacedName: types.NamespacedName{
-			Namespace: opts.NamespacedName.Namespace,
-			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
-		},
-		Log: opts.Log,
-	})
-	if err != nil {
-		return err
-	}
-
-	err = configmap.UninstallConfigmap(ctx, configmap.UninstallOptions{
-		KubeClient: opts.KubeClient,
-		NamespacedName: types.NamespacedName{
-			Namespace: opts.NamespacedName.Namespace,
-			Name:      opts.NamespacedName.Name + configmapResourceSuffix,
-		},
-	})
-	if err != nil {
-		return err
-	}
-
-	rbacNSName := types.NamespacedName{
+	deploymentNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, rbacNSName, opts.RBACFolderPath)
+	dep, err := deployment.CreateDeployment(
+		opts.GVR,
+		deploymentNSName,
+		opts.DeploymentTemplatePath,
+		"serviceAccountName", sa.Name)
 	if err != nil {
 		return err
 	}
+
+	err = kubecli.Uninstall(ctx, opts.KubeClient, &dep, kubecli.UninstallOptions{})
+	if err != nil {
+		logError(opts.Log, "Error uninstalling deployment", err)
+		return err
+	}
+	opts.Log("Deployment successfully uninstalled", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+
+	cmNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
+	}
+
+	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+		"composition_controller_sa_name", sa.Name,
+		"composition_controller_sa_namespace", sa.Namespace)
+	if err != nil {
+		return err
+	}
+
+	err = kubecli.Uninstall(ctx, opts.KubeClient, &cm, kubecli.UninstallOptions{})
+	if err != nil {
+		logError(opts.Log, "Error uninstalling configmap", err)
+		return err
+	}
+	opts.Log("Configmap successfully uninstalled", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
 
 	err = uninstallRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log)
 	if err != nil {
@@ -409,6 +427,8 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 		opts.Log("RoleBinding successfully uninstalled", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 	}
+
+	opts.Log("RBAC resources successfully uninstalled", "gvr", opts.GVR.String())
 
 	return err
 }

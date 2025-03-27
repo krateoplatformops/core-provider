@@ -1,58 +1,16 @@
 package configmap
 
 import (
-	"context"
 	"fmt"
 	"os"
 
-	"github.com/avast/retry-go"
 	"github.com/krateoplatformops/core-provider/internal/templates"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 	"k8s.io/apimachinery/pkg/types"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-type UninstallOptions struct {
-	KubeClient     client.Client
-	NamespacedName types.NamespacedName
-	Log            func(msg string, keysAndValues ...any)
-}
-
-func UninstallConfigmap(ctx context.Context, opts UninstallOptions) error {
-	return retry.Do(
-		func() error {
-			cm := corev1.ConfigMap{}
-			err := opts.KubeClient.Get(ctx, opts.NamespacedName, &cm, &client.GetOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil
-				}
-
-				return err
-			}
-
-			err = opts.KubeClient.Delete(ctx, &cm, &client.DeleteOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil
-				}
-
-				return err
-			}
-
-			if opts.Log != nil {
-				opts.Log("Configmap successfully uninstalled",
-					"name", cm.GetName(), "namespace", cm.GetNamespace())
-			}
-
-			return nil
-		},
-	)
-}
 
 func CreateConfigmap(gvr schema.GroupVersionResource, nn types.NamespacedName, configmapTemplatePath string, additionalvalues ...string) (corev1.ConfigMap, error) {
 	values := templates.Values(templates.Renderoptions{

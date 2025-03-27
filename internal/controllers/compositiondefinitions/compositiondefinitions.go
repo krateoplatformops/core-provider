@@ -669,6 +669,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		skipCRD = true
 	}
 
+	log := logging.NewNopLogger()
+	if meta.IsVerbose(cr) {
+		log = e.log
+	}
 	opts := deploy.UndeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		Spec:            cr.Spec.Chart.DeepCopy(),
@@ -678,13 +682,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
-		SkipCRD:        skipCRD,
-		DynamicClient:  e.dynamic,
-		RBACFolderPath: CDCrbacConfigFolder,
-		Log:            e.log.Debug,
-	}
-	if meta.IsVerbose(cr) {
-		opts.Log = e.log.Debug
+		SkipCRD:                skipCRD,
+		DynamicClient:          e.dynamic,
+		RBACFolderPath:         CDCrbacConfigFolder,
+		DeploymentTemplatePath: CDCtemplateDeploymentPath,
+		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		Log:                    log.Debug,
 	}
 
 	err = deploy.Undeploy(ctx, e.kube, opts)

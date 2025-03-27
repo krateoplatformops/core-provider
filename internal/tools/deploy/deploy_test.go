@@ -132,9 +132,11 @@ func TestDeploy(t *testing.T) {
 		}
 
 		opts := UndeployOptions{
-			DiscoveryClient: memory.NewMemCacheClient(discovery.NewDiscoveryClientForConfigOrDie(cfg.Client().RESTConfig())),
-			RBACFolderPath:  "testdata",
-			KubeClient:      cli,
+			DiscoveryClient:        memory.NewMemCacheClient(discovery.NewDiscoveryClientForConfigOrDie(cfg.Client().RESTConfig())),
+			RBACFolderPath:         "testdata",
+			DeploymentTemplatePath: "testdata/deploy.yaml",
+			ConfigmapTemplatePath:  "testdata/cm.yaml",
+			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
 				Name:      "test-deploy",
