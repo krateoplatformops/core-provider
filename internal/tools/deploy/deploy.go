@@ -60,7 +60,8 @@ type DeployOptions struct {
 	DeploymentTemplatePath string
 	ConfigmapTemplatePath  string
 	Log                    func(msg string, keysAndValues ...any)
-	DryRunServer           bool
+	// DryRunServer is used to determine if the deployment should be applied in dry-run mode. This is ignored in lookup mode
+	DryRunServer bool
 }
 
 func logError(log func(msg string, keysAndValues ...any), msg string, err error) {
@@ -133,6 +134,58 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 		return err
 	}
 	log("ServiceAccount successfully installed", "name", sa.Name, "namespace", sa.Namespace)
+
+	if hsh != nil {
+		err = hsh.SumHash(
+			clusterrole,
+			clusterrolebinding,
+			role,
+			rolebinding,
+			sa,
+		)
+		if err != nil {
+			return fmt.Errorf("error hashing rbac resources: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any), hsh *hasher.ObjectHash) error {
+	err := kubecli.Get(ctx, kubeClient, &clusterrole)
+	if err != nil {
+		logError(log, "Error getting clusterrole", err)
+		return err
+	}
+	log("ClusterRole successfully fetched", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+
+	err = kubecli.Get(ctx, kubeClient, &clusterrolebinding)
+	if err != nil {
+		logError(log, "Error getting clusterrolebinding", err)
+		return err
+	}
+	log("ClusterRoleBinding successfully fetched", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+
+	err = kubecli.Get(ctx, kubeClient, &role)
+	if err != nil {
+		logError(log, "Error getting role", err)
+		return err
+	}
+	log("Role successfully fetched", "name", role.Name, "namespace", role.Namespace)
+
+	err = kubecli.Get(ctx, kubeClient, &rolebinding)
+	if err != nil {
+		logError(log, "Error getting rolebinding", err)
+		return err
+	}
+	log("RoleBinding successfully fetched", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+
+	err = kubecli.Get(ctx, kubeClient, &sa)
+	if err != nil {
+		logError(log, "Error getting serviceaccount", err)
+		return err
+	}
+	log("ServiceAccount successfully fetched", "name", sa.Name, "namespace", sa.Namespace)
 
 	if hsh != nil {
 		err = hsh.SumHash(
@@ -431,4 +484,118 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	opts.Log("RBAC resources successfully uninstalled", "gvr", opts.GVR.String())
 
 	return err
+}
+
+// This function is used to lookup the current state of the deployment and return the hash of the current state
+// This is used to determine if the deployment needs to be updated or not
+func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest string, err error) {
+	rbacNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+	}
+
+	if opts.Log == nil {
+		return "", fmt.Errorf("log function is required")
+	}
+
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, rbacNSName, opts.RBACFolderPath)
+	if err != nil {
+		return "", err
+	}
+
+	hsh := hasher.NewFNVObjectHash()
+	if opts.Spec.Credentials != nil {
+		secretNSName := types.NamespacedName{
+			Namespace: opts.Spec.Credentials.PasswordRef.Namespace,
+			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+		}
+
+		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		if err != nil {
+			logError(opts.Log, "Error creating role", err)
+			return "", err
+		}
+
+		err = kubecli.Get(ctx, kube, &role)
+		if err != nil {
+			logError(opts.Log, "Error installing role", err)
+			return "", err
+		}
+		opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
+
+		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		if err != nil {
+			logError(opts.Log, "Error creating rolebinding", err)
+			return "", err
+		}
+
+		err = kubecli.Get(ctx, kube, &rolebinding)
+		if err != nil {
+			logError(opts.Log, "Error installing rolebinding", err)
+			return "", err
+		}
+		opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+
+		err = hsh.SumHash(
+			rolebinding,
+			role,
+		)
+		if err != nil {
+			return "", fmt.Errorf("error hashing rolebinding: %v", err)
+		}
+	}
+
+	err = lookupRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log, &hsh)
+	if err != nil {
+		return "", err
+	}
+
+	cmNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
+	}
+
+	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+		"composition_controller_sa_name", sa.Name,
+		"composition_controller_sa_namespace", sa.Namespace)
+	if err != nil {
+		return "", err
+	}
+
+	err = kubecli.Get(ctx, opts.KubeClient, &cm)
+	if err != nil {
+		logError(opts.Log, "Error installing configmap", err)
+		return "", err
+	}
+	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+
+	deploymentNSName := types.NamespacedName{
+		Namespace: opts.NamespacedName.Namespace,
+		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
+	}
+	dep, err := deployment.CreateDeployment(
+		opts.GVR,
+		deploymentNSName,
+		opts.DeploymentTemplatePath,
+		"serviceAccountName", sa.Name)
+	if err != nil {
+		return "", err
+	}
+
+	err = kubecli.Get(ctx, opts.KubeClient, &dep)
+	if err != nil {
+		logError(opts.Log, "Error installing deployment", err)
+		return "", err
+	}
+	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+
+	err = hsh.SumHash(
+		dep.Spec,
+		cm,
+	)
+	if err != nil {
+		return "", fmt.Errorf("error hashing deployment: %v", err)
+	}
+
+	return hsh.GetHash(), nil
 }

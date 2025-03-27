@@ -308,7 +308,19 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	if cr.Status.Digest != dig {
-		e.log.Info("Managed resources digest changed", "old", cr.Status.Digest, "new", dig)
+		e.log.Info("Rendered resources digest changed", "status", cr.Status.Digest, "rendered", dig)
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil
+	}
+
+	dig, err = deploy.Lookup(ctx, e.kube, opts)
+	if err != nil {
+		return reconciler.ExternalObservation{}, err
+	}
+	if cr.Status.Digest != dig {
+		e.log.Info("Deployed resources digest changed", "status", cr.Status.Digest, "deployed", dig)
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
 			ResourceUpToDate: false,

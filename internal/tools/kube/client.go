@@ -75,3 +75,7 @@ func Uninstall(ctx context.Context, kube client.Client, obj client.Object, opts 
 		},
 	)
 }
+
+func Get(ctx context.Context, kube client.Client, obj client.Object) error {
+	return kube.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+}
