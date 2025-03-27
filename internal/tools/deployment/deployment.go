@@ -55,24 +55,6 @@ func UninstallDeployment(ctx context.Context, opts UninstallOptions) error {
 	)
 }
 
-func InstallDeployment(ctx context.Context, kube client.Client, obj *appsv1.Deployment) error {
-	return retry.Do(
-		func() error {
-			tmp := appsv1.Deployment{}
-			err := kube.Get(ctx, client.ObjectKeyFromObject(obj), &tmp)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return kube.Create(ctx, obj)
-				}
-
-				return err
-			}
-
-			return nil
-		},
-	)
-}
-
 func CreateDeployment(gvr schema.GroupVersionResource, nn types.NamespacedName, templatePath string, additionalvalues ...string) (appsv1.Deployment, error) {
 	values := templates.Values(templates.Renderoptions{
 		Group:     gvr.Group,

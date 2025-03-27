@@ -119,9 +119,9 @@ func TestDeploy(t *testing.T) {
 			Log: func(msg string, keysAndValues ...any) {},
 		}
 
-		err, rbacErr := Deploy(context.Background(), cli, opts)
+		dig, err := Deploy(context.Background(), cli, opts)
 		assert.NoError(t, err)
-		assert.NoError(t, rbacErr)
+		assert.NotNil(t, dig)
 
 		return ctx
 	}).Assess("Undeploy", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {

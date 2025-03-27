@@ -1,5 +1,5 @@
-//go:build integrationonlocal
-// +build integrationonlocal
+//go:build integrationlocal
+// +build integrationlocal
 
 package compositiondefinitions
 
@@ -167,9 +167,9 @@ func TestMain(m *testing.M) {
 			return ctx, nil
 		},
 	).Finish(
-		envfuncs.DeleteNamespace(namespace),
-		envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
-		envfuncs.DestroyCluster(clusterName),
+	// envfuncs.DeleteNamespace(namespace),
+	// envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
+	// envfuncs.DestroyCluster(clusterName),
 	)
 
 	os.Exit(testenv.Run(m))

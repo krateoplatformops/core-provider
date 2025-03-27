@@ -160,9 +160,8 @@ spec:
                   - type
                   type: object
                 type: array
-              error:
-                description: 'Error: error messages - actually only used if an error
-                  occurred during role and clusterrole creation'
+              digest:
+                description: 'Digest: the digest of the managed resources'
                 type: string
               kind:
                 description: 'Kind: the kind of the custom resource - Last applied
