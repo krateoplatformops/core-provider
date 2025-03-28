@@ -587,19 +587,26 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				Version:  oldGVK.Version,
 				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
 			}
+
+			log := logging.NewNopLogger()
+			if meta.IsVerbose(cr) {
+				log = e.log
+			}
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
-				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
-				RBACFolderPath:  CDCrbacConfigFolder,
-				DynamicClient:   e.dynamic,
-				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
-				GVR:             gvr,
-				KubeClient:      e.kube,
+				DiscoveryClient:        memory.NewMemCacheClient(e.discovery),
+				RBACFolderPath:         CDCrbacConfigFolder,
+				DeploymentTemplatePath: CDCtemplateDeploymentPath,
+				ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+				DynamicClient:          e.dynamic,
+				Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
+				GVR:                    gvr,
+				KubeClient:             e.kube,
 				NamespacedName: types.NamespacedName{
 					Name:      resourceNamer(gvr.Resource, oldGVK.Version),
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
-				Log:     e.log.Debug,
+				Log:     log.Debug,
 			})
 			if err != nil {
 				return err
