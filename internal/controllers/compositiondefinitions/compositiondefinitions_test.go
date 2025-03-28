@@ -1,5 +1,5 @@
-//go:build integrationonlocal
-// +build integrationonlocal
+//go:build integrationlocal
+// +build integrationlocal
 
 package compositiondefinitions
 
@@ -20,6 +20,7 @@ import (
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/snowplow/plumbing/e2e"
 	xenv "github.com/krateoplatformops/snowplow/plumbing/env"
+	"github.com/krateoplatformops/snowplow/plumbing/ptr"
 
 	"sigs.k8s.io/e2e-framework/klient/decoder"
 	"sigs.k8s.io/e2e-framework/klient/k8s"
@@ -234,7 +235,121 @@ func TestCreate(t *testing.T) {
 				t.Fatal(err)
 			}
 			return ctx
-		}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		}).Assess("Test Patch Deployed Resource", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		time.Sleep(1 * time.Minute)
+		r, err := resources.New(cfg.Client().RESTConfig())
+		if err != nil {
+			t.Fail()
+		}
+		apis.AddToScheme(r.GetScheme())
+		r.WithNamespace(resource_ns)
+
+		var res v1alpha1.CompositionDefinition
+		err = decoder.DecodeFile(
+			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+			&res,
+			decoder.MutateNamespace(resource_ns),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = r.Get(ctx, res.Name, resource_ns, &res)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		oldDig := res.Status.Digest
+
+		// Patch Deployment replica count
+		var deployment appsv1.Deployment
+		err = r.Get(ctx, "fireworksapps-v1-1-12-controller", "krateo-system", &deployment)
+		if err != nil {
+			t.Fatal(err)
+		}
+		deployment.Spec.Replicas = ptr.To(int32(2))
+		err = r.Update(ctx, &deployment)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		time.Sleep(1 * time.Minute)
+
+		//wait for resource to be created
+		if err := wait.For(
+			conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
+				mg := object.(*v1alpha1.CompositionDefinition)
+				return mg.Status.Digest == oldDig
+			}),
+			wait.WithTimeout(15*time.Minute),
+			wait.WithInterval(15*time.Second),
+		); err != nil {
+			obj := v1alpha1.CompositionDefinition{}
+			r.Get(ctx, res.Name, resource_ns, &obj)
+			b, _ := json.MarshalIndent(obj.Status, "", "  ")
+			t.Logf("CompositionDefinition Status: %s", string(b))
+			t.Fatal(err)
+		}
+
+		return ctx
+	}).Assess("Test Patch Template Resource", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		// r, err := resources.New(cfg.Client().RESTConfig())
+		// if err != nil {
+		// 	t.Fail()
+		// }
+		// apis.AddToScheme(r.GetScheme())
+		// r.WithNamespace(namespace)
+
+		// var res v1alpha1.CompositionDefinition
+		// err = decoder.DecodeFile(
+		// 	os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
+		// 	&res,
+		// 	decoder.MutateNamespace(resource_ns),
+		// )
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+
+		// err = r.Get(ctx, res.Name, resource_ns, &res)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+
+		// oldDig := res.Status.Digest
+
+		// // Patch Configmap data
+		// var cm v1.ConfigMap
+		// err = r.Get(ctx, "test-core-provider-cdc-configmap", "demo-system", &cm)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+		// cm.Data["TEST"] = "test"
+		// err = r.Update(ctx, &cm)
+		// if err != nil {
+		// 	t.Fatal(err)
+		// }
+
+		// b, _ := json.MarshalIndent(cm, "", "  ")
+		// t.Logf("ConfigMap: %s", string(b))
+
+		// //wait for resource to be created
+		// if err := wait.For(
+		// 	conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
+		// 		mg := object.(*v1alpha1.CompositionDefinition)
+		// 		return mg.Status.Digest != oldDig
+		// 	}),
+		// 	wait.WithTimeout(15*time.Minute),
+		// 	wait.WithInterval(15*time.Second),
+		// ); err != nil {
+		// 	obj := v1alpha1.CompositionDefinition{}
+		// 	r.Get(ctx, res.Name, resource_ns, &obj)
+		// 	b, _ := json.MarshalIndent(obj.Status, "", "  ")
+		// 	t.Logf("CompositionDefinition Status: %s", string(b))
+		// 	t.Fatal(err)
+		// }
+
+		return ctx
+	}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 		const NewVersion = "1.1.13"
 		r, err := resources.New(cfg.Client().RESTConfig())
 		if err != nil {

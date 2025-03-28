@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
 	"net/http"
 	"os"
 	"path"
@@ -150,12 +148,6 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 		return nil, errors.New(errNotCR)
 	}
 
-	if meta.IsVerbose(mg) {
-		log.SetOutput(os.Stderr)
-	} else {
-		log.SetOutput(io.Discard)
-	}
-
 	return &external{
 		kube:      c.kube,
 		log:       c.log,
@@ -196,7 +188,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 	gvr := tools.ToGroupVersionResource(gvk)
-	log.Printf("[DBG] Observing (gvk: %s, gvr: %s)\n", gvk.String(), gvr.String())
+	e.log.Info("Observing", "gvk", gvk.String(), "gvr", gvr.String())
 
 	crdOk, err := crdtools.Lookup(ctx, e.kube, gvr)
 	if err != nil {
@@ -204,7 +196,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	if !crdOk {
-		log.Printf("[DBG] CRD does not exists yet (gvr: %q)\n", gvr.String())
+
+		e.log.Info("Searching for CRD", "gvr", gvr.String())
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
@@ -218,7 +211,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	log.Printf("[DBG] Searching for Dynamic Controller (gvr: %q)\n", gvr.String())
+	e.log.Info("Searching for Dynamic Controller", "gvr", gvr)
 
 	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
@@ -287,11 +280,53 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
 	cr.Status.PackageURL = pkg.PackageURL()
 
-	if cr.Status.Error != nil {
-		cr.SetConditions(rtv1.Unavailable().WithMessage(*cr.Status.Error))
-	} else {
-		cr.SetConditions(rtv1.Available())
+	cr.SetConditions(rtv1.Available())
+
+	log := logging.NewNopLogger()
+	if meta.IsVerbose(cr) {
+		log = e.log
 	}
+	opts := deploy.DeployOptions{
+		RBACFolderPath:  CDCrbacConfigFolder,
+		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+		KubeClient:      e.kube,
+		NamespacedName: types.NamespacedName{
+			Namespace: cr.Namespace,
+			Name:      resourceNamer(gvr.Resource, gvr.Version),
+		},
+		GVR:                    gvr,
+		Spec:                   cr.Spec.Chart.DeepCopy(),
+		DeploymentTemplatePath: CDCtemplateDeploymentPath,
+		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		Log:                    log.Debug,
+		DryRunServer:           true,
+	}
+
+	dig, err := deploy.Deploy(ctx, e.kube, opts)
+	if err != nil {
+		return reconciler.ExternalObservation{}, err
+	}
+
+	if cr.Status.Digest != dig {
+		e.log.Info("Rendered resources digest changed", "status", cr.Status.Digest, "rendered", dig)
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil
+	}
+
+	dig, err = deploy.Lookup(ctx, e.kube, opts)
+	if err != nil {
+		return reconciler.ExternalObservation{}, err
+	}
+	if cr.Status.Digest != dig {
+		e.log.Info("Deployed resources digest changed", "status", cr.Status.Digest, "deployed", dig)
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil
+	}
+
 	return reconciler.ExternalObservation{
 		ResourceExists:   true,
 		ResourceUpToDate: true,
@@ -420,6 +455,10 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		)
 	}
 
+	log := logging.NewNopLogger()
+	if meta.IsVerbose(cr) {
+		log = e.log
+	}
 	opts := deploy.DeployOptions{
 		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
@@ -432,22 +471,15 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    e.log.Info,
-	}
-	if meta.IsVerbose(cr) {
-		opts.Log = e.log.Debug
+		Log:                    log.Debug,
 	}
 
-	err, rbacErr := deploy.Deploy(ctx, e.kube, opts)
-	if rbacErr != nil {
-		strErr := rbacErr.Error()
-		cr.Status.Error = &strErr
-		e.log.Info("Error deploying Dynamic Controller", "error", rbacErr.Error())
-		cr.SetConditions(rtv1.Unavailable().WithMessage(rbacErr.Error()))
-	}
+	dig, err := deploy.Deploy(ctx, e.kube, opts)
 	if err != nil {
 		return err
 	}
+
+	cr.Status.Digest = dig
 
 	err = e.kube.Status().Update(ctx, cr)
 	if err != nil {
@@ -501,6 +533,48 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
 
+	if oldGVK.Version == gvk.Version {
+		log := logging.NewNopLogger()
+		if meta.IsVerbose(cr) {
+			log = e.log
+		}
+		opts := deploy.DeployOptions{
+			RBACFolderPath:  CDCrbacConfigFolder,
+			DiscoveryClient: memory.NewMemCacheClient(e.discovery),
+			KubeClient:      e.kube,
+			NamespacedName: types.NamespacedName{
+				Namespace: cr.Namespace,
+				Name:      resourceNamer(gvr.Resource, gvr.Version),
+			},
+			GVR:                    gvr,
+			Spec:                   cr.Spec.Chart.DeepCopy(),
+			DeploymentTemplatePath: CDCtemplateDeploymentPath,
+			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+			Log:                    log.Debug,
+		}
+
+		dig, err := deploy.Deploy(ctx, e.kube, opts)
+		if err != nil {
+			return err
+		}
+
+		cr.Status.Digest = dig
+
+		err = e.kube.Status().Update(ctx, cr)
+		if err != nil {
+			return err
+		}
+
+		if meta.IsVerbose(cr) {
+			e.log.Debug("Dynamic Controller successfully updated",
+				"gvr", gvr.String(),
+				"namespace", cr.Namespace,
+			)
+		}
+
+		return nil
+	}
+
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Updating from GVK", "old", oldGVK, "new", gvk)
 	}
@@ -513,19 +587,26 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				Version:  oldGVK.Version,
 				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
 			}
+
+			log := logging.NewNopLogger()
+			if meta.IsVerbose(cr) {
+				log = e.log
+			}
 			err = deploy.Undeploy(ctx, e.kube, deploy.UndeployOptions{
-				DiscoveryClient: memory.NewMemCacheClient(e.discovery),
-				RBACFolderPath:  CDCrbacConfigFolder,
-				DynamicClient:   e.dynamic,
-				Spec:            (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
-				GVR:             gvr,
-				KubeClient:      e.kube,
+				DiscoveryClient:        memory.NewMemCacheClient(e.discovery),
+				RBACFolderPath:         CDCrbacConfigFolder,
+				DeploymentTemplatePath: CDCtemplateDeploymentPath,
+				ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+				DynamicClient:          e.dynamic,
+				Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
+				GVR:                    gvr,
+				KubeClient:             e.kube,
 				NamespacedName: types.NamespacedName{
 					Name:      resourceNamer(gvr.Resource, oldGVK.Version),
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
-				Log:     e.log.Debug,
+				Log:     log.Debug,
 			})
 			if err != nil {
 				return err
@@ -607,6 +688,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		skipCRD = true
 	}
 
+	log := logging.NewNopLogger()
+	if meta.IsVerbose(cr) {
+		log = e.log
+	}
 	opts := deploy.UndeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.discovery),
 		Spec:            cr.Spec.Chart.DeepCopy(),
@@ -616,13 +701,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Name:      resourceNamer(gvr.Resource, gvr.Version),
 			Namespace: cr.Namespace,
 		},
-		SkipCRD:        skipCRD,
-		DynamicClient:  e.dynamic,
-		RBACFolderPath: CDCrbacConfigFolder,
-		Log:            e.log.Debug,
-	}
-	if meta.IsVerbose(cr) {
-		opts.Log = e.log.Debug
+		SkipCRD:                skipCRD,
+		DynamicClient:          e.dynamic,
+		RBACFolderPath:         CDCrbacConfigFolder,
+		DeploymentTemplatePath: CDCtemplateDeploymentPath,
+		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		Log:                    log.Debug,
 	}
 
 	err = deploy.Undeploy(ctx, e.kube, opts)

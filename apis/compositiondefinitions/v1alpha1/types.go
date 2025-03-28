@@ -127,9 +127,9 @@ type CompositionDefinitionStatus struct {
 	// +optional
 	PackageURL string `json:"packageUrl,omitempty"`
 
-	// Error: error messages - actually only used if an error occurred during role and clusterrole creation
+	// Digest: the digest of the managed resources
 	// +optional
-	Error *string `json:"error,omitempty"`
+	Digest string `json:"digest,omitempty"`
 }
 
 //+kubebuilder:object:root=true

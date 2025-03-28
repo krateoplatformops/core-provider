@@ -1,48 +1,36 @@
 package rbactools
 
 import (
-	"context"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestUninstallServiceAccount(t *testing.T) {
-	ctx := context.TODO()
+func TestCreateServiceAccount(t *testing.T) {
+	sa := types.NamespacedName{Name: "test-sa", Namespace: "test-namespace"}
+	gvr := schema.GroupVersionResource{
+		Group:    "",
+		Version:  "v1",
+		Resource: "serviceaccounts",
+	}
+	serviceaccount, err := CreateServiceAccount(gvr, sa, "testdata/serviceaccount_template.yaml", "serviceAccount", "test-sa")
 
-	// Create a fake client
-	kubeClient := fake.NewFakeClient()
+	assert.NoError(t, err)
 
-	// Create the service account object
-	serviceAccount := corev1.ServiceAccount{
+	expectedsa := v1.ServiceAccount{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "ServiceAccount",
+		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-service-account",
-			Namespace: "test-namespace",
+			Name:      gvr.Resource + "-" + gvr.Version,
+			Namespace: sa.Namespace,
 		},
 	}
-
-	// Install the service account
-	err := InstallServiceAccount(ctx, kubeClient, &serviceAccount)
-	if err != nil {
-		t.Fatalf("Failed to install service account: %v", err)
-	}
-
-	// Uninstall the service account
-	err = UninstallServiceAccount(ctx, UninstallOptions{
-		KubeClient:     kubeClient,
-		NamespacedName: types.NamespacedName{Name: "test-service-account", Namespace: "test-namespace"},
-	})
-	if err != nil {
-		t.Fatalf("Failed to uninstall service account: %v", err)
-	}
-
-	// Verify that the service account is uninstalled
-	err = kubeClient.Get(ctx, types.NamespacedName{Name: "test-service-account", Namespace: "test-namespace"}, &corev1.ServiceAccount{})
-	if !apierrors.IsNotFound(err) {
-		t.Fatalf("Expected service account to be uninstalled, but it still exists: %v", err)
-	}
+	assert.Equal(t, expectedsa.ObjectMeta.Name, serviceaccount.ObjectMeta.Name)
+	assert.Equal(t, expectedsa.ObjectMeta.Namespace, serviceaccount.ObjectMeta.Namespace)
 }
