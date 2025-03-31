@@ -33,7 +33,7 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 
 ## Requirements
 
-From version 0.23.0, the core-provider requires version 0.4.3 or higher of snowplow to support the retrieval of plurals from the cluster. See the URL_PLURALS variable in [Environment Variables and Flags](#url_plurarls) for configuration information.
+From version 0.23.0, the core-provider requires version 0.4.3 or higher of snowplow to support the retrieval of plurals from the cluster. See the URL_PLURALS variable in [Environment Variables and Flags](#url_plurals) for configuration information.
 
 ## Overview
 
@@ -330,7 +330,7 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 - **Type**: `Duration`
 - **Default**: `1s`
 
-### `URL_PLURARLS`
+### `URL_PLURALS`
 - **Description**: url to krateo pluraliser service
 - **Type**: `String`
 - **Default**: `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names`
