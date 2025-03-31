@@ -30,6 +30,7 @@ import (
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
+	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/crdgen"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -40,6 +41,7 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/reconciler"
 	"github.com/krateoplatformops/provider-runtime/pkg/resource"
 	"github.com/krateoplatformops/snowplow/plumbing/env"
+	"github.com/krateoplatformops/snowplow/plumbing/ptr"
 	"github.com/pkg/errors"
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,6 +84,7 @@ var (
 	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
 	webhookServiceName           = env.String("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.String("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
+	urlPlurals                   = env.String("URL_PLURALS", "http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names")
 	helmRegistryConfigPath       = env.String(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault)
 	CDCtemplateDeploymentPath    = path.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath     = path.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
@@ -112,11 +115,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	r := reconciler.NewReconciler(mgr,
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
-			discovery: discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
-			dynamic:   dynamic.NewForConfigOrDie(mgr.GetConfig()),
-			kube:      cli,
-			log:       l,
-			recorder:  recorder,
+			discovery:  discovery.NewDiscoveryClientForConfigOrDie(mgr.GetConfig()),
+			dynamic:    dynamic.NewForConfigOrDie(mgr.GetConfig()),
+			kube:       cli,
+			log:        l,
+			recorder:   recorder,
+			pluralizer: pluralizer.New(ptr.To(urlPlurals), http.DefaultClient),
 		}),
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithCreationGracePeriod(reconcileGracePeriod),
@@ -135,11 +139,12 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 }
 
 type connector struct {
-	dynamic   dynamic.Interface
-	discovery discovery.DiscoveryInterface
-	kube      client.Client
-	log       logging.Logger
-	recorder  record.EventRecorder
+	dynamic    dynamic.Interface
+	discovery  discovery.DiscoveryInterface
+	kube       client.Client
+	log        logging.Logger
+	recorder   record.EventRecorder
+	pluralizer *pluralizer.Pluralizer
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
@@ -149,20 +154,22 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 	}
 
 	return &external{
-		kube:      c.kube,
-		log:       c.log,
-		dynamic:   c.dynamic,
-		discovery: c.discovery,
-		rec:       c.recorder,
+		kube:       c.kube,
+		log:        c.log,
+		dynamic:    c.dynamic,
+		discovery:  c.discovery,
+		rec:        c.recorder,
+		pluralizer: c.pluralizer,
 	}, nil
 }
 
 type external struct {
-	discovery discovery.DiscoveryInterface
-	dynamic   dynamic.Interface
-	kube      client.Client
-	log       logging.Logger
-	rec       record.EventRecorder
+	discovery  discovery.DiscoveryInterface
+	dynamic    dynamic.Interface
+	kube       client.Client
+	log        logging.Logger
+	rec        record.EventRecorder
+	pluralizer *pluralizer.Pluralizer
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
@@ -187,16 +194,25 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
-	gvr := tools.ToGroupVersionResource(gvk)
-	e.log.Info("Observing", "gvk", gvk.String(), "gvr", gvr.String())
-
-	crdOk, err := crdtools.Lookup(ctx, e.kube, gvr)
+	crdOk := true
+	gvr, err := e.pluralizer.GVKtoGVR(gvk)
 	if err != nil {
-		return reconciler.ExternalObservation{}, err
+		if err == pluralizer.ErrNotFound {
+			crdOk = false
+		} else {
+			return reconciler.ExternalObservation{}, fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+		}
 	}
 
-	if !crdOk {
+	if crdOk {
+		crdOk, err = crdtools.Lookup(ctx, e.kube, gvr)
+		if err != nil {
+			return reconciler.ExternalObservation{}, err
+		}
+	}
+	e.log.Info("Observing", "gvk", gvk.String(), "gvr", gvr.String())
 
+	if !crdOk {
 		e.log.Info("Searching for CRD", "gvr", gvr.String())
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("CRD for '%s' does not exists yet", gvr.String())))
@@ -354,11 +370,21 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvr := tools.ToGroupVersionResource(gvk)
-
-	crdOk, err := crdtools.Lookup(ctx, e.kube, gvr)
+	crdOk := true
+	gvr, err := e.pluralizer.GVKtoGVR(gvk)
 	if err != nil {
-		return err
+		if err == pluralizer.ErrNotFound {
+			crdOk = false
+		} else {
+			return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+		}
+	}
+
+	if crdOk {
+		crdOk, err = crdtools.Lookup(ctx, e.kube, gvr)
+		if err != nil {
+			return err
+		}
 	}
 
 	var crd *apiextensionsv1.CustomResourceDefinition
@@ -398,6 +424,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		}
 
 		if crd == nil {
+			e.log.Debug("CRD not found, installing new CRD", "gvr", gvr.String())
 			return crdtools.Install(ctx, e.kube, newcrd)
 		}
 
@@ -521,7 +548,15 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvr := tools.ToGroupVersionResource(gvk)
+	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
+
+	oldGVR, err := e.pluralizer.GVKtoGVR(oldGVK)
+	if err != nil {
+		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, oldGVK.String())
+	}
+
+	gvr := oldGVR
+	gvr.Version = gvk.Version
 
 	crd, err := crdtools.Get(ctx, e.kube, gvr)
 	if err != nil {
@@ -530,8 +565,6 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	if meta.IsVerbose(cr) {
 		e.log.Debug("Updating Compositions", "gvr", gvr.String())
 	}
-
-	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
 
 	if oldGVK.Version == gvk.Version {
 		log := logging.NewNopLogger()
@@ -582,12 +615,6 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	// Undeploy olders versions of the CRD
 	for _, vi := range cr.Status.Managed.VersionInfo {
 		if oldGVK.Kind == cr.Status.Managed.Kind && oldGVK.Version == vi.Version {
-			gvr := schema.GroupVersionResource{
-				Group:    oldGVK.Group,
-				Version:  oldGVK.Version,
-				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
-			}
-
 			log := logging.NewNopLogger()
 			if meta.IsVerbose(cr) {
 				log = e.log
@@ -599,10 +626,10 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 				DynamicClient:          e.dynamic,
 				Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
-				GVR:                    gvr,
+				GVR:                    oldGVR,
 				KubeClient:             e.kube,
 				NamespacedName: types.NamespacedName{
-					Name:      resourceNamer(gvr.Resource, oldGVK.Version),
+					Name:      resourceNamer(oldGVR.Resource, oldGVR.Version),
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
@@ -612,18 +639,14 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				return err
 			}
 			if meta.IsVerbose(cr) {
-				e.log.Debug("Undeployed old version of CRD", "gvr", gvr.String())
+				e.log.Debug("Undeployed old version of CRD", "gvr", oldGVR.String())
 			}
 		}
 	}
 
 	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
-		err := updateCompositionsVersion(ctx, e.dynamic, e.log, CompositionsInfo{
-			GVR: schema.GroupVersionResource{
-				Group:    oldGVK.Group,
-				Version:  oldGVK.Version,
-				Resource: tools.ToGroupVersionResource(oldGVK).Resource,
-			},
+		err = updateCompositionsVersion(ctx, e.dynamic, e.log, CompositionsInfo{
+			GVR:       oldGVR,
 			Namespace: cr.Namespace,
 		}, gvk.Version)
 		if err != nil {
@@ -631,7 +654,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		}
 
 		if meta.IsVerbose(cr) {
-			e.log.Debug("Updated compositions version", "gvr", gvr.String())
+			e.log.Debug("Updated compositions version", "gvr", oldGVR.String())
 		}
 	}
 
@@ -676,7 +699,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	gvr := tools.ToGroupVersionResource(gvk)
+	//gvr := tools.ToGroupVersionResource(gvk)
+
+	gvr, err := e.pluralizer.GVKtoGVR(gvk)
+	if err != nil {
+		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+	}
 
 	var skipCRD bool
 	lst, err := getCompositionDefinitions(ctx, e.kube, gvk)
