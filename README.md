@@ -7,11 +7,13 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 - [Krateo Core Provider](#krateo-core-provider)
   - [Summary](#summary)
   - [Architecture](#architecture)
+  - [Requirements](#requirements)
   - [Overview](#overview)
     - [Authentication](#authentication)
     - [RBAC Generation](#rbac-generation)
     - [Multi-Version Support](#multi-version-support)
     - [Composition Definition](#composition-definition)
+  - [Requirements](#requirements-1)
   - [Examples](#examples)
     - [How to Install](#how-to-install)
     - [Apply the CompositionDefinition Manifest](#apply-the-compositiondefinition-manifest)
@@ -20,16 +22,7 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
     - [Automatic Deletion of Unused `composition-dynamic-controller` Deployments](#automatic-deletion-of-unused-composition-dynamic-controller-deployments)
   - [Multi-Version Management](#multi-version-management)
   - [Authentication](#authentication-1)
-    - [OCI Registry](#oci-registry)
-    - [Helm Repository](#helm-repository)
-    - [Configuration](#configuration)
   - [Environment Variables and Flags](#environment-variables-and-flags)
-    - [`HELM_REGISTRY_CONFIG_PATH`](#helm_registry_config_path)
-    - [`CORE_PROVIDER_DEBUG`](#core_provider_debug)
-    - [`CORE_PROVIDER_SYNC`](#core_provider_sync)
-    - [`CORE_PROVIDER_POLL_INTERVAL`](#core_provider_poll_interval)
-    - [`CORE_PROVIDER_MAX_RECONCILE_RATE`](#core_provider_max_reconcile_rate)
-    - [`CORE_PROVIDER_LEADER_ELECTION`](#core_provider_leader_election)
   - [Security Features](#security-features)
   - [Best Practices](#best-practices)
 
@@ -37,6 +30,10 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 ## Architecture
 
 ![core-provider Architecture Image](_diagrams/core-provider.png "core-provider Architecture")
+
+## Requirements
+
+From version 0.23.0, the core-provider requires version 0.4.3 or higher of snowplow to support the retrieval of plurals from the cluster. See the URL_PLURALS variable in [Environment Variables and Flags](#url_plurals) for configuration information.
 
 ## Overview
 
@@ -332,6 +329,11 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 - **Flag**: `--min-error-retry-interval` 
 - **Type**: `Duration`
 - **Default**: `1s`
+
+### `URL_PLURALS`
+- **Description**: url to krateo pluraliser service
+- **Type**: `String`
+- **Default**: `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names`
 
 ## Security Features
 

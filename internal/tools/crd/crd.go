@@ -100,7 +100,6 @@ package crd
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/avast/retry-go"
@@ -146,7 +145,7 @@ func Update(ctx context.Context, kube client.Client, name string, newObj *apiext
 			err = kube.Update(ctx, newObj, &client.UpdateOptions{})
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					fmt.Print("CRD not found")
+					// fmt.Print("CRD not found")
 					return nil
 				}
 

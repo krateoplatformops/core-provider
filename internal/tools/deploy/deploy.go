@@ -15,6 +15,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/rbactools"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -343,13 +344,30 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	if err != nil {
 		return "", err
 	}
-
 	err = kubecli.Apply(ctx, opts.KubeClient, &dep, applyOpts)
 	if err != nil {
 		logError(opts.Log, "Error installing deployment", err)
 		return "", err
 	}
-	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+
+	if !opts.DryRunServer {
+		// Deployment needs to be restarted if the hash changes to get the new configmap
+		err = kubecli.Get(ctx, opts.KubeClient, &dep)
+		if err != nil {
+			logError(opts.Log, "Error installing deployment", err)
+			return "", err
+		}
+		// restart only if deployment is presently running
+		if dep.Status.ReadyReplicas == dep.Status.Replicas {
+			err = deployment.RestartDeployment(ctx, opts.KubeClient, &dep)
+			if err != nil {
+				logError(opts.Log, "Error restarting deployment", err)
+				return "", err
+			}
+		}
+	}
+
+	deployment.CleanFromRestartAnnotation(&dep)
 
 	err = hsh.SumHash(
 		dep.Spec,
@@ -359,11 +377,12 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		return "", fmt.Errorf("error hashing deployment: %v", err)
 	}
 
+	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+
 	return hsh.GetHash(), nil
 }
 
 func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) error {
-
 	if opts.Log == nil {
 		return fmt.Errorf("log function is required")
 	}
@@ -588,6 +607,8 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		return "", err
 	}
 	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+
+	deployment.CleanFromRestartAnnotation(&dep)
 
 	err = hsh.SumHash(
 		dep.Spec,
