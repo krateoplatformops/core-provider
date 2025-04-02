@@ -242,12 +242,43 @@ spec:
 
 </details>
 
+#### GCP Artifact Registry
+
+Follow [this guide](https://cloud.google.com/iam/docs/keys-create-delete) to create a service account key. You will need to download the .json file containing the key and create the Kubernetes secret from it. Note that the service account should have permissions to download from the Google Artifact Registry.
+
+Now, create a secret from the JSON file containing your service account key:
+
+```bash
+kubectl create secret generic gcp-sa-secret -n demo \
+ --from-file=secret-access-credentials=/path/to/file/krateoregistry-3d546566ae4a.json
+```
+
+```yaml
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: fireworks-private
+  namespace: krateo-system
+spec:
+  chart:
+    url: oci://europe-west12-docker.pkg.dev/krateoregistry/krateotest/fireworks-app
+    version: "0.0.1"
+    credentials:
+      username: json_key
+      passwordRef: # reference to a secret
+        key: secret-access-credentials
+        name: gcp-sa-secret
+        namespace: demo
+```
+
+**Note:** The `spec.chart.credentials.username` should be set to `json_key` as explained in [this documentation](https://cloud.google.com/artifact-registry/docs/helm/authentication#linux-macos_1).
+
 ### Helm Repository
 
 ```bash
 kubectl create secret generic helm-repo --from-literal=token=your_token -n krateo-system
 ```
-
+ 
 Apply the Manifest:
 
 <details><summary>Check the Manifest</summary>
