@@ -403,6 +403,7 @@ func TestCreate(t *testing.T) {
 
 		var crd apiextensionsv1.CustomResourceDefinition
 
+		apiextensionsv1.AddToScheme(r.GetScheme())
 		err = r.Get(ctx, "fireworksapps.composition.krateo.io", "", &crd)
 		if err != nil {
 			t.Fatal(err)
