@@ -389,6 +389,19 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	var crd *apiextensionsv1.CustomResourceDefinition
 	if !crdOk {
+		if cr.Status.ApiVersion == "" && cr.Status.Kind == "" {
+			return fmt.Errorf("apiVersion and Kind are not set in the status of the resource, cannot calculate old GVK")
+		}
+
+		pluralgvk := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
+
+		gvr, err = e.pluralizer.GVKtoGVR(pluralgvk)
+		if err != nil {
+			return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+		}
+
+		gvr.Version = gvk.Version
+
 		crd, err = crdtools.Get(ctx, e.kube, gvr)
 		if err != nil {
 			return err

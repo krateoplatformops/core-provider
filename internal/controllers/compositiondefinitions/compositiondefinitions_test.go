@@ -15,6 +15,7 @@ import (
 
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	appsv1 "k8s.io/api/apps/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	"github.com/krateoplatformops/core-provider/apis"
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -158,7 +159,7 @@ func TestMain(m *testing.M) {
 			}
 
 			// Install bff
-			err = helmmgr.RunInstall(helm.WithReleaseName("krateo/bff"), helm.WithName("bff"), helm.WithNamespace(namespace))
+			err = helmmgr.RunInstall(helm.WithReleaseName("krateo/snowplow"), helm.WithName("snowplow"), helm.WithNamespace(namespace))
 			if err != nil {
 				return ctx, fmt.Errorf("Error installing backend: %v", err)
 			}
@@ -398,6 +399,33 @@ func TestCreate(t *testing.T) {
 			b, _ := json.MarshalIndent(obj.Status, "", "  ")
 			t.Logf("CompositionDefinition Status: %s", string(b))
 			t.Fatal(err)
+		}
+
+		var crd apiextensionsv1.CustomResourceDefinition
+
+		err = r.Get(ctx, "fireworksapps.composition.krateo.io", "", &crd)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Check CRD version
+		if len(crd.Spec.Versions) != 3 {
+			t.Fatalf("Expected 3 versions, got %d", len(crd.Spec.Versions))
+		}
+		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
+			return v.Name == "v1-1-13"
+		}) {
+			t.Fatalf("Expected version v1-1-13, got %v", crd.Spec.Versions)
+		}
+		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
+			return v.Name == "v1-1-12"
+		}) {
+			t.Fatalf("Expected version v1-1-12, got %v", crd.Spec.Versions)
+		}
+		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
+			return v.Name == "vacuum"
+		}) {
+			t.Fatalf("Expected version vacuum, got %v", crd.Spec.Versions)
 		}
 
 		return ctx
