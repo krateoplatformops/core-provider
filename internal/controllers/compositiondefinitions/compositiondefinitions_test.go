@@ -264,7 +264,7 @@ func TestCreate(t *testing.T) {
 
 		// Patch Deployment replica count
 		var deployment appsv1.Deployment
-		err = r.Get(ctx, "fireworksapps-v1-1-12-controller", "krateo-system", &deployment)
+		err = r.Get(ctx, "fireworksapps-v1-1-13-controller", "krateo-system", &deployment)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,7 +351,7 @@ func TestCreate(t *testing.T) {
 
 		return ctx
 	}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-		const NewVersion = "1.1.13"
+		const NewVersion = "1.1.14"
 		r, err := resources.New(cfg.Client().RESTConfig())
 		if err != nil {
 			t.Fail()
@@ -388,7 +388,7 @@ func TestCreate(t *testing.T) {
 				return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
 					len(mg.Status.Managed.VersionInfo) == 3 &&
 					slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
-						return v.Version == "v1-1-13"
+						return v.Version == "v1-1-14"
 					})
 			}),
 			wait.WithTimeout(15*time.Minute),
@@ -413,14 +413,14 @@ func TestCreate(t *testing.T) {
 			t.Fatalf("Expected 3 versions, got %d", len(crd.Spec.Versions))
 		}
 		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
+			return v.Name == "v1-1-14"
+		}) {
+			t.Fatalf("Expected version v1-1-14, got %v", crd.Spec.Versions)
+		}
+		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
 			return v.Name == "v1-1-13"
 		}) {
 			t.Fatalf("Expected version v1-1-13, got %v", crd.Spec.Versions)
-		}
-		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
-			return v.Name == "v1-1-12"
-		}) {
-			t.Fatalf("Expected version v1-1-12, got %v", crd.Spec.Versions)
 		}
 		if !slices.ContainsFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
 			return v.Name == "vacuum"
