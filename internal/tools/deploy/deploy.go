@@ -537,10 +537,10 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 		err = kubecli.Get(ctx, kube, &role)
 		if err != nil {
-			logError(opts.Log, "Error installing role", err)
+			logError(opts.Log, "Error fetching role", err)
 			return "", err
 		}
-		opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
+		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
 		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
@@ -550,10 +550,10 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 		err = kubecli.Get(ctx, kube, &rolebinding)
 		if err != nil {
-			logError(opts.Log, "Error installing rolebinding", err)
+			logError(opts.Log, "Error fetching rolebinding", err)
 			return "", err
 		}
-		opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+		opts.Log("RoleBinding successfully fetched", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 
 		err = hsh.SumHash(
 			rolebinding,
@@ -583,10 +583,10 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	err = kubecli.Get(ctx, opts.KubeClient, &cm)
 	if err != nil {
-		logError(opts.Log, "Error installing configmap", err)
+		logError(opts.Log, "Error fetching configmap", err)
 		return "", err
 	}
-	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+	opts.Log("Configmap successfully fetched", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
 
 	deploymentNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
@@ -603,10 +603,10 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	err = kubecli.Get(ctx, opts.KubeClient, &dep)
 	if err != nil {
-		logError(opts.Log, "Error installing deployment", err)
+		logError(opts.Log, "Error fetching deployment", err)
 		return "", err
 	}
-	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
 
 	deployment.CleanFromRestartAnnotation(&dep)
 

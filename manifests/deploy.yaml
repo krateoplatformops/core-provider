@@ -29,6 +29,8 @@ spec:
         env:
           - name: CORE_PROVIDER_POLL_INTERVAL
             value: 30s
+          - name: URL_PLURALS
+            value: http://snowplow.demo-system.svc.cluster.local:8081/api-info/names
           # - name: CRDGEN_CLEAN_WORKDIR
           #   value: "false"
         ports:

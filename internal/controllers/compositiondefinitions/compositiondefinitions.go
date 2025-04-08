@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -22,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	"github.com/gobuffalo/flect"
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
@@ -389,6 +391,29 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	var crd *apiextensionsv1.CustomResourceDefinition
 	if !crdOk {
+		pluralgvk := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
+
+		if pluralgvk.Group == "" {
+			pluralgvk.Group = gvk.Group
+		}
+		if pluralgvk.Version == "" {
+			pluralgvk.Version = gvk.Version
+		}
+		if pluralgvk.Kind == "" {
+			pluralgvk.Kind = flect.Pluralize(strings.ToLower(gvk.Kind))
+		}
+		gvr, err = e.pluralizer.GVKtoGVR(pluralgvk)
+		if err != nil {
+			if err == pluralizer.ErrNotFound {
+				e.log.Debug("GVK not found, creating new CRD", "gvk", pluralgvk.String())
+
+			} else {
+				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, pluralgvk.String())
+			}
+		}
+
+		gvr.Version = gvk.Version
+
 		crd, err = crdtools.Get(ctx, e.kube, gvr)
 		if err != nil {
 			return err
