@@ -1,31 +1,59 @@
-# Comprehensive Guide to Krateo Core Provider with Detailed Examples
+## Comprehensive Deployment Guide with Expected Outcomes
 
-- [Comprehensive Guide to Krateo Core Provider with Detailed Examples](#comprehensive-guide-to-krateo-core-provider-with-detailed-examples)
-  - [Introduction](#introduction)
-  - [Prerequisites](#prerequisites)
-  - [Core Concepts](#core-concepts)
-  - [Practical Examples](#practical-examples)
-    - [Example 1: Basic Composition Installation](#example-1-basic-composition-installation)
-    - [Example 2: Managing Multiple Versions](#example-2-managing-multiple-versions)
-    - [Example 3: Updating Compositions to a New Version](#example-3-updating-compositions-to-a-new-version)
-    - [Example 4: Rollback Procedure](#example-4-rollback-procedure)
-  - [Best Practices](#best-practices)
-  - [Troubleshooting Guide](#troubleshooting-guide)
-    - [Common Issues and Solutions](#common-issues-and-solutions)
+- [Comprehensive Deployment Guide with Expected Outcomes](#comprehensive-deployment-guide-with-expected-outcomes)
+- [Introduction](#introduction)
+- [Prerequisites](#prerequisites)
+  - [Initial Setup](#initial-setup)
+  - [Core Platform Installation](#core-platform-installation)
+  - [CompositionDefinition Deployment](#compositiondefinition-deployment)
+  - [Creating Compositions](#creating-compositions)
+  - [Advanced Operations](#advanced-operations)
+    - [1. Deploying Multiple Versions](#1-deploying-multiple-versions)
+    - [2. Upgrading Compositions](#2-upgrading-compositions)
+    - [3. Pausing Composition Reconciliation](#3-pausing-composition-reconciliation)
+- [Troubleshooting Guide](#troubleshooting-guide)
+  - [Common Issues and Diagnostic Procedures](#common-issues-and-diagnostic-procedures)
+  - [General Diagnostic Tools](#general-diagnostic-tools)
+  - [Common Solutions](#common-solutions)
 
 
 ## Introduction
 
-The Krateo Core Provider is a sophisticated system for managing Krateo PlatformOps Compositions. This guide provides in-depth explanations, detailed examples with expected results, and practical insights for effectively using the Core Provider.
+The Krateo V2 Template Fireworks App provides a complete solution for deploying and managing fireworks applications on Kubernetes using Krateo's Composition system. This guide covers the entire lifecycle from initial deployment to advanced management scenarios.
 
 ## Prerequisites
 
-### 1. Installing Krateo
+Before beginning, ensure you have:
+- A Kubernetes cluster (v1.20+ recommended)
+- Helm installed (v3.0+)
+- kubectl configured to access your cluster
+- A GitHub account with repository creation permissions
+- A GitHub personal access token with repo scope
 
-**Installation Command:**
+### Initial Setup
+
+#### 1. Adding Krateo Helm Repository
 ```bash
 helm repo add krateo https://charts.krateo.io
+```
+**What to Expect:**
+- The command will register Krateo's chart repository with your local Helm installation
+- Upon success, you'll see confirmation that "krateo" was added to your repositories
+- This enables you to install Krateo charts using the `krateo/` prefix
+
+#### 2. Updating Helm Repositories
+```bash
 helm repo update krateo
+```
+**What's Happening:**
+- Helm contacts the repository URL to fetch the latest chart information
+- It updates the local cache of available charts and versions
+- The success message indicates you now have access to the most recent charts
+
+### Core Platform Installation
+
+#### 3. Installing Krateo Platform
+```bash
 helm upgrade installer installer \
   --repo https://charts.krateo.io \
   --namespace krateo-system \
@@ -34,53 +62,42 @@ helm upgrade installer installer \
   --version 2.4.1 \
   --wait
 ```
+**Expected Behavior:**
+- Helm will create the krateo-system namespace if it doesn't exist
+- The installer chart (version 2.4.1) will be deployed
+- The --wait flag ensures command completes only when resources are ready
+- Output shows deployment status and namespace information
 
-**Verification Command:**
+#### 4. Verifying Platform Readiness
 ```bash
 kubectl wait krateoplatformops krateo --for condition=Ready=True --namespace krateo-system --timeout=660s
 ```
+**What This Does:**
+- Polls the Krateo platform status until "Ready" condition is True
+- Times out after 660 seconds if not ready
+- Successful output means core components are operational
 
-**Expected Results:**
-- Krateo platform installed in the `krateo-system` namespace
-- All core components running and ready
-- Visible pods in the `krateo-system` namespace (verify with `kubectl get pods -n krateo-system`)
 
-## Core Concepts
+#### 5. Install required providers:
+   ```bash
+   helm install github-provider krateo/github-provider --namespace krateo-system
+   helm install git-provider krateo/git-provider --namespace krateo-system
+   helm install argocd argo/argo-cd --namespace krateo-system --create-namespace --wait
+   ```
+These installations set up the necessary providers for GitHub and ArgoCD, enabling integration with your deployment process of the fireworks application.
 
-### 1. CompositionDefinition Overview
+### CompositionDefinition Deployment
 
-A CompositionDefinition is a custom resource that specifies:
-- The Helm chart to use (including location and version)
-- How to generate the Custom Resource Definition (CRD)
-- The controller that will manage composition instances
-
-**Key Components:**
-- `spec.chart`: Defines Helm chart details
-- `metadata.annotations`: Supports special instructions like `krateo.io/connector-verbose`
-- Generated CRD: Created from the chart's values.schema.json
-
-### 2. Composition Lifecycle
-
-A Composition represents a deployed instance featuring:
-- CRD based on the schema
-- Managed resources tracked in the status
-- Conditions indicating readiness state
-
-## Practical Examples
-
-### Example 1: Basic Composition Installation
-
-#### Step 1: Create Namespace
+#### 1. Creating the Application Namespace
 ```bash
 kubectl create namespace fireworksapp-system
 ```
+**Expected Outcome:**
+- Creates a dedicated namespace for your Fireworks App resources
+- Isolates your application resources from other deployments
+- Simple confirmation message shows creation success
 
-**Verification:**
-```bash
-kubectl get ns fireworksapp-system
-```
-
-#### Step 2: Apply CompositionDefinition
+#### 2. Deploying the CompositionDefinition
 ```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
@@ -95,27 +112,122 @@ spec:
     version: 1.1.13
 EOF
 ```
+**What Happens Next:**
+- Krateo processes the definition and generates a Custom Resource Definition (CRD)
+- A dedicated controller pod is deployed to manage compositions
+- The system prepares to accept FireworksApp custom resources
 
-**Verification Commands:**
+#### 3. Verifying CompositionDefinition Status
 ```bash
-kubectl get compositiondefinition -n fireworksapp-system
-kubectl get crd fireworksapps.composition.krateo.io
-kubectl get deployments -n fireworksapp-system
+kubectl wait compositiondefinition fireworksapp-cd --for condition=Ready=True --namespace fireworksapp-system --timeout=600s
 ```
+**System Behavior:**
+- Command waits until the CompositionDefinition is fully processed
+- During this time, Krateo is setting up the necessary controllers
+- Success means you can now create FireworksApp instances
 
-#### Step 3: Verify Readiness
+### Creating Compositions
+
+#### 1. Setting Up GitHub Credentials
 ```bash
-kubectl wait compositiondefinition fireworksapp-cd \
+kubectl create secret generic github-repo-creds \
+  --namespace krateo-system \
+  --from-literal=token=YOUR_GITHUB_TOKEN
+```
+**Why This Matters:**
+- Stores your GitHub token securely in the cluster
+- Enables the system to interact with your repositories
+- The secret will be referenced by compositions for Git operations
+
+#### 2. Prepare your composition values file (`fireworksapp-composition-values.yaml`):
+   ```yaml
+   apiVersion: composition.krateo.io/v1-1-13
+   kind: FireworksApp
+   metadata:
+     name: fireworksapp-composition-1
+     namespace: fireworksapp-system
+   spec:
+     app:
+       service:
+         port: 31180
+         type: NodePort
+     argocd:
+       application:
+         destination:
+           namespace: fireworks-app
+           server: https://kubernetes.default.svc
+         project: default
+         source:
+           path: chart/
+         syncPolicy:
+           automated:
+             prune: true
+             selfHeal: true
+       namespace: krateo-system
+     git:
+       fromRepo:
+         branch: main
+         credentials:
+           authMethod: generic
+           secretRef:
+             key: token
+             name: github-repo-creds
+             namespace: krateo-system
+         name: krateo-v2-template-fireworksapp
+         org: krateoplatformops
+         path: skeleton/
+         scmUrl: https://github.com
+       insecure: true
+       toRepo:
+         apiUrl: https://api.github.com
+         branch: main
+         credentials:
+           authMethod: generic
+           secretRef:
+             key: token
+             name: github-repo-creds
+             namespace: krateo-system
+         initialize: true
+         org: your-organization
+         name: fireworksapp-test-v2
+         path: /
+         private: false
+         scmUrl: https://github.com
+       unsupportedCapabilities: true
+   ```
+
+
+#### 3. Creating the FireworksApp Instance
+```bash
+kubectl apply -f fireworksapp-composition-values.yaml
+```
+**What Occurs:**
+- Krateo creates a new FireworksApp resource
+- The controller begins provisioning the application
+- ArgoCD is configured to manage the deployment
+- A new GitHub repository is created (if specified)
+
+#### 4. Monitoring Composition Progress
+```bash
+kubectl wait fireworksapp fireworksapp-composition-1 \
   --for condition=Ready=True \
-  --namespace fireworksapp-system \
-  --timeout=600s
+  --timeout=300s \
+  --namespace fireworksapp-system
 ```
+**Expected Workflow:**
+- Command waits until all resources are provisioned
+- During this time, containers are pulled and started
+- Services are created and become accessible
+- Success means your application is fully deployed
 
-### Example 2: Managing Multiple Versions
+### Advanced Operations
 
-#### Scenario: Running v1.1.13 and v1.1.14 simultaneously
+#### 1. Deploying Multiple Versions
 
-#### Step 1: Create Second CompositionDefinition
+##### Scenario:
+
+You need to run two different versions of the same application simultaneously for testing purposes.
+
 ```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
@@ -130,149 +242,173 @@ spec:
     version: 1.1.14
 EOF
 ```
+**System Response:**
+- A second controller is deployed for the new version
+- Both versions can operate simultaneously
+- Each version maintains its own CRD and controller
 
-**Verification:**
-```bash
-kubectl get crd fireworksapps.composition.krateo.io -o yaml
-kubectl get deployments -n fireworksapp-system
-```
+#### 2. Upgrading Compositions
 
-### Example 3: Updating Compositions to a New Version
+##### Scenario:
+You need to upgrade the existing version of the application to a newer version (1.1.14).
 
-#### Scenario: 
-Safely upgrading all existing compositions from v1.1.13 to v1.1.14 while maintaining service continuity.
-
-#### Step 1: Verify Current Versions
-```bash
-helm list -n fireworksapp-system
-kubectl get fireworksapp -n fireworksapp-system -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.labels}{"\n"}{end}'
-```
-
-**Expected Result:**
-- Helm output shows current chart versions (e.g., 1.1.13)
-- FireworksApp resources display their current version labels
-- No errors in the output
-
-#### Step 2: Update CompositionDefinition
 ```bash
 kubectl patch compositiondefinition fireworksapp-cd \
   -n fireworksapp-system \
   --type=merge \
   -p '{"spec":{"chart":{"version":"1.1.14"}}}'
 ```
+**Upgrade Process:**
+- The controller gradually reconciles existing resources
+- New pods are rolled out using the updated version
+- The system ensures zero-downtime during transition
+- All components eventually reflect the new version
 
-**Verification:**
+#### 3. Pausing Composition Reconciliation
+
+##### Use Case:
+Temporarily stop automatic reconciliation during maintenance or troubleshooting.
+
+#### Step 1: Pause Composition
 ```bash
-kubectl get compositiondefinition fireworksapp-cd -n fireworksapp-system -o jsonpath='{.spec.chart.version}'
-```
-
-**Expected Result:**
-- CompositionDefinition spec.chart.version field updates to 1.1.14
-- New controller deployment begins provisioning
-- Old controller remains active during transition
-
-#### Step 3: Monitor Controller Transition
-```bash
-kubectl wait deployment fireworksapps-v1-1-14-controller \
-  --namespace fireworksapp-system \
-  --for condition=Available=True \
-  --timeout=600s && \
-kubectl get pods -n fireworksapp-system -l app.kubernetes.io/version=1.1.14
-```
-
-**Expected Result:**
-- New v1.1.14 controller becomes Available
-- Old v1.1.13 controller pods enter Terminating state
-- No interruption to existing compositions
-
-#### Step 4: Verify Composition Updates
-```bash
-watch 'kubectl get fireworksapp -n fireworksapp-system -o custom-columns=NAME:.metadata.name,VERSION:.metadata.labels.krateo\.io/composition-version,STATUS:.status.conditions[?(@.type=="Ready")].status'
-```
-
-**Expected Result:**
-- All compositions gradually transition to v1.1.14
-- Each maintains Ready=True status throughout
-- Final state shows all on v1.1.14
-
-#### Step 5: Confirm Resource Updates
-```bash
-helm list -n fireworksapp-system
-kubectl get deployments,services -n fireworksapp-system --show-labels | grep 'krateo.io/composition-version'
-```
-
-**Expected Result:**
-- Helm shows updated chart versions
-- All managed resources reflect v1.1.14 labels
-- No orphaned v1.1.13 resources remain
-
-See [rollback section](#example-4-rollback-procedure) in case of errors.
-
-### Example 4: Rollback Procedure
-
-#### Scenario: Rolling back from v1.1.14 to v1.1.13 after a failed upgrade
-
-#### Step 1: Patch CompositionDefinition
-```bash
-kubectl patch compositiondefinition fireworksapp-cd \
+kubectl annotate fireworksapp fireworksapp-composition-1 \
   -n fireworksapp-system \
-  --type=merge \
-  -p '{"spec":{"chart":{"version":"1.1.13"}}}'
+  "krateo.io/paused=true"
 ```
 
-**Verification:**
+**Expected Result:**
+- Composition is annotated with `krateo.io/paused=true`
+- Controller stops reconciling this instance
+- Verify with:
+  ```bash
+  kubectl get fireworksapp fireworksapp-composition-1 -n fireworksapp-system -o jsonpath='{.metadata.annotations}'
+  ```
+
+#### Step 2: Make Manual Changes
+During paused state, you can:
+- Manually modify resources
+- Troubleshoot issues
+- Perform maintenance
+
+#### Step 3: Resume Reconciliation
 ```bash
-kubectl get pods -n fireworksapp-system
-kubectl get fireworksapp -n fireworksapp-system -o wide
+kubectl annotate fireworksapp fireworksapp-composition-1 \
+  -n fireworksapp-system \
+  "krateo.io/paused-"
 ```
 
-## Best Practices
+**Expected Result:**
+- Pause annotation is removed
+- Controller resumes normal operation
+- Changes are reconciled according to desired state
 
-1. **Version Management**
-   - Implement clear version labeling
-   - Test new versions in isolated environments before production deployment
 
-2. **Resource Organization**
-   - Use namespaces to separate environments (dev/stage/prod)
-   - Apply consistent naming conventions
-
-3. **Monitoring**
-   - Configure alerts for `Ready=False` conditions
-   - Track controller metrics and pod restarts
+Here's a more comprehensive and organized troubleshooting section with clearer explanations:
 
 ## Troubleshooting Guide
 
-### Common Issues and Solutions
+### Common Issues and Diagnostic Procedures
 
-1. **CompositionDefinition Not Ready**
-   ```bash
-   kubectl describe compositiondefinition <name> -n <namespace>
-   kubectl logs -n krateo-system -l app=core-provider
-   ```
+#### 1. CompositionDefinition Not Becoming Ready
 
-2. **Stuck Composition**
-   ```bash
-   kubectl describe fireworksapp <name> -n <namespace>
-   kubectl logs -n <namespace> <controller-pod>
-   ```
+**Symptoms:**
+- CompositionDefinition remains in "Not Ready" state
+- No corresponding controller pod created
+- CRD not generated
 
-3. **Failed Rollbacks**
-   ```bash
-   helm history <release> -n <namespace>
-   kubectl get events -n <namespace>
-   ```
+**Diagnostic Steps:**
+```bash
+# Check CompositionDefinition status details
+kubectl describe compositiondefinition <name> -n fireworksapp-system
 
-This guide provides comprehensive coverage of Krateo Core Provider operations with:
-- Clear, actionable commands
-- Detailed verification steps
-- Expected results for each operation
-- Structured troubleshooting procedures
+# Examine core provider logs for processing errors
+kubectl logs -n krateo-system -l app=core-provider --tail=100
+```
 
-The improved version features:
-1. Consistent command formatting
-2. Clear section organization
-3. Proper grammar and syntax
-4. Logical flow between concepts
-5. Concise yet comprehensive explanations
-6. Standardized verification procedures
-7. Enhanced readability through formatting
+**What to Look For:**
+- In the describe output: Check "Status.Conditions" for error messages
+- In core provider logs: Look for chart download or CRD generation failures
+- Verify network connectivity to the chart repository
+
+#### 2. Compositions Failing to Deploy
+
+**Symptoms:**
+- FireworksApp resource stuck in "Not Ready" state
+- ArgoCD application not syncing
+- Missing GitHub repository
+
+**Diagnostic Steps:**
+```bash
+# Get detailed status of the composition
+kubectl describe fireworksapp <name> -n fireworksapp-system
+
+# Check controller logs for reconciliation errors
+kubectl logs -n fireworksapp-system -l app.kubernetes.io/name=fireworksapps-controller
+
+# Verify ArgoCD application status
+kubectl get application -n krateo-system
+```
+
+**What to Examine:**
+- Events section in describe output for resource creation failures
+- Controller logs for Git operations or resource deployment errors
+- ArgoCD application health and sync status
+
+#### 3. Upgrade/Rollback Failures
+
+**Symptoms:**
+- Version transition stuck
+- Mixed version resources
+- Controller crash loops
+
+**Diagnostic Steps:**
+```bash
+# Check rollout status of controller deployment
+kubectl rollout status deployment/fireworksapps-v1-1-14-controller -n fireworksapp-system
+
+# Verify resource versions
+kubectl get all -n fireworks-app -l krateo.io/composition-version
+
+# Compare desired vs actual state
+kubectl get fireworksapp -n fireworksapp-system -o yaml
+```
+
+**Investigation Areas:**
+- Resource version labels consistency
+- Controller pod logs for reconciliation errors
+- Helm release history for the composition
+
+### General Diagnostic Tools
+
+```bash
+# Cluster-wide event inspection
+kubectl get events -A --sort-by='.metadata.creationTimestamp' | grep -i "error\|fail"
+
+# Cross-namespace pod status check
+kubectl get pods -A -o wide | grep -E "krateo-system|fireworksapp-system"
+
+# API resource verification
+kubectl api-resources | grep fireworksapp
+
+# Network connectivity tests
+kubectl run -it --rm --restart=Never network-test \
+  --image=alpine -n fireworksapp-system -- \
+  ping charts.krateo.io
+```
+
+### Common Solutions
+
+1. **Authentication Issues:**
+   - Regenerate Service token with correct scopes
+   - Recreate the secret with proper formatting
+   - Verify network policies allow outbound connections
+
+2. **Version Conflicts:**
+   - Manually clean up orphaned resources
+   - Delete and recreate the CompositionDefinition
+   - Verify chart compatibility between versions
+
+3. **Resource Constraints:**
+   - Check pod resource limits and node availability
+   - Review pending pods with `kubectl get pods --field-selector=status.phase=Pending`
+   - Increase cluster resources if needed

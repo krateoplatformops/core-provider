@@ -17,17 +17,20 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
   - [Overview](#overview)
     - [Authentication](#authentication)
     - [RBAC Generation](#rbac-generation)
-    - [Multi-Version Support](#multi-version-support)
     - [Composition Definition](#composition-definition)
   - [Requirements](#requirements-1)
   - [Examples](#examples)
     - [How to Install](#how-to-install)
     - [Apply the CompositionDefinition Manifest](#apply-the-compositiondefinition-manifest)
-  - [Upgrade Chart Version](#upgrade-chart-version)
-    - [Update the Fireworksapp Chart in the `CompositionDefinition`](#update-the-fireworksapp-chart-in-the-compositiondefinition)
-    - [Automatic Deletion of Unused `composition-dynamic-controller` Deployments](#automatic-deletion-of-unused-composition-dynamic-controller-deployments)
-  - [Multi-Version Management](#multi-version-management)
+    - [Upgrade Chart Version](#upgrade-chart-version)
+      - [Update the Fireworksapp Chart in the `CompositionDefinition`](#update-the-fireworksapp-chart-in-the-compositiondefinition)
+      - [Automatic Deletion of Unused `composition-dynamic-controller` Deployments](#automatic-deletion-of-unused-composition-dynamic-controller-deployments)
+    - [Multi-Version Management](#multi-version-management)
   - [Authentication](#authentication-1)
+    - [OCI Registry](#oci-registry)
+      - [GCP Artifact Registry](#gcp-artifact-registry)
+    - [Helm Repository](#helm-repository)
+  - [CRD Configuration](#configuration)
   - [Environment Variables and Flags](#environment-variables-and-flags)
   - [Security Features](#security-features)
   - [Best Practices](#best-practices)
@@ -78,11 +81,6 @@ For more details on RBAC generation, refer to:
 - [`chart-inspector` README](https://github.com/krateoplatformops/chart-inspector)  
 - [`composition-dynamic-controller` README](https://github.com/krateoplatformops/composition-dynamic-controller/blob/main/README.md)  
 
-
-### Multi-Version Support
-
-The core provider supports managing multiple versions of the same chart, including different values for each version. This feature addresses the common requirement of maintaining multiple versions of a composition.
-
 ### Composition Definition
 
 A Composition is a Helm Chart archive (.tgz) with a JSON Schema for the `values.yaml` file. The JSON Schema file must be named `values.schema.json`.
@@ -99,6 +97,8 @@ Here are some online tools to generate and validate JSON Schemas:
 In order to work, `core-provider` needs `krateo/snowplow` installed in the `krateo-system` namespace. Refer to [how to install](#how-to-install).
 
 ## Examples
+
+You can see a more practical guide on `core-provider` usage at [this link](cheatsheet.md).
 
 ### How to Install
 
@@ -141,7 +141,7 @@ When the `CompositionDefinition` manifest is applied to the cluster, the `core-p
 Upon deleting the CR, the `composition-dynamic-controller` instance is undeployed, and the RBAC policy is removed.
 
 
-## Upgrade Chart Version
+### Upgrade Chart Version
 
 <details><summary>CompositionDefinition fireworksapp source Manifest</summary>
 
@@ -151,30 +151,30 @@ kind: CompositionDefinition
 metadata:
   annotations:
     krateo.io/connector-verbose: "true"
-  name: fireworksapp-1-1-5
+  name: fireworksapp-cd
   namespace: fireworksapp-system
 spec:
   chart:
     repo: fireworks-app
     url: https://charts.krateo.io
-    version: 1.1.5
+    version: 1.1.13
 ```
 
 </details>
 
-### Update the Fireworksapp Chart in the `CompositionDefinition`
+#### Update the Fireworksapp Chart in the `CompositionDefinition`
 
 The requirement for this step is that the `values.schem.json` cointained in the chart should not change between versions of the chart. If your `values.schem.json` go to section [Multi version Management](#multi-version-management).
 
-1. To update them chart version of existing CompositionDefinition called fireworksapp-1-1-5 in the fireworksapp-system namespace to change the spec.chart.version to 1.1.6:
+1. To update them chart version of existing CompositionDefinition called fireworksapp-cd in the fireworksapp-system namespace to change the spec.chart.version to 1.1.14:
 ```bash
-kubectl patch compositiondefinition fireworksapp-1-1-5 -n fireworksapp-system --type=merge -p '{"spec":{"chart":{"version":"1.1.6"}}}'
+kubectl patch compositiondefinition fireworksapp-cd -n fireworksapp-system --type=merge -p '{"spec":{"chart":{"version":"1.1.14"}}}'
 ```
 
-2. Wait for the `fireworksapp-1-1-5` CompositionDefinition to be in the `Ready=True` condition in the `fireworksapp-system` namespace:
+2. Wait for the `fireworksapp-cd` CompositionDefinition to be in the `Ready=True` condition in the `fireworksapp-system` namespace:
 
 ```bash
-kubectl wait compositiondefinition fireworksapp-1-1-5 --for condition=Ready=True --namespace fireworksapp-system
+kubectl wait compositiondefinition fireworksapp-cd --for condition=Ready=True --namespace fireworksapp-system
 ```
 
 3. Inspect the CustomResourceDefinition `fireworksapps.composition.krateo.io` to see the added version:
@@ -183,10 +183,10 @@ kubectl wait compositiondefinition fireworksapp-1-1-5 --for condition=Ready=True
 kubectl get crd fireworksapps.composition.krateo.io -o yaml
 ```
 
-4. Check if the `fireworksapps-v1-1-6-controller` deployment to be ready in the `fireworksapp-system` namespace:
+4. Check if the `fireworksapps-v1-1-14-controller` deployment to be ready in the `fireworksapp-system` namespace:
 
 ```bash
-kubectl wait deployment fireworksapps-v1-1-6-controller --namespace fireworksapp-system --for condition=Available=True
+kubectl wait deployment fireworksapps-v1-1-14-controller --namespace fireworksapp-system --for condition=Available=True
 ```
 
 5. Check that the previously installed chart have the expected version: 
@@ -194,12 +194,12 @@ kubectl wait deployment fireworksapps-v1-1-6-controller --namespace fireworksapp
 ```bash
 helm list -n fireworksapp-system
 ```
-This procedure update the existing fireworksapp installations to use the new version `1.1.6` of the chart, since the `values.schema.json` does not change between the two versions.
+This procedure update the existing fireworksapp installations to use the new version `1.1.14` of the chart, since the `values.schema.json` does not change between the two versions.
 
 
-### Automatic Deletion of Unused `composition-dynamic-controller` Deployments
+#### Automatic Deletion of Unused `composition-dynamic-controller` Deployments
 
-Notice that the previously deployed instances (pods) of `composition-dynamic-controller` that were configured to manage resources of version 1.1.5 no longer exist in the cluster.
+Notice that the previously deployed instances (pods) of `composition-dynamic-controller` that were configured to manage resources of version 1.1.14 no longer exist in the cluster.
 
 This is due to the automatic cleanup mechanism that removes older and unused deployments along with their associated RBAC resources from the cluster:
 
@@ -209,22 +209,31 @@ kubectl get po -n fireworksapp-system
 
 This automatic cleanup helps maintain cluster cleaniness by removing outdated controller instances when they are no longer needed.
 
-## Multi-Version Management
+### Multi-Version Management
 
-The core provider now supports managing multiple versions of the same composition.
+In the case you need to run two different versions of the same application simultaneously.
 
-To perform a version upgrade or rollback:
+You can create another instance of the `CompositionDefinition` with a different name and version. For example, if you want to run version 1.1.14 of the fireworksapp chart alongside version 1.1.13, you can do so by creating a new `CompositionDefinition`:
 
-1. Pause the current version:
-   Add the `"krateo.io/paused": "true"` annotation to the CompositionDefinition for the current version.
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: fireworksapp-cd-v2
+  namespace: fireworksapp-system
+spec:
+  chart:
+    repo: fireworks-app
+    url: https://charts.krateo.io
+    version: 1.1.14
+EOF
+```
 
-2. Install the new version:
-   Create a new CompositionDefinition for the new version without the `krateo.io/paused` annotation or set it to `"false"`.
-   Include the `"krateo.io/release-name": "my-composition-release"` annotation, using the same name as the release for the previous version. This ensures that the upgrade is performed correctly.
+This will create a new `CompositionDefinition` named `fireworksapp-cd-v2` in the `fireworksapp-system` namespace, which will manage resources of version 1.1.14 of the fireworksapp chart.
+You can then deploy the new version of the chart by applying the `CompositionDefinition` manifest. The `core-provider` will add a new version to the existing CRD `fireworksapps.composition.krateo.io` and deploy a new instance of the `composition-dynamic-controller` to manage resources of version 1.1.14.
+The `core-provider` will leave the previous version of the chart (1.1.13) running along with its associated `composition-dynamic-controller` instance. This allows you to run multiple versions of the same application simultaneously, each managed by its own `composition-dynamic-controller`.
 
-Note: If omitted, the CDC will use the composition's `metadata.name` as the release name.
-
-This process allows for seamless upgrades and rollbacks between different versions of the same composition, maintaining consistency in release names and ensuring proper management of multiple versions.
 
 ## Authentication
 
@@ -325,13 +334,11 @@ spec:
 
 </details>
 
-### Configuration
+## CRD Configuration
 
 To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com/krateoplatformops/core-provider).
 
 ## Environment Variables and Flags
-
-
 
 | Name                                   | Description                | Default Value | Notes         |
 |:---------------------------------------|:---------------------------|:--------------|:--------------|
@@ -356,7 +363,6 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 
 1. Always include a `values.schema.json` file in your Helm charts
 2. Use the `krateo.io/paused` annotation to manage composition lifecycle
-3. Utilize the `krateo.io/release-name` annotation for consistent naming across versions
-4. Leverage the multi-version support for smooth upgrades and rollbacks
+3. Leverage the multi-version support for smooth upgrades and rollbacks
 
 By implementing these improvements and best practices, the Krateo Core Provider offers enhanced flexibility, security, and version management capabilities for Kubernetes-based applications.
