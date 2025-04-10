@@ -13,12 +13,11 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
   - [Summary](#summary)
   - [Architecture](#architecture)
   - [Workflow](#workflow)
-  - [Requirements](#requirements)
   - [Overview](#overview)
     - [Authentication](#authentication)
     - [RBAC Generation](#rbac-generation)
     - [Composition Definition](#composition-definition)
-  - [Requirements](#requirements-1)
+  - [Requirements](#requirements)
   - [Examples](#examples)
     - [How to Install](#how-to-install)
     - [Apply the CompositionDefinition Manifest](#apply-the-compositiondefinition-manifest)
@@ -32,6 +31,7 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
     - [Helm Repository](#helm-repository)
   - [CRD Configuration](#configuration)
   - [Environment Variables and Flags](#environment-variables-and-flags)
+  - [Glossary](#glossary)
   - [Security Features](#security-features)
   - [Best Practices](#best-practices)
 
@@ -52,10 +52,6 @@ The Core Provider generates CRDs, creates RBAC policies, and deploys the CDC. Th
 This diagram illustrates the Core Provider's workflow for managing CompositionDefinitions, which define how resources are composed and managed in a Kubernetes environment. It encompasses the lifecycle of Helm releases and associated resources, involving the creation and updating of CRDs (Custom Resource Definitions), RBAC (Role-Based Access Control), and CDC (Composition Dynamic Controller) deployments. These actions are conditional, based on chart versions and the current state of the cluster.
 
 **Note:** The `kubectl` commands within the notes serve as illustrative examples of the operations performed by the Core Provider and are not intended for direct user execution. They provide insights into the resource management processes undertaken by the system.
-
-## Requirements
-
-From version 0.23.0, the core-provider requires version 0.4.3 or higher of snowplow to support the retrieval of plurals from the cluster. See the URL_PLURALS variable in [Environment Variables and Flags](#url_plurals) for configuration information.
 
 ## Overview
 
@@ -94,8 +90,9 @@ Here are some online tools to generate and validate JSON Schemas:
 
 ## Requirements
 
-In order to work, `core-provider` needs `krateo/snowplow` installed in the `krateo-system` namespace. Refer to [how to install](#how-to-install).
+The core-provider requires [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main) to be installed in the krateo-system namespace. Refer to [How to Install](#how-to-install) for setup instructions.
 
+Starting from version 0.23.0, the core-provider requires Snowplow version 0.4.3 or higher to enable the retrieval of resource plurals from the cluster. For configuration details, see the URL_PLURALS variable in [Environment Variables and Flags](#environment-variables-and-flags).
 ## Examples
 
 You can see a more practical guide on `core-provider` usage at [this link](cheatsheet.md).
@@ -110,7 +107,7 @@ helm repo update
 helm install snowplow krateo/snowplow --namespace krateo-system --create-namespace
 ```
 
-After installing Snowplow, you can install the `core-provider` with the following commands:
+After installing [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main), you can install the `core-provider` with the following commands:
 
 ```sh
 helm repo add krateo https://charts.krateo.io
@@ -340,6 +337,17 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
 | `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
 | `URL_PLURALS`                          | URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
+
+## Glossary
+
+- **CRD (Custom Resource Definition):** A Kubernetes resource that defines custom objects and their schemas, enabling users to extend Kubernetes functionality.
+- **CompositionDefinition:** A custom resource in the `core-provider` that defines how Helm charts are managed and deployed in Kubernetes.
+- **CDC (Composition Dynamic Controller):** A controller deployed by the `core-provider` to manage resources defined by a `CompositionDefinition`. This controller is responsible to create, update, and delete helm releases and their associated resources based on the values defined in the `composition`
+- **Helm Chart:** A package of pre-configured Kubernetes resources used to deploy applications.
+- **OCI Registry:** A container registry that supports the Open Container Initiative (OCI) image format, used for storing and distributing Helm charts.
+- **Snowplow:** A service required by the `core-provider` to retrieve resource plurals and other metadata from the cluster.
+- **RBAC Policy:** A set of rules that define permissions for accessing Kubernetes resources. Typically composed of roles, role bindings, cluster roles, and cluster role bindings assigned to service accounts.
+- **values.schema.json:** A JSON Schema file included in Helm charts to define and validate the structure of `values.yaml`.
 
 ## Security Features
 
