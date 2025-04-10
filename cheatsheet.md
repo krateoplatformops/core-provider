@@ -1,6 +1,5 @@
 ## Comprehensive Deployment Guide with Expected Outcomes
 
-- [Comprehensive Deployment Guide with Expected Outcomes](#comprehensive-deployment-guide-with-expected-outcomes)
 - [Introduction](#introduction)
 - [Prerequisites](#prerequisites)
   - [Initial Setup](#initial-setup)
@@ -9,7 +8,7 @@
   - [Creating Compositions](#creating-compositions)
   - [Advanced Operations](#advanced-operations)
     - [1. Deploying Multiple Versions](#1-deploying-multiple-versions)
-    - [2. Upgrading Compositions](#2-upgrading-compositions)
+    - [2. Upgrading Compositions (massive migration)](#2-upgrading-compositions-massive-migration)
     - [3. Pausing Composition Reconciliation](#3-pausing-composition-reconciliation)
 - [Troubleshooting Guide](#troubleshooting-guide)
   - [Common Issues and Diagnostic Procedures](#common-issues-and-diagnostic-procedures)
@@ -247,7 +246,11 @@ EOF
 - Both versions can operate simultaneously
 - Each version maintains its own CRD and controller
 
-#### 2. Upgrading Compositions
+This will create a new `CompositionDefinition` named `fireworksapp-cd-v2` in the `fireworksapp-system` namespace, which will manage resources of version 1.1.14 of the fireworksapp chart.
+You can then deploy the new version of the chart by applying the `CompositionDefinition` manifest. The `core-provider` will add a new version to the existing CRD `fireworksapps.composition.krateo.io` and deploy a new instance of the `composition-dynamic-controller` to manage resources of version 1.1.14.
+The `core-provider` will leave the previous version of the chart (1.1.13) running along with its associated `composition-dynamic-controller` instance. This allows you to run multiple versions of the same application simultaneously, each managed by its own `composition-dynamic-controller`.
+
+#### 2. Upgrading Compositions (massive migration)
 
 ##### Scenario:
 You need to upgrade the existing version of the application to a newer version (1.1.14).
@@ -263,6 +266,19 @@ kubectl patch compositiondefinition fireworksapp-cd \
 - New pods are rolled out using the updated version
 - The system ensures zero-downtime during transition
 - All components eventually reflect the new version
+- The old version is marked for cleanup
+
+##### Automatic Deletion of Unused `composition-dynamic-controller` Deployments
+
+Notice that the previously deployed instances (pods) of `composition-dynamic-controller` that were configured to manage resources of version 1.1.14 no longer exist in the cluster.
+
+This is due to the automatic cleanup mechanism that removes older and unused deployments along with their associated RBAC resources from the cluster:
+
+```bash
+kubectl get po -n fireworksapp-system
+```
+
+This automatic cleanup helps maintain cluster cleaniness by removing outdated controller instances when they are no longer needed.
 
 #### 3. Pausing Composition Reconciliation
 
