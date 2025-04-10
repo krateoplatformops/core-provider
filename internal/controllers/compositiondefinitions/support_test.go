@@ -152,12 +152,12 @@ func TestGetCompositionDefinitions(t *testing.T) {
 		},
 	).Build()
 
-	gvk := schema.GroupVersionKind{
+	gk := schema.GroupKind{
 		Group: "test-group",
 		Kind:  "TestKind",
 	}
 
-	compositions, err := getCompositionDefinitions(context.Background(), cli, gvk)
+	compositions, err := getCompositionDefinitions(context.Background(), cli, gk)
 	if err != nil {
 		t.Fatalf("getCompositionDefinitions failed: %v", err)
 	}

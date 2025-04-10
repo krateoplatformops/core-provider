@@ -393,20 +393,38 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	if !crdOk {
 		pluralgvk := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
 
-		if pluralgvk.Group == "" {
-			pluralgvk.Group = gvk.Group
+		if pluralgvk.Version == "" || pluralgvk.Group == "" || pluralgvk.Kind == "" {
+			lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
+				Group: gvr.Group,
+				Kind:  flect.Pluralize(strings.ToLower(gvk.Kind)),
+			})
+			if err != nil {
+				return fmt.Errorf("error getting CompositionDefinitions: %w", err)
+			}
+			if len(lst) > 0 {
+				// range until you find the first compositiondefiniton with A non-empty GVK in the status
+				// and use that as the GVK for the CRD
+				for i := range lst {
+					cd := &lst[i]
+					if cd.Status.ApiVersion != "" && cd.Status.Kind != "" {
+						pluralgvk = schema.FromAPIVersionAndKind(cd.Status.ApiVersion, cd.Status.Kind)
+						break
+					}
+				}
+
+				if pluralgvk.Version == "" || pluralgvk.Group == "" || pluralgvk.Kind == "" {
+					return fmt.Errorf("error getting GVK from CompositionDefinition: %s", cr.Name)
+				}
+			} else {
+				pluralgvk = gvk
+				e.log.Debug("CompositionDefinition not found, using default GVK", "gvk", pluralgvk.String())
+			}
 		}
-		if pluralgvk.Version == "" {
-			pluralgvk.Version = gvk.Version
-		}
-		if pluralgvk.Kind == "" {
-			pluralgvk.Kind = flect.Pluralize(strings.ToLower(gvk.Kind))
-		}
+
 		gvr, err = e.pluralizer.GVKtoGVR(pluralgvk)
 		if err != nil {
 			if err == pluralizer.ErrNotFound {
 				e.log.Debug("GVK not found, creating new CRD", "gvk", pluralgvk.String())
-
 			} else {
 				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, pluralgvk.String())
 			}
@@ -732,7 +750,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	var skipCRD bool
-	lst, err := getCompositionDefinitions(ctx, e.kube, gvk)
+	lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
+		Group: gvr.Group,
+		Kind:  flect.Pluralize(strings.ToLower(gvk.Kind)),
+	})
 	if err != nil {
 		e.log.Debug("Error getting CompositionDefinitions", "error", err)
 		return fmt.Errorf("error getting CompositionDefinitions: %w", err)
