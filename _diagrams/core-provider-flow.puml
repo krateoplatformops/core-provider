@@ -1,0 +1,52 @@
+@startuml core-provider-flow
+skinparam nodesep 20
+skinparam ranksep 30
+skinparam conditionEndStyle hline
+
+start
+while (Is Composition Definition Applied?) 
+    if (Is delete called on CompositionDefinition?) then (yes)
+        if (Are there other CompositionDefinitions for the same chart?) then (yes)
+            :Delete CDC deployment;
+            note left: kubectl delete deployment <CDC name>\nkubectl delete serviceaccount <CDC name>\nkubectl delete role <CDC name>\nkubectl delete rolebinding <CDC name>\nkubectl delete clusterrole <CDC name>\nkubectl delete clusterrolebinding <CDC name>\nkubectl delete configmap <CDC name>
+            stop
+        else (no)
+            :Delete CRD;
+            note right: kubectl delete crd <CRD name>
+            :Delete CDC deployment;
+            note right: kubectl delete deployment <CDC name>\nkubectl delete serviceaccount <CDC name>\nkubectl delete role <CDC name>\nkubectl delete rolebinding <CDC name>\nkubectl delete clusterrole <CDC name>\nkubectl delete clusterrolebinding <CDC name>\nkubectl delete configmap <CDC name>
+            stop
+        endif
+    endif
+    if (Does CRD exist, and CDC deployment is created?) then (yes)
+
+        if (Is chart version changed?) then (yes)
+            :Create new version in the CRD;
+            note left: kubectl apply -f <CRD name>
+            :Create new CDC deployment;
+            note left: kubectl apply -f <CDC name>\nkubectl apply -f serviceaccount <CDC name>\nkubectl apply -f role <CDC name>\nkubectl apply -f rolebinding <CDC name>\nkubectl apply -f clusterrole <CDC name>\nkubectl apply -f clusterrolebinding <CDC name>\nkubectl apply -f configmap <CDC name>
+            :Migrate all composition to new version;
+            note left: kubectl patch composition <composition-name> -n <namespace> \n--type='merge' -p '{"metadata":{"labels":{"composition-version":"<new-version>"}}}'
+            :Delete old CDC deployment;
+            note left: kubectl delete deployment <oldCDC name>\nkubectl delete serviceaccount <oldCDC name>\nkubectl delete role <oldCDC name>\nkubectl delete rolebinding <oldCDC name>\nkubectl delete clusterrole <oldCDC name>\nkubectl delete clusterrolebinding <oldCDC name>\nkubectl delete configmap <oldCDC name>
+        else (no)
+            if (Is CDC deployment template changed or deployed resources changed?) then (yes)
+                :Update deployed resources to match templated ones; 
+                note left: kubectl apply -f <CDC name>\nkubectl apply -f serviceaccount <CDC name>\nkubectl apply -f role <CDC name>\nkubectl apply -f rolebinding <CDC name>\nkubectl apply -f clusterrole <CDC name>\nkubectl apply -f clusterrolebinding <CDC name>\nkubectl apply -f configmap <CDC name>
+            else (no)
+                :CompositionDefinition is up-to-date;
+            endif
+        endif
+    else (no)
+        :Create CRD from chart schema;
+        note right: kubectl apply -f <CRD name>
+        :Create a minimal RBAC on generated CRD;
+        note right: kubectl apply -f <CRD name>\nkubectl apply -f serviceaccount <CRD name>\nkubectl apply -f role <CRD name>\nkubectl apply -f rolebinding <CRD name>\nkubectl apply -f clusterrole <CRD name>\nkubectl apply -f clusterrolebinding <CRD name>
+        :Create CDC deployment;
+        note right: kubectl apply -f deployment <CDC name>\nkubectl apply -f configmap <CDC name>
+    endif 
+endwhile
+-[hidden]->
+detach
+
+@enduml

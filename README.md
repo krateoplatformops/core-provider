@@ -1,12 +1,18 @@
 # Krateo Core Provider
 
-The [core-provider](https://github.com/krateoplatformops/core-provider) is the first component of Krateo Composable Operations (KCO) and is vital to the Krateo PlatformOps product.
+The Krateo Core Provider is the foundational component of Krateo Composable Operations (KCO), enabling the management of Helm charts as Kubernetes-native resources. It provides:
+
+- Schema validation through JSON Schema
+- Automated CRD generation
+- Versioned composition management
+- Secure authentication mechanisms
 
 ## Summary
 
 - [Krateo Core Provider](#krateo-core-provider)
   - [Summary](#summary)
   - [Architecture](#architecture)
+  - [Workflow](#workflow)
   - [Requirements](#requirements)
   - [Overview](#overview)
     - [Authentication](#authentication)
@@ -30,6 +36,19 @@ The [core-provider](https://github.com/krateoplatformops/core-provider) is the f
 ## Architecture
 
 ![core-provider Architecture Image](_diagrams/core-provider.png "core-provider Architecture")
+
+This diagram outlines the high-level architecture and interactions within the Core Provider, responsible for managing CompositionDefinitions and related resources. It illustrates the relationships between key components such as the Core Provider itself, the Composition Dynamic Controller (CDC), the Chart Inspector, and various Kubernetes resources.
+
+The Core Provider generates CRDs, creates RBAC policies, and deploys the CDC. The CDC manages Helm chart releases, requests resource information from the Chart Inspector, and generates RBAC policies based on those resources. The diagram highlights the flow of definitions and resources between these components, showcasing how the Core Provider orchestrates the deployment and management of composed applications within a Kubernetes cluster.
+
+
+## Workflow
+
+![core-provider State Diagram](_diagrams/core-provider-flow.png "core-provider State Diagram")
+
+This diagram illustrates the Core Provider's workflow for managing CompositionDefinitions, which define how resources are composed and managed in a Kubernetes environment. It encompasses the lifecycle of Helm releases and associated resources, involving the creation and updating of CRDs (Custom Resource Definitions), RBAC (Role-Based Access Control), and CDC (Composition Dynamic Controller) deployments. These actions are conditional, based on chart versions and the current state of the cluster.
+
+**Note:** The `kubectl` commands within the notes serve as illustrative examples of the operations performed by the Core Provider and are not intended for direct user execution. They provide insights into the resource management processes undertaken by the system.
 
 ## Requirements
 
@@ -57,7 +76,7 @@ Starting from version **0.22.0**, RBAC generation is now handled directly by `co
 
 For more details on RBAC generation, refer to:  
 - [`chart-inspector` README](https://github.com/krateoplatformops/chart-inspector)  
-- [`composition-dynamic-controller` README](https://github.com/krateoplatformops/chart-inspector/blob/main/README.md)  
+- [`composition-dynamic-controller` README](https://github.com/krateoplatformops/composition-dynamic-controller/blob/main/README.md)  
 
 
 ### Multi-Version Support
@@ -77,21 +96,21 @@ Here are some online tools to generate and validate JSON Schemas:
 
 ## Requirements
 
-In order to work, `core-provider` needs `krateo/bff` installed in the `krateo-system` namespace. Refer to [how to install](#how-to-install).
+In order to work, `core-provider` needs `krateo/snowplow` installed in the `krateo-system` namespace. Refer to [how to install](#how-to-install).
 
 ## Examples
 
 ### How to Install
 
-The `core-provider` requires Krateo BFF to be installed in your cluster to perform some actions. If Krateo BFF is not already installed, you can install it with the following commands (note that it should be installed in the `krateo-system` namespace):
+The `core-provider` requires [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main) to be installed in your cluster to perform some actions. If Snowplow is not already installed, you can install it with the following commands (note that it should be installed in the `krateo-system` namespace):
 
 ```sh
 helm repo add krateo https://charts.krateo.io
 helm repo update
-helm install bff krateo/bff --namespace krateo-system --create-namespace
+helm install snowplow krateo/snowplow --namespace krateo-system --create-namespace
 ```
 
-After installing Krateo BFF, you can install the `core-provider` with the following commands:
+After installing Snowplow, you can install the `core-provider` with the following commands:
 
 ```sh
 helm repo add krateo https://charts.krateo.io
@@ -312,59 +331,19 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 
 ## Environment Variables and Flags
 
-### `HELM_REGISTRY_CONFIG_PATH`
-- **Description**: This environment variable specifies the path to the Helm registry configuration file. It is used to configure the Helm client to interact with OCI registries.
-- **Example**: `/tmp/.config/helm/registry/config.json`
-
-### `CORE_PROVIDER_DEBUG`
-- **Description**: Enables debug logging for the application.
-- **Flag**: `--debug` or `-d`
-- **Type**: `Bool`
-- **Default**: `false`
-
-### `CORE_PROVIDER_SYNC`
-- **Description**: Specifies the sync period for the controller manager. This determines how often the controller manager will resync resources.
-- **Flag**: `--sync` or `-s`
-- **Type**: `Duration`
-- **Default**: `1h`
-
-### `CORE_PROVIDER_POLL_INTERVAL`
-- **Description**: Controls how often an individual resource should be checked for drift from the desired state.
-- **Flag**: `--poll`
-- **Type**: `Duration`
-- **Default**: `5m`
-
-### `CORE_PROVIDER_MAX_RECONCILE_RATE`
-- **Description**: The global maximum rate per second at which resources may be checked for drift from the desired state.
-- **Flag**: `--max-reconcile-rate`
-- **Type**: `Int`
-- **Default**: `3`
-
-### `CORE_PROVIDER_LEADER_ELECTION`
-- **Description**: Enables leader election for the controller manager. This ensures that only one instance of the controller manager is active at a time.
-- **Flag**: `--leader-election` 
-- **Type**: `Bool`
-- **Default**: `false`
 
 
-
-### `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL`
-- **Description**: The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.
-- **Flag**: `--max-error-retry-interval` 
-- **Type**: `Duration`
-- **Default**: `1m`
-
-
-### `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL`
-- **Description**: The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.
-- **Flag**: `--min-error-retry-interval` 
-- **Type**: `Duration`
-- **Default**: `1s`
-
-### `URL_PLURALS`
-- **Description**: url to krateo pluraliser service
-- **Type**: `String`
-- **Default**: `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names`
+| Name                                   | Description                | Default Value | Notes         |
+|:---------------------------------------|:---------------------------|:--------------|:--------------|
+| `HELM_REGISTRY_CONFIG_PATH`           | Path to Helm registry configuration file | `/tmp/.config/helm/registry/config.json` | Used for OCI registries |
+| `CORE_PROVIDER_DEBUG`                 | Enables debug logging      | `false`       | Use `--debug` flag |
+| `CORE_PROVIDER_SYNC`                  | Sync period for controller manager | `1h`          | Duration |
+| `CORE_PROVIDER_POLL_INTERVAL`         | Poll interval for resource drift checks | `5m`          | Duration |
+| `CORE_PROVIDER_MAX_RECONCILE_RATE`    | Maximum reconcile rate per second | `3`           | Integer |
+| `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
+| `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
+| `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
+| `URL_PLURALS`                          | URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
 
 ## Security Features
 

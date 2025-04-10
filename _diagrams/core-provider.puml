@@ -1,28 +1,35 @@
 @startuml core-provider
 
-package "Core Provider"{
+package "Core Provider" {
    component "core-provider" as provider
    collections "CompositionDefinition\nManifest" as compositiondefinition
    collections "CRD\nManifest" as crd
-   collections "RBAC\nPolicy" as rbac
 }
 
 package "Composition Dynamic Controller" {
    component "composition-dynamic-controller" as cdc
    collections "Custom Resource Manifest" as cr
+   collections "Minimal RBAC\nPolicy" as rbac
+   collections "Chart Resources RBAC\nPolicy" as rbacgenerated
 }
+
+component "chart-inspector" as chartinspector
 
 database "Helm Chart Release" as er
 
-
 provider -d- compositiondefinition : Definition for
 provider -u-> crd : Generate
-provider -u-> rbac: Generate
+provider -d-> rbac : Create
 provider -r-> cdc : Deploy
 
 cdc <-u- cr : Definition for
-cdc -r-> er : Manage (Observe, Create, Delete)
+cdc -d-> er : Manage\n(Observe, Create, Delete)
+cdc -d-> chartinspector : Request chart-involved resources
+chartinspector -u-> cdc : Return resources list
+
+cdc -r-> rbacgenerated : Generate RBAC from resources list
 
 crd <.r. cr : Represents
 rbac .r.> cdc : Applies to
-@enduml 
+
+@enduml
