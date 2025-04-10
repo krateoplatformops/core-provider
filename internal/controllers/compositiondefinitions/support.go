@@ -164,7 +164,7 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 	return nil
 }
 
-func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schema.GroupVersionKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
+func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schema.GroupKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
 	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
 	err := cli.List(ctx, &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
 	if err != nil {
