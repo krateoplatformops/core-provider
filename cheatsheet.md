@@ -370,6 +370,15 @@ kubectl get po -n fireworksapp-system
 
 This automatic cleanup helps maintain cluster cleaniness by removing outdated controller instances when they are no longer needed.
 
+##### Check Helm Release Status
+```bash
+helm list -n fireworksapp-system
+```
+
+**What to Expect:**
+- You should see both `fireworksapp-composition-1` and `fireworksapp-composition-2` listed
+- Each release corresponds to its respective version but now `fireworksapp-composition-1` will be updated to version 1.1.14
+
 #### 3. Pausing Composition Reconciliation
 
 ##### Use Case:
@@ -389,6 +398,11 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
   ```bash
   kubectl get fireworksapp fireworksapp-composition-1 -n fireworksapp-system -o jsonpath='{.metadata.annotations}'
   ```
+  You could also check events:
+  ```bash
+  kubectl get events -n fireworksapp-system --sort-by='.metadata.creationTimestamp' | grep "fireworksapp-composition-1"
+  ```
+
 
 #### Step 2: Make Manual Changes
 During paused state, you can:
@@ -407,9 +421,6 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
 - Pause annotation is removed
 - Controller resumes normal operation
 - Changes are reconciled according to desired state
-
-
-Here's a more comprehensive and organized troubleshooting section with clearer explanations:
 
 ## Troubleshooting Guide
 
