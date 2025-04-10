@@ -245,9 +245,6 @@ Create the Kubernetes secret:
 kubectl create secret generic docker-hub --from-literal=token=your_token -n krateo-system
 ```
 
-Apply the Manifest:
-<details><summary>Check the Manifest</summary>
-
 ```yaml
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
@@ -267,8 +264,6 @@ spec:
         name: docker-hub
         namespace: krateo-system
 ```
-
-</details>
 
 #### GCP Artifact Registry
 
@@ -306,10 +301,6 @@ spec:
 ```bash
 kubectl create secret generic helm-repo --from-literal=token=your_token -n krateo-system
 ```
- 
-Apply the Manifest:
-
-<details><summary>Check the Manifest</summary>
 
 ```yaml
 apiVersion: core.krateo.io/v1alpha1
@@ -331,8 +322,6 @@ spec:
         name: helm-repo
         namespace: krateo-system
 ```
-
-</details>
 
 ## CRD Configuration
 
