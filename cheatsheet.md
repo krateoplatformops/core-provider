@@ -138,68 +138,68 @@ kubectl create secret generic github-repo-creds \
 - Enables the system to interact with your repositories
 - The secret will be referenced by compositions for Git operations
 
-#### 2. Prepare your composition values file (`fireworksapp-composition-values.yaml`):
-   ```yaml
-   apiVersion: composition.krateo.io/v1-1-13
-   kind: FireworksApp
-   metadata:
-     name: fireworksapp-composition-1
-     namespace: fireworksapp-system
-   spec:
-     app:
-       service:
-         port: 31180
-         type: NodePort
-     argocd:
-       application:
-         destination:
-           namespace: fireworks-app
-           server: https://kubernetes.default.svc
-         project: default
-         source:
-           path: chart/
-         syncPolicy:
-           automated:
-             prune: true
-             selfHeal: true
-       namespace: krateo-system
-     git:
-       fromRepo:
-         branch: main
-         credentials:
-           authMethod: generic
-           secretRef:
-             key: token
-             name: github-repo-creds
-             namespace: krateo-system
-         name: krateo-v2-template-fireworksapp
-         org: krateoplatformops
-         path: skeleton/
-         scmUrl: https://github.com
-       insecure: true
-       toRepo:
-         apiUrl: https://api.github.com
-         branch: main
-         credentials:
-           authMethod: generic
-           secretRef:
-             key: token
-             name: github-repo-creds
-             namespace: krateo-system
-         initialize: true
-         org: your-organization
-         name: fireworksapp-test-v2
-         path: /
-         private: false
-         scmUrl: https://github.com
-       unsupportedCapabilities: true
-   ```
-
 
 #### 3. Creating the FireworksApp Instance
+
+
 ```bash
-kubectl apply -f fireworksapp-composition-values.yaml
+cat <<EOF | kubectl apply -f -
+apiVersion: composition.krateo.io/v1-1-13
+kind: FireworksApp
+metadata:
+  name: fireworksapp-composition-1
+  namespace: fireworksapp-system
+spec:
+  app:
+    service:
+      port: 31180
+      type: NodePort
+  argocd:
+    application:
+      destination:
+        namespace: fireworks-app
+        server: https://kubernetes.default.svc
+      project: default
+      source:
+        path: chart/
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    namespace: krateo-system
+  git:
+    fromRepo:
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      name: krateo-v2-template-fireworksapp
+      org: krateoplatformops
+      path: skeleton/
+      scmUrl: https://github.com
+    insecure: true
+    toRepo:
+      apiUrl: https://api.github.com
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      initialize: true
+      org: your-organization
+      name: fireworksapp-test-v2
+      path: /
+      private: false
+      scmUrl: https://github.com
+    unsupportedCapabilities: true
+EOF
 ```
+
 **What Occurs:**
 - Krateo creates a new FireworksApp resource
 - The controller begins provisioning the application
@@ -218,6 +218,17 @@ kubectl wait fireworksapp fireworksapp-composition-1 \
 - During this time, containers are pulled and started
 - Services are created and become accessible
 - Success means your application is fully deployed
+
+#### 5. Check Helm Release Status
+```bash
+helm list -n fireworksapp-system
+```
+
+**What to Expect:**
+- Helm lists all releases in the `fireworksapp-system` namespace
+- You should see the `fireworksapp-composition-1` release with version 1.1.13
+- This confirms that the Helm chart was successfully deployed
+
 
 ### Advanced Operations
 
@@ -249,6 +260,85 @@ EOF
 This will create a new `CompositionDefinition` named `fireworksapp-cd-v2` in the `fireworksapp-system` namespace, which will manage resources of version 1.1.14 of the fireworksapp chart.
 You can then deploy the new version of the chart by applying the `CompositionDefinition` manifest. The `core-provider` will add a new version to the existing CRD `fireworksapps.composition.krateo.io` and deploy a new instance of the `composition-dynamic-controller` to manage resources of version 1.1.14.
 The `core-provider` will leave the previous version of the chart (1.1.13) running along with its associated `composition-dynamic-controller` instance. This allows you to run multiple versions of the same application simultaneously, each managed by its own `composition-dynamic-controller`.
+
+##### Verifying CompositionDefinition Status
+```bash
+kubectl wait compositiondefinition fireworksapp-cd-v2 --for condition=Ready=True --namespace fireworksapp-system --timeout=600s
+```
+**System Behavior:**
+- Command waits until the CompositionDefinition is fully processed
+- During this time, Krateo is setting up the necessary controllers
+- Success means you can now create FireworksApp instances
+
+##### Create a New FireworksApp Instance
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: composition.krateo.io/v1-1-14
+kind: FireworksApp
+metadata:
+  name: fireworksapp-composition-2
+  namespace: fireworksapp-system
+spec:
+  app:
+    service:
+      port: 31180
+      type: NodePort
+  argocd:
+    application:
+      destination:
+        namespace: fireworks-app
+        server: https://kubernetes.default.svc
+      project: default
+      source:
+        path: chart/
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    namespace: krateo-system
+  git:
+    fromRepo:
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      name: krateo-v2-template-fireworksapp
+      org: krateoplatformops
+      path: skeleton/
+      scmUrl: https://github.com
+    insecure: true
+    toRepo:
+      apiUrl: https://api.github.com
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      initialize: true
+      org: your-organization
+      name: fireworksapp-test-v2
+      path: /
+      private: false
+      scmUrl: https://github.com
+    unsupportedCapabilities: true
+EOF
+```
+
+##### Check Helm Release Status
+```bash
+helm list -n fireworksapp-system
+```
+
+**What to Expect:**
+- You should see both `fireworksapp-composition-1` and `fireworksapp-composition-2` listed
+- Each release corresponds to its respective version
+- This confirms that both versions are deployed and managed independently
+
 
 #### 2. Upgrading Compositions (massive migration)
 
