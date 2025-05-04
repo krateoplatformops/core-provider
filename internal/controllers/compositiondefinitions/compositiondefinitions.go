@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -32,6 +34,7 @@ import (
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
+	"github.com/krateoplatformops/core-provider/internal/tools/objects"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/crdgen"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
@@ -231,11 +234,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	e.log.Info("Searching for Dynamic Controller", "gvr", gvr)
 
-	obj, err := deployment.CreateDeployment(gvr, types.NamespacedName{
+	obj := appsv1.Deployment{}
+	err = objects.CreateK8sObject(&obj, gvr, types.NamespacedName{
 		Namespace: cr.Namespace,
 		Name:      cr.Name,
 	}, CDCtemplateDeploymentPath)
-
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}

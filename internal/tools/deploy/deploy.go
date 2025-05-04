@@ -7,15 +7,14 @@ import (
 	"path"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/tools/configmap"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	deployment "github.com/krateoplatformops/core-provider/internal/tools/deployment"
 	hasher "github.com/krateoplatformops/core-provider/internal/tools/hash"
 	kubecli "github.com/krateoplatformops/core-provider/internal/tools/kube"
-	"github.com/krateoplatformops/core-provider/internal/tools/rbactools"
+	"github.com/krateoplatformops/core-provider/internal/tools/objects"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -72,27 +71,32 @@ func logError(log func(msg string, keysAndValues ...any), msg string, err error)
 }
 
 func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.NamespacedName, rbacFolderPath string) (corev1.ServiceAccount, rbacv1.ClusterRole, rbacv1.ClusterRoleBinding, rbacv1.Role, rbacv1.RoleBinding, error) {
-	sa, err := rbactools.CreateServiceAccount(gvr, rbacNSName, path.Join(rbacFolderPath, "serviceaccount.yaml"))
+	sa := corev1.ServiceAccount{}
+	err := objects.CreateK8sObject(&sa, gvr, rbacNSName, path.Join(rbacFolderPath, "serviceaccount.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
-	clusterrole, err := rbactools.CreateClusterRole(gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrole.yaml"))
+	clusterrole := rbacv1.ClusterRole{}
+	err = objects.CreateK8sObject(&clusterrole, gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrole.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
-	clusterrolebinding, err := rbactools.CreateClusterRoleBinding(gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+	clusterrolebinding := rbacv1.ClusterRoleBinding{}
+	err = objects.CreateK8sObject(&clusterrolebinding, gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
-	role, err := rbactools.CreateRole(gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-role.yaml"))
+	role := rbacv1.Role{}
+	err = objects.CreateK8sObject(&role, gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-role.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
-	rolebinding, err := rbactools.CreateRoleBinding(gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+	rolebinding := rbacv1.RoleBinding{}
+	err = objects.CreateK8sObject(&rolebinding, gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
@@ -273,7 +277,8 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 
-		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		role := rbacv1.Role{}
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return "", err
@@ -286,7 +291,8 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		}
 		opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
-		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		rolebinding := rbacv1.RoleBinding{}
+		err := objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return "", err
@@ -317,8 +323,8 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
 	}
-
-	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+	cm := corev1.ConfigMap{}
+	err = objects.CreateK8sObject(&cm, opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -336,7 +342,9 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-	dep, err := deployment.CreateDeployment(
+	dep := appsv1.Deployment{}
+	err = objects.CreateK8sObject(
+		&dep,
 		opts.GVR,
 		deploymentNSName,
 		opts.DeploymentTemplatePath,
@@ -427,7 +435,9 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-	dep, err := deployment.CreateDeployment(
+	dep := appsv1.Deployment{}
+	err = objects.CreateK8sObject(
+		&dep,
 		opts.GVR,
 		deploymentNSName,
 		opts.DeploymentTemplatePath,
@@ -447,8 +457,8 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
 	}
-
-	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+	cm := corev1.ConfigMap{}
+	err = objects.CreateK8sObject(&cm, opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -473,7 +483,8 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 
-		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		role := rbacv1.Role{}
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return err
@@ -486,7 +497,8 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 		opts.Log("Role successfully uninstalled", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
-		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
+		rolebinding := rbacv1.RoleBinding{}
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return err
@@ -529,7 +541,8 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 		}
 
-		role, err := rbactools.CreateRole(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		role := rbacv1.Role{}
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return "", err
@@ -542,7 +555,8 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		}
 		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
-		rolebinding, err := rbactools.CreateRoleBinding(opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		rolebinding := rbacv1.RoleBinding{}
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return "", err
@@ -574,7 +588,8 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		Name:      opts.NamespacedName.Name + configmapResourceSuffix,
 	}
 
-	cm, err := configmap.CreateConfigmap(opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
+	cm := corev1.ConfigMap{}
+	err = objects.CreateK8sObject(&cm, opts.GVR, cmNSName, opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -592,7 +607,10 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		Namespace: opts.NamespacedName.Namespace,
 		Name:      opts.NamespacedName.Name + controllerResourceSuffix,
 	}
-	dep, err := deployment.CreateDeployment(
+
+	dep := appsv1.Deployment{}
+	err = objects.CreateK8sObject(
+		&dep,
 		opts.GVR,
 		deploymentNSName,
 		opts.DeploymentTemplatePath,

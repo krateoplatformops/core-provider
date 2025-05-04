@@ -1,4 +1,4 @@
-package rbactools
+package objects
 
 import (
 	"testing"
@@ -9,7 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 )
 
-func TestCreateRole(t *testing.T) {
+func TestObject(t *testing.T) {
 	gvr := schema.GroupVersionResource{
 		Group:    "rbac.authorization.k8s.io",
 		Version:  "v1",
@@ -21,7 +21,9 @@ func TestCreateRole(t *testing.T) {
 	}
 	path := "testdata/role_template.yaml"
 
-	clusterRole, err := CreateRole(gvr, nn, path, "secretName", "test-value")
+	role := rbacv1.Role{}
+
+	err := CreateK8sObject(&role, gvr, nn, path, "secretName", "test-value")
 	assert.NoError(t, err)
 
 	expectedRules := []rbacv1.PolicyRule{
@@ -43,8 +45,8 @@ func TestCreateRole(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, "rbac.authorization.k8s.io/v1", clusterRole.APIVersion)
-	assert.Equal(t, "Role", clusterRole.Kind)
-	assert.Equal(t, gvr.Resource+"-"+gvr.Version, clusterRole.Name)
-	assert.Equal(t, expectedRules, clusterRole.Rules)
+	assert.Equal(t, "rbac.authorization.k8s.io/v1", role.APIVersion)
+	assert.Equal(t, "Role", role.Kind)
+	assert.Equal(t, gvr.Resource+"-"+gvr.Version, role.Name)
+	assert.Equal(t, expectedRules, role.Rules)
 }
