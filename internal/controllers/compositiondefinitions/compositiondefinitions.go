@@ -34,6 +34,7 @@ import (
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
+	"github.com/krateoplatformops/core-provider/internal/tools/kube"
 	"github.com/krateoplatformops/core-provider/internal/tools/objects"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/crdgen"
@@ -471,7 +472,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 		if crd == nil {
 			e.log.Debug("CRD not found, installing new CRD", "gvr", gvr.String())
-			return crdtools.Install(ctx, e.kube, newcrd)
+			// return crdtools.Install(ctx, e.kube, newcrd)
+			return kube.Apply(ctx, e.kube, newcrd, kube.ApplyOptions{})
 		}
 
 		crd, err = crdtools.AppendVersion(*crd, *newcrd)
@@ -501,7 +503,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 				},
 			},
 		})
-		return crdtools.Update(ctx, e.kube, crd.Name, crd)
+		// return crdtools.Update(ctx, e.kube, crd.Name, crd)
+		return kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 	} else {
 		crd, err = crdtools.Get(ctx, e.kube, gvr)
 		if err != nil {
@@ -515,7 +518,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
 		}
 
-		err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+		// err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+		err = kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 		if err != nil {
 			return err
 		}
@@ -707,7 +711,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	// Sets the new version as served in the CRD
 	crdtools.SetServedStorage(crd, gvk.Version, true, false)
 
-	err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+	// err = crdtools.Update(ctx, e.kube, crd.Name, crd)
+	err = kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 	if err != nil {
 		return err
 	}
