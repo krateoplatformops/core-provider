@@ -123,39 +123,38 @@ func InferGroupResource(gk schema.GroupKind) schema.GroupResource {
 	}
 }
 
-func Update(ctx context.Context, kube client.Client, name string, newObj *apiextensionsv1.CustomResourceDefinition) error {
-	if err := registerEventually(); err != nil {
-		return err
-	}
+// func Update(ctx context.Context, kube client.Client, name string, newObj *apiextensionsv1.CustomResourceDefinition) error {
+// 	if err := registerEventually(); err != nil {
+// 		return err
+// 	}
 
-	return retry.Do(
-		func() error {
-			obj := apiextensionsv1.CustomResourceDefinition{}
-			err := kube.Get(ctx, client.ObjectKey{Name: name}, &obj, &client.GetOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					// fmt.Println("CRD not found")
-					return nil
-				}
+// 	return retry.Do(
+// 		func() error {
+// 			obj := apiextensionsv1.CustomResourceDefinition{}
+// 			err := kube.Get(ctx, client.ObjectKey{Name: name}, &obj, &client.GetOptions{})
+// 			if err != nil {
+// 				if apierrors.IsNotFound(err) {
+// 					// fmt.Println("CRD not found")
+// 					return nil
+// 				}
 
-				return err
-			}
-			newObj.SetResourceVersion(obj.GetResourceVersion())
+// 				return err
+// 			}
+// 			newObj.SetResourceVersion(obj.GetResourceVersion())
+// 			err = kube.Update(ctx, newObj, &client.UpdateOptions{})
+// 			if err != nil {
+// 				if apierrors.IsNotFound(err) {
+// 					// fmt.Print("CRD not found")
+// 					return nil
+// 				}
 
-			err = kube.Update(ctx, newObj, &client.UpdateOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					// fmt.Print("CRD not found")
-					return nil
-				}
+// 				return err
+// 			}
 
-				return err
-			}
-
-			return nil
-		},
-	)
-}
+// 			return nil
+// 		},
+// 	)
+// }
 
 func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource) error {
 	if err := registerEventually(); err != nil {
@@ -188,30 +187,32 @@ func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource)
 	)
 }
 
-func Install(ctx context.Context, kube client.Client, obj *apiextensionsv1.CustomResourceDefinition) error {
-	if err := registerEventually(); err != nil {
-		return err
-	}
+// func Install(ctx context.Context, kube client.Client, obj *apiextensionsv1.CustomResourceDefinition) error {
+// 	if err := registerEventually(); err != nil {
+// 		return err
+// 	}
 
-	return retry.Do(
-		func() error {
-			tmp := apiextensionsv1.CustomResourceDefinition{}
-			err := kube.Get(ctx, client.ObjectKeyFromObject(obj), &tmp)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return kube.Create(ctx, obj)
-				}
+// 	return retry.Do(
+// 		func() error {
+// 			tmp := apiextensionsv1.CustomResourceDefinition{}
+// 			err := kube.Get(ctx, client.ObjectKeyFromObject(obj), &tmp)
+// 			if err != nil {
+// 				if apierrors.IsNotFound(err) {
+// 					return kube.Create(ctx, obj)
+// 				}
 
-				return err
-			}
+// 				return err
+// 			}
 
-			gracePeriod := int64(0)
-			_ = kube.Delete(ctx, &tmp, &client.DeleteOptions{GracePeriodSeconds: &gracePeriod})
+// 			return fmt.Errorf("CRD %s already exists", obj.Name)
 
-			return kube.Create(ctx, obj)
-		},
-	)
-}
+// 			// // gracePeriod := int64(0)
+// 			// // _ = kube.Delete(ctx, &tmp, &client.DeleteOptions{GracePeriodSeconds: &gracePeriod})
+
+// 			// return kube.Create(ctx, obj)
+// 		},
+// 	)
+// }
 
 func Get(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource) (*apiextensionsv1.CustomResourceDefinition, error) {
 	if err := registerEventually(); err != nil {

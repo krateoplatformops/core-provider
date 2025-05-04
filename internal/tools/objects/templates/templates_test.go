@@ -32,7 +32,7 @@ spec:
 	  name: {{ .name }}
 	  namespace: {{ .namespace }}
 	  labels:
-		app.kubernetes.io/name: {{ trunc 63 .name }}
+		app.kubernetes.io/name: {{ .name }}
 	spec:
 	  containers:
 	  - name: {{ .resource }}-{{ .apiVersion }}-controller
@@ -63,16 +63,15 @@ spec:
 `
 
 func TestDeploymentManifest(t *testing.T) {
-
 	values := Values(Renderoptions{
 		Group:     "composition.krateo.io",
 		Version:   "v12-8-3",
 		Resource:  "postgresqls",
-		Name:      "ThisIsAReallyLongNameThatExceedsSixtyThreeCharactersInLengthForTesting",
+		Name:      "postgres-tgz",
 		Namespace: "default",
 	})
 
-	bin, err := Template(deploymentTemplate).RenderDeployment(values)
+	bin, err := Template(deploymentTemplate).Render(values)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -10,8 +10,6 @@ import (
 	"github.com/Masterminds/semver/v3"
 )
 
-var indexPath = "index.yaml"
-
 // APIVersionV1 is the v1 API version for index and repository files.
 const APIVersionV1 = "v1"
 
