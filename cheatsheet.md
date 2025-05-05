@@ -10,8 +10,15 @@
     - [1. Deploying Multiple Versions](#1-deploying-multiple-versions)
     - [2. Upgrading Compositions (massive migration)](#2-upgrading-compositions-massive-migration)
     - [3. Pausing Composition Reconciliation](#3-pausing-composition-reconciliation)
+    - [4. Safely Deleting Compositions](#4-safely-deleting-compositions)
 - [Troubleshooting Guide](#troubleshooting-guide)
   - [Common Issues and Diagnostic Procedures](#common-issues-and-diagnostic-procedures)
+    - [1. CompositionDefinition Not Becoming Ready](#1-compositiondefinition-not-becoming-ready)
+    - [2. Compositions Failing to Deploy](#2-compositions-failing-to-deploy)
+    - [3. Upgrade/Rollback Failures](#3-upgraderollback-failures)
+    - [4. Certificate Issues: Mutating Webhook Configuration](#4-certificate-issues-mutating-webhook-configuration)
+    - [4.1 Certificate Issues: Conversion Webhook Configuration](#41-certificate-issues-conversion-webhook-configuration)
+    - [5. Error after creating CompositionDefinition](#5-error-after-creating-compositiondefinition)
   - [General Diagnostic Tools](#general-diagnostic-tools)
   - [Common Solutions](#common-solutions)
 
@@ -422,6 +429,22 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
 - Controller resumes normal operation
 - Changes are reconciled according to desired state
 
+#### 4. Safely Deleting Compositions
+
+You can safely delete all compositions and their associated resources using the following command:
+
+```bash
+kubectl delete compositiondefinition fireworksapp-cd \
+  -n fireworksapp-system
+```
+**Expected Outcome:**
+- The `deletionTimestamp` is set in the generated CRD and in all the compositions related to this CRD.
+- The `compositiondefinition` and all associated resources are deleted. (It may take a few minutes because any release associated with the composition will be deleted first.)
+
+Note: If some compositions are stuck in the deletion process, do not enforce their deletion by removing the finalizer in the CRD. Instead, you should check the logs of the `composition-dynamic-controller` to understand why the deletion is stuck. If you need to force the deletion, you can do so by removing the finalizer in the composition CR. Then the core-provider will safely delete the CRD. 
+
+Deleting the finalizer in the CRD can cause problems with Kubernetes etcd, so it is not recommended. See section 5. Error after creating CompositionDefinition for troubleshooting.
+
 ## Troubleshooting Guide
 
 ### Common Issues and Diagnostic Procedures
@@ -451,8 +474,7 @@ kubectl logs -n krateo-system -l app=core-provider --tail=100
 
 **Symptoms:**
 - FireworksApp resource stuck in "Not Ready" state
-- ArgoCD application not syncing
-- Missing GitHub repository
+
 
 **Diagnostic Steps:**
 ```bash
@@ -494,6 +516,71 @@ kubectl get fireworksapp -n fireworksapp-system -o yaml
 - Resource version labels consistency
 - Controller pod logs for reconciliation errors
 - Helm release history for the composition
+
+#### 4. Certificate Issues: Mutating Webhook Configuration
+**Symptoms:**
+- You receive an error like `Internal error occurred: failed calling webhook "core.provider.krateo.io": failed to call webhook: Post "https://core-provider-webhook-
+service.krateo-v2-system.svc:9443/mutate? timeout=10s": t|s: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "crypto/rsa: verification error" while trying to verify candidate authority certificate "core-provider-webhook-
+service.krateo-v2-system.svc")`
+- You cannot create the related composition in the cluster
+
+**Diagnostic Steps:**
+```bash
+# Check the caBundle in the core-provider-webhook-service
+kubectl get mutatingWebhookConfiguration core-provider -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 
+
+# Check if the base64 encoded caBundle is aligned with the core-provider tls secret
+kubectl get secret core-provider-certs -n krateo-system -o json | jq -r '.data["tls.crt"]'
+```
+
+If you receive the error described above, the caBundle is not aligned with the core-provider tls secret. So you need to patch the caBundle in the core-provider mutatingWebhookConfiguration.
+
+**Remediation Steps:**
+- Patch the caBundle in the core-provider mutatingWebhookConfiguration using the command provided above.
+```bash
+caBundle=$(kubectl get secret core-provider-certs -n krateo-system -o json | jq -r '.data["tls.crt"]')
+kubectl patch mutatingWebhookConfiguration core-provider \
+  --type='json' \
+  -p='[{"op": "replace", "path": "/webhooks/0/clientConfig/caBundle", "value": "'"$caBundle"'"}]'
+```
+
+#### 4.1 Certificate Issues: Conversion Webhook Configuration
+**Symptoms:**
+- You receive an error like `conversion webhook for composition.krateo.io/v0-0-13, Kind=KrateoTemplateToolAwsGlueJobs failed: Post \"https://core-provider-webhook-service.krateo-v2-system.svc:9443/convert?timeout=30s\": tls: failed to verify certificate: x509: certificate signed by unknown authority`
+- You cannot create the related composition in the cluster
+  
+**Diagnostic Steps:**
+```bash
+# Check the caBundle in the core-provider-webhook-service
+kubectl get crds <your-crd-name> -o jsonpath='{.spec.conversion.webhook.clientConfig.caBundle}'
+# Check if the base64 encoded caBundle is aligned with the core-provider tls secret
+kubectl get secret core-provider-certs -n krateo-system -o json | jq -r '.data["tls.crt"]'
+```
+
+**Remediation Steps:**
+- Patch the caBundle in the core-provider mutatingWebhookConfiguration using the command provided above.
+```bash
+caBundle=$(kubectl get secret core-provider-certs -n krateo-system -o json | jq -r '.data["tls.crt"]')
+kubectl patch crd <your-crd-name> \
+  --type='json' \
+  -p='[{"op": "replace", "path": "/spec/conversion/webhook/clientConfig/caBundle", "value": "'"$caBundle"'"}]'
+```
+You will need to replace `<your-crd-name>` with the name of the CRD you are trying to create.
+
+#### 5. Error after creating CompositionDefinition
+**Symptoms:**
+- You receive an error like `request to convert CR from an invalid group/version: composition.krateo.io/vacuum`
+- You cannot create the related composition in the cluster
+
+**Diagnostic Steps:**
+```bash
+# This error is usually present in the Kubernetes API server logs, in core-provider logs, and is also generally present when listing `compositions`
+
+kubectl get compositions -A
+```
+
+**Remediation Steps:**
+- To solve this issue, you need to force core-provider to re-create the `vacuum` version in the CRD. You can do this changing the version of the chart in the `CompositionDefinition`.
 
 ### General Diagnostic Tools
 
