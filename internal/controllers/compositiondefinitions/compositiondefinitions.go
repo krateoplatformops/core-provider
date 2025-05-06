@@ -2,7 +2,6 @@ package compositiondefinitions
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -22,15 +20,13 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
-	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	"github.com/gobuffalo/flect"
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/conversion"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
-	"github.com/krateoplatformops/core-provider/internal/tools"
-	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
+	"github.com/krateoplatformops/core-provider/internal/tools/chart"
+	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
@@ -51,7 +47,6 @@ import (
 	"github.com/pkg/errors"
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 )
 
@@ -64,29 +59,6 @@ const (
 )
 
 var (
-	// Build webhooks used for the various server
-	// configuration options
-	//
-	// These handlers could be also be implementations
-	// of the AdmissionHandler interface for more complex
-	// implementations.
-	mutatingHook = &webhook.Admission{
-		Handler: admission.HandlerFunc(func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
-			unstructuredObj := &unstructured.Unstructured{}
-			if err := json.Unmarshal(req.Object.Raw, unstructuredObj); err != nil {
-				return webhook.Errored(http.StatusBadRequest, err)
-			}
-			if unstructuredObj.GetLabels() == nil || len(unstructuredObj.GetLabels()) == 0 {
-				return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
-					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
-					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
-				)
-			}
-			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
-				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
-			)
-		}),
-	}
 	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
 	webhookServiceName           = env.String("CORE_PROVIDER_WEBHOOK_SERVICE_NAME", "core-provider-webhook-service")
 	webhookServiceNamespace      = env.String("CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE", "default")
@@ -105,6 +77,7 @@ func GetCABundle() ([]byte, error) {
 
 	return fb, nil
 }
+
 func Setup(mgr ctrl.Manager, o controller.Options) error {
 	_ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
 
@@ -114,7 +87,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 
 	recorder := mgr.GetEventRecorderFor(name)
 
-	mgr.GetWebhookServer().Register("/mutate", mutatingHook)
+	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(mgr.GetClient()))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 	cli := mgr.GetClient()
 
@@ -196,7 +169,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	gvk, err := tools.GroupVersionKind(pkg)
+	gvk, err := chartfs.GroupVersionKind(pkg)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
@@ -366,12 +339,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
+	gvk, err := chart.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		return err
 	}
@@ -458,7 +431,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			WorkDir:                dir,
 			GVK:                    gvk,
 			Categories:             []string{"compositions", "comps"},
-			SpecJsonSchemaGetter:   generator.ChartJsonSchemaGetter(pkg, dir),
+			SpecJsonSchemaGetter:   chart.ChartJsonSchemaGetter(pkg, dir),
 			StatusJsonSchemaGetter: StaticJsonSchemaGetter(),
 		})
 		if res.Err != nil {
@@ -588,12 +561,12 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		e.log.Debug("Updating CompositionDefinition", "name", cr.Name)
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
+	gvk, err := chart.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		return err
 	}
@@ -740,12 +713,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return nil
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
 	}
 
-	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
+	gvk, err := chart.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		return err
 	}

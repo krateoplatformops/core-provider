@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/krateoplatformops/core-provider/internal/helm/repo"
+	"github.com/krateoplatformops/core-provider/internal/tools/helm/repo"
 )
 
 var _ Getter = (*repoGetter)(nil)

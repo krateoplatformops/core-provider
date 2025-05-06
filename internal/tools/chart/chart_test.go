@@ -1,7 +1,7 @@
 //go:build integration
 // +build integration
 
-package generator_test
+package chart
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/generator"
 	"github.com/krateoplatformops/crdgen"
 	"github.com/krateoplatformops/snowplow/plumbing/e2e"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -115,14 +114,14 @@ func TestJsonSchemaFromOCI(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		pkg, rootdir, err := generator.ChartInfoFromSpec(context.TODO(), cli, &nfo)
+		pkg, rootdir, err := ChartInfoFromSpec(context.TODO(), cli, &nfo)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		t.Logf("root dir: %s\n", rootdir)
 
-		s, err := generator.ChartJsonSchemaGetter(pkg, rootdir).Get()
+		s, err := ChartJsonSchemaGetter(pkg, rootdir).Get()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -141,12 +140,12 @@ func TestCRDGenFromOCI(t *testing.T) {
 		Version: "18.0.1",
 	}
 
-	pkg, dir, err := generator.ChartInfoFromSpec(context.TODO(), nil, &nfo)
+	pkg, dir, err := ChartInfoFromSpec(context.TODO(), nil, &nfo)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	gvk, err := generator.ChartGroupVersionKind(pkg, dir)
+	gvk, err := ChartGroupVersionKind(pkg, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +155,7 @@ func TestCRDGenFromOCI(t *testing.T) {
 		WorkDir:              dir,
 		GVK:                  gvk,
 		Categories:           []string{"compositions", "comps"},
-		SpecJsonSchemaGetter: generator.ChartJsonSchemaGetter(pkg, dir),
+		SpecJsonSchemaGetter: ChartJsonSchemaGetter(pkg, dir),
 	})
 	if res.Err != nil {
 		t.Fatal(res.Err)
