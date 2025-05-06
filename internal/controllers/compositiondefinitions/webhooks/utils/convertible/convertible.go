@@ -42,3 +42,10 @@ func (c Convertible) DeepCopyObject() runtime.Object {
 func (c Convertible) GetObjectKind() schema.ObjectKind {
 	return c.Unstructured.GetObjectKind()
 }
+
+func CreateEmptyConvertible(apiVersion string, kind string) *Convertible {
+	un := &unstructured.Unstructured{}
+	un.SetAPIVersion(apiVersion)
+	un.SetKind(kind)
+	return &Convertible{Unstructured: un}
+}

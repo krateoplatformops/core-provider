@@ -1,4 +1,4 @@
-package tools
+package chartfs
 
 import (
 	"fmt"
@@ -6,13 +6,13 @@ import (
 	"strings"
 
 	"github.com/gobuffalo/flect"
-	"github.com/krateoplatformops/core-provider/internal/strutil"
-	"github.com/krateoplatformops/core-provider/internal/tools/chartfs"
+
+	"github.com/krateoplatformops/core-provider/internal/tools/strutil"
 	"gopkg.in/yaml.v2"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
-func GroupVersionKind(fs *chartfs.ChartFS) (schema.GroupVersionKind, error) {
+func GroupVersionKind(fs *ChartFS) (schema.GroupVersionKind, error) {
 	fin, err := fs.Open(fs.RootDir() + "/Chart.yaml")
 	if err != nil {
 		return schema.GroupVersionKind{}, err

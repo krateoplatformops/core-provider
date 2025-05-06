@@ -8,9 +8,9 @@ import (
 	"io/fs"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/helm/getter"
-	"github.com/krateoplatformops/core-provider/internal/tgzfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/helm/getter"
 	"github.com/krateoplatformops/core-provider/internal/tools/resolvers"
+	"github.com/krateoplatformops/core-provider/internal/tools/tgzfs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 

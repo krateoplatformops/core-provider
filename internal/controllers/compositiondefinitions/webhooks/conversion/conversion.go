@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/convertible"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/convertible"
 	apix "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,13 +18,12 @@ var (
 )
 
 func NewWebhookHandler(scheme *runtime.Scheme) http.Handler {
-	return &webhook{scheme: scheme, decoder: NewDecoder(scheme)}
+	return &webhook{scheme: scheme}
 }
 
 // webhook implements a CRD conversion webhook HTTP handler.
 type webhook struct {
-	scheme  *runtime.Scheme
-	decoder *Decoder
+	scheme *runtime.Scheme
 }
 
 // ensure Webhook implements http.Handler
@@ -62,13 +61,6 @@ func (wh *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createEmptyConvertible(apiVersion string, kind string) *convertible.Convertible {
-	un := &unstructured.Unstructured{}
-	un.SetAPIVersion(apiVersion)
-	un.SetKind(kind)
-	return &convertible.Convertible{Unstructured: un}
-}
-
 // handles a version conversion request.
 func (wh *webhook) handleConvertRequest(req *apix.ConversionRequest) (*apix.ConversionResponse, error) {
 	if req == nil {
@@ -83,7 +75,7 @@ func (wh *webhook) handleConvertRequest(req *apix.ConversionRequest) (*apix.Conv
 		}
 		unssrc, _ := usrc.(*unstructured.Unstructured)
 		src := &convertible.Hub{Unstructured: unssrc}
-		dst := createEmptyConvertible(req.DesiredAPIVersion, gvk.Kind)
+		dst := convertible.CreateEmptyConvertible(req.DesiredAPIVersion, gvk.Kind)
 		dst.Object["metadata"] = src.Object["metadata"]
 		dst.Object["spec"] = src.Object["spec"]
 		dst.Object["status"] = src.Object["status"]

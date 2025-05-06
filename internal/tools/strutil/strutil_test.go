@@ -3,7 +3,7 @@ package strutil_test
 import (
 	"testing"
 
-	"github.com/krateoplatformops/core-provider/internal/strutil"
+	"github.com/krateoplatformops/core-provider/internal/tools/strutil"
 )
 
 func TestThatCapitalisationOccursCorrectly(t *testing.T) {

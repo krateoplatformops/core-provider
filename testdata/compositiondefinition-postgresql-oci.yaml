@@ -3,10 +3,16 @@ kind: CompositionDefinition
 metadata:
   annotations:
      "krateo.io/connector-verbose": "true"
-  name: postgresql-oci
-  namespace: demo-system
+  name: fireworks-private
+  namespace: krateo-system
 spec:
   chart:
-    url: oci://registry-1.docker.io/bitnamicharts/postgresql
-    version: "12.8.3"
+    url: oci://europe-west12-docker.pkg.dev/krateoregistry/krateotest/fireworks-app
+    version: "0.0.1"
+    credentials:
+      username: _json_key
+      passwordRef: # reference to a secret
+        key: secret-access-credentials
+        name: gcp-sa-secret
+        namespace: demo
 
