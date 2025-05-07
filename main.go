@@ -1,19 +1,24 @@
 package main
 
 import (
+	"crypto/tls"
+	"encoding/base64"
 	"flag"
 	"fmt"
-	"io"
 	"log"
+	"os"
 	"time"
 
 	"github.com/alecthomas/kingpin/v2"
 	"github.com/krateoplatformops/core-provider/internal/controllers"
+	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/snowplow/plumbing/env"
+	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/krateoplatformops/core-provider/apis"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -39,7 +44,7 @@ func main() {
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
 	flag.Parse()
 
-	log.Default().SetOutput(io.Discard)
+	log.Default().SetOutput(os.Stderr)
 
 	zl := zap.New(zap.UseDevMode(*debug))
 	logr := logging.NewLogrLogger(zl.WithName(fmt.Sprintf("%s-provider", strcase.KebabCase(providerName))))
@@ -54,6 +59,33 @@ func main() {
 
 	cfg, err := ctrl.GetConfig()
 	kingpin.FatalIfError(err, "Cannot get API server rest config")
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		log.Fatalf("Cannot create kubernetes client: %v", err)
+		return
+	}
+
+	cert, key, err := certs.GenerateClientCertAndKey(client, logr.Debug, certs.GenerateClientCertAndKeyOpts{
+		Duration: time.Hour * 1,
+		UserID:   "12345", // TODO: use a real user ID - Does core-provider have a user ID?
+		Username: "core-provider-webhook-service.demo-system.svc",
+		Groups:   []string{"core-provider-webhook-service.demo-system.svc"},
+	})
+	if err != nil {
+		log.Fatalf("Cannot generate client certificate and key: %v", err)
+		return
+	}
+
+	decCert, err := base64.StdEncoding.DecodeString(cert)
+	if err != nil {
+		log.Fatalf("Cannot decode certificate: %v", err)
+		return
+	}
+	decKey, err := base64.StdEncoding.DecodeString(key)
+	if err != nil {
+		log.Fatalf("Cannot decode key: %v", err)
+		return
+	}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		LeaderElection:   *leaderElection,
@@ -64,10 +96,29 @@ func main() {
 		Metrics: metricsserver.Options{
 			BindAddress: ":8080",
 		},
+		WebhookServer: webhook.NewServer(webhook.Options{
+			Port: 9443,
+			TLSOpts: []func(*tls.Config){
+				func(cfg *tls.Config) {
+					cfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+						parsedKey, err := tls.X509KeyPair(decCert, decKey)
+						if err != nil {
+							return nil, fmt.Errorf("failed to parse certificate or key: %w", err)
+						}
+						return &parsedKey, nil
+					}
+				},
+			},
+		}),
 	})
-
 	if err != nil {
 		log.Fatalf("Cannot create controller manager: %v", err)
+		return
+	}
+
+	err = os.Setenv("TLS_CERT", cert)
+	if err != nil {
+		log.Fatalf("Cannot set TLS_CERT environment variable: %v", err)
 		return
 	}
 

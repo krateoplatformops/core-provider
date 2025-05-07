@@ -2,24 +2,13 @@ package compositiondefinitions
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"os"
 	"path"
 	"strings"
 	"time"
-
-	appsv1 "k8s.io/api/apps/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/discovery"
-	"k8s.io/client-go/discovery/cached/memory"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/tools/record"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/gobuffalo/flect"
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -45,9 +34,21 @@ import (
 	"github.com/krateoplatformops/snowplow/plumbing/env"
 	"github.com/krateoplatformops/snowplow/plumbing/ptr"
 	"github.com/pkg/errors"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
+	appsv1 "k8s.io/api/apps/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/discovery/cached/memory"
+	"k8s.io/client-go/dynamic"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -67,15 +68,23 @@ var (
 	CDCtemplateDeploymentPath    = path.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath     = path.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
 	CDCrbacConfigFolder          = path.Join(os.TempDir(), "assets/cdc-rbac/")
+	MutatingWebhookPath          = path.Join(os.TempDir(), "assets/mutating-webhook-configuration/mutating-webhook.yaml")
 )
 
 func GetCABundle() ([]byte, error) {
-	fb, err := os.ReadFile(path.Join(os.TempDir(), "k8s-webhook-server/serving-certs/tls.crt"))
-	if err != nil {
-		return nil, err
+	// fb, err := os.ReadFile(path.Join(os.TempDir(), "k8s-webhook-server/serving-certs/tls.crt"))
+	// if err != nil {
+	// 	return nil, err
+	// }
+
+	// return fb, nil
+
+	crt := os.Getenv("TLS_CERT")
+	if crt == "" {
+		return nil, errors.New("TLS_CERT environment variable not set")
 	}
 
-	return fb, nil
+	return base64.StdEncoding.DecodeString(crt)
 }
 
 func Setup(mgr ctrl.Manager, o controller.Options) error {
@@ -86,10 +95,10 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	l := o.Logger.WithValues("controller", name)
 
 	recorder := mgr.GetEventRecorderFor(name)
-
-	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(mgr.GetClient()))
-	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 	cli := mgr.GetClient()
+
+	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(cli))
+	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 
 	r := reconciler.NewReconciler(mgr,
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
@@ -108,6 +117,22 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
 
 	chartfs.HelmRegistryConfigPath = helmRegistryConfigPath
+
+	mutatingWebhookConfig := admissionregistrationv1.MutatingWebhookConfiguration{}
+	cabundle, err := GetCABundle()
+	if err != nil {
+		return fmt.Errorf("error getting CA bundle: %w", err)
+	}
+
+	strCABundle := base64.StdEncoding.EncodeToString(cabundle)
+	err = objects.CreateK8sObject(&mutatingWebhookConfig, schema.GroupVersionResource{}, types.NamespacedName{}, MutatingWebhookPath, "caBundle", strCABundle)
+	if err != nil {
+		return fmt.Errorf("error creating mutating webhook config: %w", err)
+	}
+	err = kube.Apply(context.Background(), cli, &mutatingWebhookConfig, kube.ApplyOptions{})
+	if err != nil {
+		return fmt.Errorf("error applying mutating webhook config: %w", err)
+	}
 
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
