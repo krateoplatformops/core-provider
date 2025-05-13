@@ -1,5 +1,5 @@
 # Build phase
-FROM golang:1.24.1-bullseye as builder
+FROM golang:1.24.3-bullseye AS builder
 LABEL stage=builder
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 GO111MODULE=on go build -a -o /bin/manager main.go && \
 
 # Deployment environment
 # ----------------------
-FROM golang:1.24.1-alpine3.21
+FROM golang:1.24.3-alpine
 
 ENV GOCACHE='/tmp/.cache'
 RUN mkdir -p "$GOCACHE/go-build" && chmod -R 1777 "$GOCACHE"

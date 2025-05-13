@@ -1,6 +1,6 @@
 module github.com/krateoplatformops/core-provider
 
-go 1.24.2
+go 1.24.3
 
 require (
 	github.com/Masterminds/semver v1.5.0
