@@ -1,18 +1,17 @@
 package main
 
 import (
-	"crypto/tls"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"time"
 
-	"github.com/alecthomas/kingpin/v2"
 	"github.com/krateoplatformops/core-provider/internal/controllers"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
-	"github.com/krateoplatformops/snowplow/plumbing/env"
+	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
+	"github.com/krateoplatformops/plumbing/env"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -29,7 +28,8 @@ import (
 )
 
 const (
-	providerName = "Core"
+	providerName                 = "Core"
+	helmRegistryConfigPathEnvVar = "HELM_REGISTRY_CONFIG_PATH"
 )
 
 func main() {
@@ -42,48 +42,80 @@ func main() {
 	leaderElection := flag.Bool("leader-election", env.Bool(fmt.Sprintf("%s_LEADER_ELECTION", envVarPrefix), false), "Use leader election for the controller manager.")
 	maxErrorRetryInterval := flag.Duration("max-error-retry-interval", env.Duration(fmt.Sprintf("%s_MAX_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Minute), "The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.")
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
+	webhookServiceName := flag.String("webhook-service-name", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAME", envVarPrefix), "core-provider-webhook-service"), "The name of the webhook service.")
+	webhookServiceNamespace := flag.String("webhook-service-namespace", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAMESPACE", envVarPrefix), "demo-system"), "The namespace of the webhook service.")
+	helmRegistryConfigPath := flag.String("helm-registry-config-path", env.String(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault), "The path to the helm registry config file.")
+	tlsCertificateDuration := flag.Duration("tls-certificate-duration", env.Duration(fmt.Sprintf("%s_TLS_CERTIFICATE_DURATION", envVarPrefix), 24*time.Hour), "The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval.")
+	tlsCertificateLeaseExpirationMargin := flag.Duration(
+		"tls-certificate-lease-expiration-margin",
+		env.Duration(fmt.Sprintf("%s_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN", envVarPrefix),
+			16*time.Hour),
+		"The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.")
 	flag.Parse()
 
 	log.Default().SetOutput(os.Stderr)
 
+	if *tlsCertificateDuration < time.Minute*10 {
+		log.Fatalf("The TLS certificate duration must be at least 10 minutes.")
+		return
+	}
+	if *tlsCertificateDuration < time.Duration(3)*(*pollInterval) {
+		log.Fatalf("The TLS certificate duration must be at least 3 times the poll interval.")
+		return
+	}
+	if *tlsCertificateLeaseExpirationMargin > *tlsCertificateDuration {
+		log.Fatalf("The TLS certificate lease expiration margin must be less than the TLS certificate duration.")
+		return
+	}
+
 	zl := zap.New(zap.UseDevMode(*debug))
 	logr := logging.NewLogrLogger(zl.WithName(fmt.Sprintf("%s-provider", strcase.KebabCase(providerName))))
 	if *debug {
-		// The controller-runtime runs with a no-op logger by default. It is
-		// *very* verbose even at info level, so we only provide it a real
-		// logger when we're running in debug mode.
 		ctrl.SetLogger(zl)
 	}
 
-	logr.Debug("Starting", "sync-period", syncPeriod.String(), "poll-interval", pollInterval.String(), "max-reconcile-rate", *maxReconcileRate, "leader-election", *leaderElection)
+	logr.Debug("Starting",
+		"sync-period", syncPeriod.String(),
+		"poll-interval", pollInterval.String(),
+		"max-reconcile-rate", *maxReconcileRate,
+		"leader-election", *leaderElection,
+		"max-error-retry-interval", maxErrorRetryInterval.String(),
+		"min-error-retry-interval", minErrorRetryInterval.String(),
+		"webhook-service-name", *webhookServiceName,
+		"webhook-service-namespace", *webhookServiceNamespace,
+		"tls-certificate-duration", tlsCertificateDuration.String(),
+		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String(),
+		"helm-registry-config-path", *helmRegistryConfigPath)
 
 	cfg, err := ctrl.GetConfig()
-	kingpin.FatalIfError(err, "Cannot get API server rest config")
+	if err != nil {
+		log.Fatalf("Cannot get API server rest config: %v", err)
+		return
+	}
 	client, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
 		log.Fatalf("Cannot create kubernetes client: %v", err)
 		return
 	}
 
-	cert, key, err := certs.GenerateClientCertAndKey(client, logr.Debug, certs.GenerateClientCertAndKeyOpts{
-		Duration: time.Hour * 1,
-		UserID:   "12345", // TODO: use a real user ID - Does core-provider have a user ID?
-		Username: "core-provider-webhook-service.demo-system.svc",
-		Groups:   []string{"core-provider-webhook-service.demo-system.svc"},
-	})
+	compositiondefinitions.WebhookServiceName = *webhookServiceName
+	compositiondefinitions.WebhookServiceNamespace = *webhookServiceNamespace
+	chartfs.HelmRegistryConfigPath = *helmRegistryConfigPath
+	compositiondefinitions.CertOpts = certs.GenerateClientCertAndKeyOpts{
+		Duration:              *tlsCertificateDuration,
+		Username:              fmt.Sprintf("%s.%s.svc", compositiondefinitions.WebhookServiceName, compositiondefinitions.WebhookServiceNamespace),
+		Approver:              strcase.KebabCase(envVarPrefix),
+		LeaseExpirationMargin: *tlsCertificateLeaseExpirationMargin,
+	}
+
+	cert, key, err := certs.GenerateClientCertAndKey(client, logr.Debug, compositiondefinitions.CertOpts)
 	if err != nil {
 		log.Fatalf("Cannot generate client certificate and key: %v", err)
 		return
 	}
-
-	decCert, err := base64.StdEncoding.DecodeString(cert)
+	err = certs.UpdateCerts(cert, key, compositiondefinitions.CertsPath)
 	if err != nil {
-		log.Fatalf("Cannot decode certificate: %v", err)
-		return
-	}
-	decKey, err := base64.StdEncoding.DecodeString(key)
-	if err != nil {
-		log.Fatalf("Cannot decode key: %v", err)
+		log.Fatalf("Cannot update certificates: %v", err)
 		return
 	}
 
@@ -97,28 +129,14 @@ func main() {
 			BindAddress: ":8080",
 		},
 		WebhookServer: webhook.NewServer(webhook.Options{
-			Port: 9443,
-			TLSOpts: []func(*tls.Config){
-				func(cfg *tls.Config) {
-					cfg.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-						parsedKey, err := tls.X509KeyPair(decCert, decKey)
-						if err != nil {
-							return nil, fmt.Errorf("failed to parse certificate or key: %w", err)
-						}
-						return &parsedKey, nil
-					}
-				},
-			},
+			Port:     9443,
+			CertDir:  compositiondefinitions.CertsPath,
+			CertName: "tls.crt",
+			KeyName:  "tls.key",
 		}),
 	})
 	if err != nil {
 		log.Fatalf("Cannot create controller manager: %v", err)
-		return
-	}
-
-	err = os.Setenv("TLS_CERT", cert)
-	if err != nil {
-		log.Fatalf("Cannot set TLS_CERT environment variable: %v", err)
 		return
 	}
 

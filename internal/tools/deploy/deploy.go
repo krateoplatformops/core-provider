@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path"
+	"path/filepath"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -72,31 +72,31 @@ func logError(log func(msg string, keysAndValues ...any), msg string, err error)
 
 func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.NamespacedName, rbacFolderPath string) (corev1.ServiceAccount, rbacv1.ClusterRole, rbacv1.ClusterRoleBinding, rbacv1.Role, rbacv1.RoleBinding, error) {
 	sa := corev1.ServiceAccount{}
-	err := objects.CreateK8sObject(&sa, gvr, rbacNSName, path.Join(rbacFolderPath, "serviceaccount.yaml"))
+	err := objects.CreateK8sObject(&sa, gvr, rbacNSName, filepath.Join(rbacFolderPath, "serviceaccount.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
 	clusterrole := rbacv1.ClusterRole{}
-	err = objects.CreateK8sObject(&clusterrole, gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrole.yaml"))
+	err = objects.CreateK8sObject(&clusterrole, gvr, rbacNSName, filepath.Join(rbacFolderPath, "clusterrole.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
 	clusterrolebinding := rbacv1.ClusterRoleBinding{}
-	err = objects.CreateK8sObject(&clusterrolebinding, gvr, rbacNSName, path.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+	err = objects.CreateK8sObject(&clusterrolebinding, gvr, rbacNSName, filepath.Join(rbacFolderPath, "clusterrolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
 	role := rbacv1.Role{}
-	err = objects.CreateK8sObject(&role, gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-role.yaml"))
+	err = objects.CreateK8sObject(&role, gvr, rbacNSName, filepath.Join(rbacFolderPath, "compositiondefinition-role.yaml"))
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
 
 	rolebinding := rbacv1.RoleBinding{}
-	err = objects.CreateK8sObject(&rolebinding, gvr, rbacNSName, path.Join(rbacFolderPath, "compositiondefinition-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+	err = objects.CreateK8sObject(&rolebinding, gvr, rbacNSName, filepath.Join(rbacFolderPath, "compositiondefinition-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 	if err != nil {
 		return corev1.ServiceAccount{}, rbacv1.ClusterRole{}, rbacv1.ClusterRoleBinding{}, rbacv1.Role{}, rbacv1.RoleBinding{}, err
 	}
@@ -278,7 +278,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		}
 
 		role := rbacv1.Role{}
-		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return "", err
@@ -292,7 +292,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
 		rolebinding := rbacv1.RoleBinding{}
-		err := objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		err := objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return "", err
@@ -484,7 +484,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		}
 
 		role := rbacv1.Role{}
-		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return err
@@ -498,7 +498,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		opts.Log("Role successfully uninstalled", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
 		rolebinding := rbacv1.RoleBinding{}
-		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return err
@@ -542,7 +542,7 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		}
 
 		role := rbacv1.Role{}
-		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		err = objects.CreateK8sObject(&role, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
 			logError(opts.Log, "Error creating role", err)
 			return "", err
@@ -556,7 +556,7 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
 		rolebinding := rbacv1.RoleBinding{}
-		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, path.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
 			logError(opts.Log, "Error creating rolebinding", err)
 			return "", err
