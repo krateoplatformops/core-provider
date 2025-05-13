@@ -31,6 +31,8 @@ spec:
             value: 30s
           - name: URL_PLURALS
             value: http://snowplow.demo-system.svc.cluster.local:8081/api-info/names
+          - name: CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE
+            value: demo-system
           # - name: CRDGEN_CLEAN_WORKDIR
           #   value: "false"
         ports:
