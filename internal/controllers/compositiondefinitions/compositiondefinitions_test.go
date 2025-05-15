@@ -158,12 +158,6 @@ func TestMain(m *testing.M) {
 				return ctx, fmt.Errorf("Error installing backend: %v", err)
 			}
 
-			// Install bff
-			err = helmmgr.RunInstall(helm.WithReleaseName("krateo/snowplow"), helm.WithName("snowplow"), helm.WithNamespace(namespace))
-			if err != nil {
-				return ctx, fmt.Errorf("Error installing backend: %v", err)
-			}
-
 			time.Sleep(2 * time.Minute)
 
 			return ctx, nil

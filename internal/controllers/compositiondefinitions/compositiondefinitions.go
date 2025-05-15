@@ -3,11 +3,12 @@ package compositiondefinitions
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/gobuffalo/flect"
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -22,10 +23,8 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/deployment"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
 	"github.com/krateoplatformops/core-provider/internal/tools/objects"
-	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/crdgen"
-	"github.com/krateoplatformops/plumbing/env"
-	"github.com/krateoplatformops/plumbing/ptr"
+	"github.com/krateoplatformops/plumbing/kubeutil/plurals"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
 	"github.com/krateoplatformops/provider-runtime/pkg/event"
@@ -66,7 +65,6 @@ var (
 
 var (
 	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
-	urlPlurals                   = env.String("URL_PLURALS", "http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names")
 	CDCtemplateDeploymentPath    = filepath.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath     = filepath.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
 	CDCrbacConfigFolder          = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
@@ -96,16 +94,14 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(cli))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 
-	pluralizer := pluralizer.New(ptr.To(urlPlurals), http.DefaultClient)
 	r := reconciler.NewReconciler(mgr,
 		resource.ManagedKind(compositiondefinitionsv1alpha1.CompositionDefinitionGroupVersionKind),
 		reconciler.WithExternalConnecter(&connector{
-			client:     kubernetes.NewForConfigOrDie(mgr.GetConfig()),
-			dynamic:    dynamic.NewForConfigOrDie(mgr.GetConfig()),
-			kube:       cli,
-			log:        l,
-			recorder:   recorder,
-			pluralizer: pluralizer,
+			client:   kubernetes.NewForConfigOrDie(mgr.GetConfig()),
+			dynamic:  dynamic.NewForConfigOrDie(mgr.GetConfig()),
+			kube:     cli,
+			log:      l,
+			recorder: recorder,
 		}),
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithCreationGracePeriod(reconcileGracePeriod),
@@ -122,12 +118,11 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 }
 
 type connector struct {
-	dynamic    dynamic.Interface
-	client     kubernetes.Interface
-	kube       client.Client
-	log        logging.Logger
-	recorder   record.EventRecorder
-	pluralizer *pluralizer.Pluralizer
+	dynamic  dynamic.Interface
+	client   kubernetes.Interface
+	kube     client.Client
+	log      logging.Logger
+	recorder record.EventRecorder
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
@@ -142,22 +137,20 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 	}
 
 	return &external{
-		kube:       c.kube,
-		log:        &log,
-		dynamic:    c.dynamic,
-		client:     c.client,
-		rec:        c.recorder,
-		pluralizer: c.pluralizer,
+		kube:    c.kube,
+		log:     &log,
+		dynamic: c.dynamic,
+		client:  c.client,
+		rec:     c.recorder,
 	}, nil
 }
 
 type external struct {
-	dynamic    dynamic.Interface
-	kube       client.Client
-	client     kubernetes.Interface
-	log        logging.Logger
-	rec        record.EventRecorder
-	pluralizer *pluralizer.Pluralizer
+	dynamic dynamic.Interface
+	kube    client.Client
+	client  kubernetes.Interface
+	log     logging.Logger
+	rec     record.EventRecorder
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
@@ -184,13 +177,19 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	crdOk := true
-	gvr, err := e.pluralizer.GVKtoGVR(gvk)
+
+	pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
 	if err != nil {
-		if err == pluralizer.ErrNotFound {
+		if apierrors.IsNotFound(err) {
 			crdOk = false
 		} else {
 			return reconciler.ExternalObservation{}, fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 		}
+	}
+	gvr := schema.GroupVersionResource{
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: pluralInfo.Plural,
 	}
 
 	if crdOk {
@@ -216,18 +215,16 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 	if !ok {
-		e.log.Info("Certificate has been regenerated, updating cabundle in all crds and mutating webhook config")
+		e.log.Info("Certificate has been regenerated, updating certificates for webhook server")
 		err = certs.UpdateCerts(cert, key, CertsPath)
 		if err != nil {
 			return reconciler.ExternalObservation{}, err
 		}
+		e.log.Info("Updating certficates for CRDs and Mutating Webhook Configurations")
 	}
 	cabundle, err := GetCABundle()
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error getting CA bundle: %w", err)
-	}
-	if cr.Status.Managed.Group == "" || cr.Status.Managed.Kind == "" {
-		return reconciler.ExternalObservation{}, fmt.Errorf("cannot update caBundle if status.managed.group and status.managed.kind are empty")
 	}
 	err = propagateCABundle(ctx,
 		e.kube,
@@ -382,13 +379,18 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	crdOk := true
-	gvr, err := e.pluralizer.GVKtoGVR(gvk)
+	pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
 	if err != nil {
-		if err == pluralizer.ErrNotFound {
+		if apierrors.IsNotFound(err) {
 			crdOk = false
 		} else {
 			return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 		}
+	}
+	gvr := schema.GroupVersionResource{
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: pluralInfo.Plural,
 	}
 
 	if crdOk {
@@ -429,14 +431,18 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 				e.log.Debug("CompositionDefinition not found, using default GVK", "gvk", pluralgvk.String())
 			}
 		}
-
-		gvr, err = e.pluralizer.GVKtoGVR(pluralgvk)
+		pluralInfo, err := plurals.Get(pluralgvk, plurals.GetOptions{})
 		if err != nil {
-			if err == pluralizer.ErrNotFound {
-				e.log.Debug("GVK not found, creating new CRD", "gvk", pluralgvk.String())
+			if apierrors.IsNotFound(err) {
+				e.log.Debug("Plural not found, using default GVK", "gvk", pluralgvk.String())
 			} else {
-				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, pluralgvk.String())
+				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 			}
+		}
+		gvr := schema.GroupVersionResource{
+			Group:    gvk.Group,
+			Version:  gvk.Version,
+			Resource: pluralInfo.Plural,
 		}
 
 		gvr.Version = gvk.Version
@@ -594,11 +600,15 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
 
-	oldGVR, err := e.pluralizer.GVKtoGVR(oldGVK)
+	pluralInfo, err := plurals.Get(oldGVK, plurals.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, oldGVK.String())
+		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 	}
-
+	oldGVR := schema.GroupVersionResource{
+		Group:    oldGVK.Group,
+		Version:  oldGVK.Version,
+		Resource: pluralInfo.Plural,
+	}
 	gvr := oldGVR
 	gvr.Version = gvk.Version
 
@@ -726,11 +736,14 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	//gvr := tools.ToGroupVersionResource(gvk)
-
-	gvr, err := e.pluralizer.GVKtoGVR(gvk)
+	pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+	}
+	gvr := schema.GroupVersionResource{
+		Group:    gvk.Group,
+		Version:  gvk.Version,
+		Resource: pluralInfo.Plural,
 	}
 
 	var skipCRD bool
