@@ -1,12 +1,29 @@
 package crd
 
 import (
+	"fmt"
+
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
 func ConversionConf(crd apiextensionsv1.CustomResourceDefinition, conf *apiextensionsv1.CustomResourceConversion) *apiextensionsv1.CustomResourceDefinition {
 	crd.Spec.Conversion = conf
 	return &crd
+}
+
+func UpdateCABundle(crd *apiextensionsv1.CustomResourceDefinition, caBundle []byte) error {
+	if crd.Spec.Conversion == nil {
+		return fmt.Errorf(".spec.conversion field is nil")
+	}
+	if crd.Spec.Conversion.Webhook == nil {
+		return fmt.Errorf(".spec.conversion.webhook field is nil")
+	}
+	if crd.Spec.Conversion.Webhook.ClientConfig == nil {
+		return fmt.Errorf(".spec.conversion.webhook.clientConfig field is nil")
+	}
+
+	crd.Spec.Conversion.Webhook.ClientConfig.CABundle = caBundle
+	return nil
 }
 
 func SetServedStorage(crd *apiextensionsv1.CustomResourceDefinition, version string, served, storage bool) {

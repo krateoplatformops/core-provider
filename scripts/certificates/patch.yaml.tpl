@@ -4,7 +4,7 @@ spec:
     webhook:
       clientConfig:
         service:
-          namespace: default
+          namespace: demo-system
           name: core-provider-webhook-service
           path: /convert
           port: 9443

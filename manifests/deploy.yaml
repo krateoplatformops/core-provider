@@ -29,8 +29,8 @@ spec:
         env:
           - name: CORE_PROVIDER_POLL_INTERVAL
             value: 30s
-          - name: URL_PLURALS
-            value: http://snowplow.demo-system.svc.cluster.local:8081/api-info/names
+          - name: CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE
+            value: demo-system
           # - name: CRDGEN_CLEAN_WORKDIR
           #   value: "false"
         ports:
@@ -39,9 +39,9 @@ spec:
           name: webhook-server
           protocol: TCP
         volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
-          readOnly: true
+        # - mountPath: /tmp/k8s-webhook-server/serving-certs
+        #   name: cert
+        #   readOnly: true
         - mountPath: /tmp/assets/cdc-deployment
           name: cdc-deployment
           readOnly: true
@@ -51,11 +51,14 @@ spec:
         - mountPath: /tmp/assets/cdc-rbac
           name: cdc-rbac
           readOnly: true
+        - mountPath: /tmp/assets/mutating-webhook-configuration
+          name: mutating-webhook-configuration
+          readOnly: true
       volumes:
-      - name: cert
-        secret:
-          defaultMode: 420
-          secretName: core-provider-webhook-service-certs
+      # - name: cert
+      #   secret:
+      #     defaultMode: 420
+      #     secretName: core-provider-webhook-service-certs
       - name: cdc-deployment
         configMap:
           name: test-core-provider-cdc-deployment
@@ -65,3 +68,6 @@ spec:
       - name: cdc-rbac
         configMap:
           name: cdc-rbac-configmap
+      - name: mutating-webhook-configuration
+        configMap:
+          name: test-core-provider-mutating-webhook-configuration

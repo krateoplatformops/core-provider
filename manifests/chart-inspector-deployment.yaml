@@ -18,7 +18,7 @@ spec:
       serviceAccountName: chart-inspector-sa
       containers:
       - name: chart-inspector-container
-        image: ghcr.io/krateoplatformops/chart-inspector:0.0.1
+        image: ghcr.io/krateoplatformops/chart-inspector:0.0.3
         args:
           - "-debug"
         imagePullPolicy: Always

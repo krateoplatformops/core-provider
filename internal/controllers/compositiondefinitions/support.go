@@ -2,20 +2,27 @@ package compositiondefinitions
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"strings"
 
+	"github.com/krateoplatformops/core-provider/internal/tools/kube"
+
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
+	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
+	"github.com/krateoplatformops/core-provider/internal/tools/objects"
 	"github.com/krateoplatformops/crdgen"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -164,7 +171,7 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 	return nil
 }
 
-func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schema.GroupKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
+func getCompositionDefinitions(ctx context.Context, cli client.Client, gk schema.GroupKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
 	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
 	err := cli.List(ctx, &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
 	if err != nil {
@@ -174,11 +181,45 @@ func getCompositionDefinitions(ctx context.Context, cli client.Client, gvr schem
 	lst := []compositiondefinitionsv1alpha1.CompositionDefinition{}
 	for i := range cdList.Items {
 		cd := &cdList.Items[i]
-		if cd.Status.Managed.Group == gvr.Group &&
-			cd.Status.Managed.Kind == gvr.Kind {
+		if cd.Status.Managed.Group == gk.Group &&
+			cd.Status.Managed.Kind == gk.Kind {
 			lst = append(lst, *cd)
 		}
 	}
 
 	return lst, nil
+}
+
+func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, gvr schema.GroupVersionResource, log func(string, ...any)) error {
+	crd, err := crdtools.Get(ctx, cli, gvr)
+	if err != nil {
+		return fmt.Errorf("error getting CRD: %w", err)
+	}
+
+	if len(crd.Spec.Versions) > 1 {
+		log("Updating CA bundle for CRD", "Name", crd.Name)
+		err = crdtools.UpdateCABundle(crd, cabundle)
+		if err != nil {
+			return fmt.Errorf("error updating CA bundle: %w", err)
+		}
+		// Update the CRD with the new CA bundle
+		err = kube.Apply(ctx, cli, crd, kube.ApplyOptions{})
+		if err != nil {
+			return fmt.Errorf("error applying CRD: %w", err)
+		}
+	}
+
+	// Update the mutating webhook config with the new CA bundle
+	mutatingWebhookConfig := admissionregistrationv1.MutatingWebhookConfiguration{}
+	err = objects.CreateK8sObject(&mutatingWebhookConfig, schema.GroupVersionResource{}, types.NamespacedName{}, MutatingWebhookPath, "caBundle", base64.StdEncoding.EncodeToString(cabundle))
+	if err != nil {
+		return fmt.Errorf("error creating mutating webhook config: %w", err)
+	}
+	log("Updating CA bundle for MutatingWebhookConfiguration", "Name", mutatingWebhookConfig.Name)
+	err = kube.Apply(ctx, cli, &mutatingWebhookConfig, kube.ApplyOptions{})
+	if err != nil {
+		return fmt.Errorf("error applying mutating webhook config: %w", err)
+	}
+
+	return nil
 }

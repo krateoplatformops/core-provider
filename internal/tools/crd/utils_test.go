@@ -325,3 +325,80 @@ func TestSetServedStorage(t *testing.T) {
 		})
 	}
 }
+func TestUpdateCABundle(t *testing.T) {
+	tests := []struct {
+		name      string
+		crd       *apiextensionsv1.CustomResourceDefinition
+		caBundle  []byte
+		expectErr bool
+		expected  *apiextensionsv1.CustomResourceDefinition
+	}{
+		{
+			name: "Update CABundle successfully",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+					Conversion: &apiextensionsv1.CustomResourceConversion{
+						Webhook: &apiextensionsv1.WebhookConversion{
+							ClientConfig: &apiextensionsv1.WebhookClientConfig{},
+						},
+					},
+				},
+			},
+			caBundle:  []byte("test-ca-bundle"),
+			expectErr: false,
+			expected: &apiextensionsv1.CustomResourceDefinition{
+				Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+					Conversion: &apiextensionsv1.CustomResourceConversion{
+						Webhook: &apiextensionsv1.WebhookConversion{
+							ClientConfig: &apiextensionsv1.WebhookClientConfig{
+								CABundle: []byte("test-ca-bundle"),
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "Nil Conversion field",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				Spec: apiextensionsv1.CustomResourceDefinitionSpec{},
+			},
+			caBundle:  []byte("test-ca-bundle"),
+			expectErr: true,
+		},
+		{
+			name: "Nil Webhook field",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+					Conversion: &apiextensionsv1.CustomResourceConversion{},
+				},
+			},
+			caBundle:  []byte("test-ca-bundle"),
+			expectErr: true,
+		},
+		{
+			name: "Nil ClientConfig field",
+			crd: &apiextensionsv1.CustomResourceDefinition{
+				Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+					Conversion: &apiextensionsv1.CustomResourceConversion{
+						Webhook: &apiextensionsv1.WebhookConversion{},
+					},
+				},
+			},
+			caBundle:  []byte("test-ca-bundle"),
+			expectErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := UpdateCABundle(tt.crd, tt.caBundle)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expected, tt.crd)
+			}
+		})
+	}
+}
