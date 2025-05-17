@@ -749,7 +749,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	var skipCRD bool
 	lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
 		Group: gvr.Group,
-		Kind:  flect.Pluralize(strings.ToLower(gvk.Kind)),
+		Kind:  gvk.Kind,
 	})
 	if err != nil {
 		e.log.Debug("Error getting CompositionDefinitions", "error", err)
@@ -757,6 +757,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 	if len(lst) > 1 {
 		skipCRD = true
+		e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvr", gvr.String())
+	} else {
+		skipCRD = false
+		e.log.Info("Deleting CRD", "gvr", gvr.String())
 	}
 
 	log := logging.NewNopLogger()
