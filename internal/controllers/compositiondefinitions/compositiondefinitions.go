@@ -191,21 +191,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Resource: pluralInfo.Plural,
 	}
 
-	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
-	if err != nil {
-		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
-	}
-	if len(ul.Items) > 0 {
-		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
-			e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
-			meta.AddFinalizer(cr, compositionStillExistFinalizer)
-			err = e.kube.Update(ctx, cr)
-			if err != nil {
-				return reconciler.ExternalObservation{}, err
-			}
-		}
-	}
-
 	if crdOk {
 		crdOk, err = crdtools.Lookup(ctx, e.kube, gvr)
 		if err != nil {
@@ -222,6 +207,21 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			ResourceExists:   false,
 			ResourceUpToDate: true,
 		}, nil
+	}
+
+	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
+	}
+	if len(ul.Items) > 0 {
+		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+			e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
+			meta.AddFinalizer(cr, compositionStillExistFinalizer)
+			err = e.kube.Update(ctx, cr)
+			if err != nil {
+				return reconciler.ExternalObservation{}, err
+			}
+		}
 	}
 
 	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(e.client, e.log.Debug, CertOpts)
