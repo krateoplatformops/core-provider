@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/gobuffalo/flect"
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
@@ -159,7 +157,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
 
-	if meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+	if meta.WasDeleted(cr) {
+		e.log.Debug("CompositionDefinition was deleted, skipping observation")
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
@@ -192,16 +191,31 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Resource: pluralInfo.Plural,
 	}
 
+	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
+	}
+	if len(ul.Items) > 0 {
+		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+			e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
+			meta.AddFinalizer(cr, compositionStillExistFinalizer)
+			err = e.kube.Update(ctx, cr)
+			if err != nil {
+				return reconciler.ExternalObservation{}, err
+			}
+		}
+	}
+
 	if crdOk {
 		crdOk, err = crdtools.Lookup(ctx, e.kube, gvr)
 		if err != nil {
 			return reconciler.ExternalObservation{}, err
 		}
 	}
-	e.log.Info("Observing", "gvk", gvk.String(), "gvr", gvr.String())
+	e.log.Info("Observing", "gvk", gvk.String())
 
 	if !crdOk {
-		e.log.Info("Searching for CRD", "gvr", gvr.String())
+		e.log.Info("CRD not found, waiting for CRD to be created", "gvk", gvk.String())
 		cr.SetConditions(rtv1.Unavailable().
 			WithMessage(fmt.Sprintf("crd for '%s' does not exists yet", gvr.String())))
 		return reconciler.ExternalObservation{
@@ -407,7 +421,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		if pluralgvk.Version == "" || pluralgvk.Group == "" || pluralgvk.Kind == "" {
 			lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
 				Group: gvr.Group,
-				Kind:  flect.Pluralize(strings.ToLower(gvk.Kind)),
+				Kind:  gvk.Kind,
 			})
 			if err != nil {
 				return fmt.Errorf("error getting CompositionDefinitions: %w", err)
@@ -684,10 +698,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	}
 
 	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
-		err = updateCompositionsVersion(ctx, e.dynamic, e.log, CompositionsInfo{
-			GVR:       oldGVR,
-			Namespace: cr.Namespace,
-		}, gvk.Version)
+		err = updateCompositionsVersion(ctx, e.dynamic, e.log.Debug, oldGVR, gvk.Version)
 		if err != nil {
 			return fmt.Errorf("error updating compositions version: %w", err)
 		}
@@ -738,6 +749,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			e.log.Info("Plural not found, assuming CRD has been deleted, removing finalizers", "gvk", gvk.String())
+			meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
+			return e.kube.Update(ctx, cr)
+		}
 		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 	}
 	gvr := schema.GroupVersionResource{
@@ -761,6 +777,34 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	} else {
 		skipCRD = false
 		e.log.Info("Deleting CRD", "gvr", gvr.String())
+	}
+
+	if skipCRD {
+		e.log.Debug("Deleting Compositions of this version", "gvr", gvr.String())
+		// Delete compositions of this version manually
+		ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+		if err != nil {
+			e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+			return fmt.Errorf("error getting compositions: %w", err)
+		}
+
+		for i := range ul.Items {
+			e.log.Debug("Deleting composition", "name", ul.Items[i].GetName(), "namespace", ul.Items[i].GetNamespace())
+			err := kube.Uninstall(ctx, e.kube, &ul.Items[i], kube.UninstallOptions{})
+			if err != nil {
+				return err
+			}
+		}
+
+		ul, err = getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+		if err != nil {
+			e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+			return fmt.Errorf("error getting compositions: %w", err)
+		}
+		if len(ul.Items) > 0 {
+			return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
+		}
+
 	}
 
 	log := logging.NewNopLogger()
@@ -787,17 +831,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	err = deploy.Undeploy(ctx, e.kube, opts)
 	if err != nil {
 		if errors.Is(err, deploy.ErrCompositionStillExist) {
-			if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
-				e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
-				meta.AddFinalizer(cr, compositionStillExistFinalizer)
-				err = e.kube.Update(ctx, cr)
-				if err != nil {
-					return err
-				}
-			}
+			return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
 		}
-
 		return fmt.Errorf("error undeploying CompositionDefinition: %w", err)
+
 	}
 
 	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)

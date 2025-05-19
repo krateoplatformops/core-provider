@@ -86,21 +86,18 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 
 	log := logging.NewNopLogger()
 
-	opts := CompositionsInfo{
-		GVR: schema.GroupVersionResource{
-			Group:    "composition.krateo.io",
-			Version:  "v0-3-0",
-			Resource: "fireworksapps",
-		},
-		Namespace: "default",
+	gvr := schema.GroupVersionResource{
+		Group:    "composition.krateo.io",
+		Version:  "v0-3-0",
+		Resource: "fireworksapps",
 	}
 
-	err := updateCompositionsVersion(context.Background(), dyn, log, opts, "v2")
+	err := updateCompositionsVersion(context.Background(), dyn, log.Debug, gvr, "v2")
 	if err != nil {
 		t.Fatalf("updateCompositionsVersion failed: %v", err)
 	}
 
-	updatedComp, err := dyn.Resource(opts.GVR).Namespace(opts.Namespace).Get(context.Background(), "test-composition", metav1.GetOptions{})
+	updatedComp, err := dyn.Resource(gvr).Namespace(obj1.GetNamespace()).Get(context.Background(), "test-composition", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("failed to get updated composition: %v", err)
 	}

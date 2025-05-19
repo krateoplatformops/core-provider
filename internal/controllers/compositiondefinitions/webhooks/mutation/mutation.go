@@ -9,6 +9,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/defaults"
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"gomodules.xyz/jsonpatch/v2"
+	v1 "k8s.io/api/admission/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -61,21 +62,24 @@ func NewWebhookHandler(cli client.Client) *webhook.Admission {
 				patch = []jsonpatch.JsonPatchOperation{}
 			}
 
-			if unstructuredObj.GetLabels() == nil || len(unstructuredObj.GetLabels()) == 0 {
+			if req.Operation == v1.Create {
+				labels := unstructuredObj.GetLabels()
+				if labels == nil || len(labels) == 0 {
+					patch = append(patch,
+						webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
+						webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
+					)
+
+					return webhook.Patched("mutating webhook called",
+						patch...,
+					)
+				}
+
 				patch = append(patch,
-					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
 					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 				)
-
-				return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
-					patch...,
-				)
 			}
-
-			patch = append(patch,
-				webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
-			)
-			return webhook.Patched("mutating webhook called - insert krateo.io/composition-version label",
+			return webhook.Patched("mutating webhook called",
 				patch...,
 			)
 		}),
