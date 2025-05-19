@@ -14,7 +14,6 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/objects"
 	"github.com/krateoplatformops/crdgen"
-	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -125,26 +124,38 @@ type CompositionsInfo struct {
 	Namespace string
 }
 
-// updateCompositionsVersion updates the version label of all compositions in a namespace
-// that match the specified GroupVersionResource (GVR) and current version.
-func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log logging.Logger, opts CompositionsInfo, newVersion string) error {
+func getCompositions(ctx context.Context, dyn dynamic.Interface, log func(msg string, keysAndValues ...any), gvr schema.GroupVersionResource) (*unstructured.UnstructuredList, error) {
 	// Create a label requirement for the composition version
-	labelreq, err := labels.NewRequirement(deploy.CompositionVersionLabel, selection.Equals, []string{opts.GVR.Version})
+	labelreq, err := labels.NewRequirement(deploy.CompositionVersionLabel, selection.Equals, []string{gvr.Version})
 	if err != nil {
-		return err
+		log("Error creating label requirement", "error", err)
+		return nil, fmt.Errorf("error creating label requirement: %w", err)
 	}
 	selector := labels.NewSelector()
 	selector = selector.Add(*labelreq)
 
-	ul, err := dyn.Resource(opts.GVR).Namespace(opts.Namespace).List(ctx, metav1.ListOptions{
+	ul, err := dyn.Resource(gvr).Namespace(metav1.NamespaceAll).List(ctx, metav1.ListOptions{
 		LabelSelector: selector.String(),
 	})
 	if err != nil {
-		return fmt.Errorf("error listing compositions: %s", err)
+		log("Error listing compositions", "error", err)
+		return nil, fmt.Errorf("error listing compositions: %w", err)
+	}
+
+	return ul, nil
+}
+
+// updateCompositionsVersion updates the version label of all compositions in a namespace
+// that match the specified GroupVersionResource (GVR) and current version.
+func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log func(msg string, keysAndValues ...any), gvr schema.GroupVersionResource, newVersion string) error {
+	ul, err := getCompositions(ctx, dyn, log, gvr)
+	if err != nil {
+		return fmt.Errorf("error getting compositions: %w", err)
 	}
 
 	if len(ul.Items) == 0 {
-		log.Info("No compositions found", "Group", opts.GVR.Group, "Version", opts.GVR.Version, "Resource", opts.GVR.Resource)
+		log("No compositions found for the specified GVR and version")
+		return nil
 	}
 
 	for _, u := range ul.Items {
@@ -162,7 +173,7 @@ func updateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, log l
 			return err
 		}
 
-		_, err = dyn.Resource(opts.GVR).Namespace(opts.Namespace).Update(ctx, &u, metav1.UpdateOptions{})
+		_, err = dyn.Resource(gvr).Namespace(u.GetNamespace()).Update(ctx, &u, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("error updating compositions: %s", err)
 		}
