@@ -22,7 +22,7 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
   - [Composition Definition](#composition-definition)
     - [CRD Specification](#crd-specification)
 - [How to Install](#how-to-install)
-- [Example](#example)
+- [Examples and Troubleshooting](#examples-and-troubleshooting)
 - [Environment Variables and Flags](#environment-variables-and-flags)
 - [Security Features](#security-features)
 - [Best Practices](#best-practices)
@@ -35,7 +35,6 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
 - **CDC (Composition Dynamic Controller):** A controller deployed by the `core-provider` to manage resources defined by a `CompositionDefinition`. This controller is responsible to create, update, and delete helm releases and their associated resources based on the values defined in the `composition`
 - **Helm Chart:** A package of pre-configured Kubernetes resources used to deploy applications.
 - **OCI Registry:** A container registry that supports the Open Container Initiative (OCI) image format, used for storing and distributing Helm charts.
-- **Snowplow:** A service required by the `core-provider` to retrieve resource plurals and other metadata from the cluster.
 - **RBAC Policy:** A set of rules that define permissions for accessing Kubernetes resources. Typically composed of roles, role bindings, cluster roles, and cluster role bindings assigned to service accounts.
 - **values.schema.json:** A JSON Schema file included in Helm charts to define and validate the structure of `values.yaml`.
 
@@ -57,9 +56,7 @@ This diagram illustrates the Core Provider's workflow for managing CompositionDe
 
 ## Requirements
 
-The core-provider requires [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main) to be installed in the krateo-system namespace. Refer to [How to Install](#how-to-install) for setup instructions.
-
-Starting from version 0.23.0, the core-provider requires Snowplow version 0.4.3 or higher to enable the retrieval of resource plurals from the cluster. For configuration details, see the URL_PLURALS variable in [Environment Variables and Flags](#environment-variables-and-flags).
+The core-provider does not requires Snowplow anymore to be installed in the cluster. The core-provider is now able to retrieve resource plurals from the cluster without Snowplow. This change was introduced in version 0.24.2 of the core-provider.
 
 ## CompositionDefinition specifications and examples
 
@@ -174,15 +171,7 @@ To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com
 
 ## How to Install
 
-The `core-provider` requires [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main) to be installed in your cluster to perform some actions. If Snowplow is not already installed, you can install it with the following commands (note that it should be installed in the `krateo-system` namespace):
-
-```sh
-helm repo add krateo https://charts.krateo.io
-helm repo update
-helm install snowplow krateo/snowplow --namespace krateo-system --create-namespace
-```
-
-After installing [Snowplow](https://github.com/krateoplatformops/snowplow/tree/main), you can install the `core-provider` with the following commands:
+You can install the `core-provider` with the following commands:
 
 ```sh
 helm repo add krateo https://charts.krateo.io
@@ -190,7 +179,7 @@ helm repo update
 helm install krateo-core-provider krateo/core-provider --namespace krateo-system --create-namespace
 ```
 
-## Example
+## Examples and Troubleshooting
 
 You can see a more practical guide on `core-provider` usage at [this link](cheatsheet.md).
 
@@ -206,9 +195,7 @@ You can see a more practical guide on `core-provider` usage at [this link](cheat
 | `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
 | `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
-| `URL_PLURALS`                          | URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
-
-
+| `URL_PLURALS`                          | NOT USED from version 0.24.2 - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
 
 ## Security Features
 
