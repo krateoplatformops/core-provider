@@ -780,29 +780,40 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	}
 
 	if skipCRD {
-		e.log.Debug("Deleting Compositions of this version", "gvr", gvr.String())
-		// Delete compositions of this version manually
-		ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+		lst, err = getCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupKind{
+			Group: gvr.Group,
+			Kind:  gvk.Kind,
+		}, cr.Spec.Chart.Version)
 		if err != nil {
-			e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
-			return fmt.Errorf("error getting compositions: %w", err)
+			e.log.Debug("Error getting CompositionDefinitions", "error", err)
+			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
 
-		for i := range ul.Items {
-			e.log.Debug("Deleting composition", "name", ul.Items[i].GetName(), "namespace", ul.Items[i].GetNamespace())
-			err := kube.Uninstall(ctx, e.kube, &ul.Items[i], kube.UninstallOptions{})
+		if len(lst) == 1 {
+			e.log.Debug("Deleting Compositions of this version", "gvr", gvr.String())
+			// Delete compositions of this version manually
+			ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
 			if err != nil {
-				return err
+				e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+				return fmt.Errorf("error getting compositions: %w", err)
 			}
-		}
 
-		ul, err = getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
-		if err != nil {
-			e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
-			return fmt.Errorf("error getting compositions: %w", err)
-		}
-		if len(ul.Items) > 0 {
-			return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
+			for i := range ul.Items {
+				e.log.Debug("Deleting composition", "name", ul.Items[i].GetName(), "namespace", ul.Items[i].GetNamespace())
+				err := kube.Uninstall(ctx, e.kube, &ul.Items[i], kube.UninstallOptions{})
+				if err != nil {
+					return err
+				}
+			}
+
+			ul, err = getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+			if err != nil {
+				e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+				return fmt.Errorf("error getting compositions: %w", err)
+			}
+			if len(ul.Items) > 0 {
+				return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
+			}
 		}
 
 	}
