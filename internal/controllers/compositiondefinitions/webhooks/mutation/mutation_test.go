@@ -104,7 +104,8 @@ func TestNewWebhookHandler(t *testing.T) {
 					Version:  "v1",
 					Resource: "examples",
 				},
-				Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test"}}`)},
+				Object:    runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test"}}`)},
+				Operation: v1.Create,
 			},
 		}
 		resp := handler.Handle(context.Background(), req)
@@ -139,7 +140,8 @@ func TestNewWebhookHandler(t *testing.T) {
 					Version:  "v1",
 					Resource: "examples",
 				},
-				Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test","labels":{"existing":"label"}}}`)},
+				Object:    runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test","labels":{"existing":"label"}}}`)},
+				Operation: v1.Create,
 			},
 		}
 		resp := handler.Handle(context.Background(), req)
@@ -171,7 +173,8 @@ func TestNewWebhookHandler(t *testing.T) {
 					Version:  "v1",
 					Resource: "examples",
 				},
-				Object: runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test"},"spec":{"field1":"custom-value"}}`)},
+				Object:    runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test"},"spec":{"field1":"custom-value"}}`)},
+				Operation: v1.Create,
 			},
 		}
 		resp := handler.Handle(context.Background(), req)
@@ -188,5 +191,33 @@ func TestNewWebhookHandler(t *testing.T) {
 		assert.Equal(t, "add", patch[1].Operation)
 		assert.Equal(t, "/metadata/labels/krateo.io~1composition-version", patch[1].Path)
 		assert.Equal(t, "v1", patch[1].Value)
+	})
+
+	t.Run("Update operation should not add labels", func(t *testing.T) {
+		req := webhook.AdmissionRequest{
+			AdmissionRequest: v1.AdmissionRequest{
+				Kind: metav1.GroupVersionKind{
+					Group:   "example.com",
+					Version: "v1",
+					Kind:    "Example",
+				},
+				Resource: metav1.GroupVersionResource{
+					Group:    "example.com",
+					Version:  "v1",
+					Resource: "examples",
+				},
+				Object:    runtime.RawExtension{Raw: []byte(`{"apiVersion":"example.com/v1","kind":"Example","metadata":{"name":"test"}}`)},
+				Operation: v1.Update,
+			},
+		}
+		resp := handler.Handle(context.Background(), req)
+		if resp.Result.Code != http.StatusOK {
+			t.Errorf("expected status code %d, got %d", http.StatusOK, resp.Result.Code)
+		}
+
+		assert.Len(t, resp.Patches, 1)
+		assert.Equal(t, "add", resp.Patches[0].Operation)
+		assert.Equal(t, "/spec", resp.Patches[0].Path)
+		assert.Equal(t, map[string]interface{}(map[string]interface{}{"field1": "default-value"}), resp.Patches[0].Value)
 	})
 }
