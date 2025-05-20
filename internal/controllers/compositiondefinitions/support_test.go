@@ -167,3 +167,149 @@ func TestGetCompositionDefinitions(t *testing.T) {
 		t.Errorf("expected composition name 'test-composition-1', got '%s'", compositions[0].Name)
 	}
 }
+func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = compositiondefinitionsv1alpha1.SchemeBuilder.AddToScheme(scheme)
+
+	cli := fakeclient.NewClientBuilder().WithScheme(scheme).WithObjects(
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cd-1",
+				Namespace: "ns1",
+			},
+			Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
+				Chart: &compositiondefinitionsv1alpha1.ChartInfo{
+					Version: "1.0.0",
+				},
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "g1",
+					Kind:  "Kind1",
+				},
+			},
+		},
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cd-2",
+				Namespace: "ns2",
+			},
+			Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
+				Chart: &compositiondefinitionsv1alpha1.ChartInfo{
+					Version: "2.0.0",
+				},
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "g1",
+					Kind:  "Kind1",
+				},
+			},
+		},
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cd-3",
+				Namespace: "ns3",
+			},
+			Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
+				Chart: &compositiondefinitionsv1alpha1.ChartInfo{
+					Version: "1.0.0",
+				},
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "g2",
+					Kind:  "Kind2",
+				},
+			},
+		},
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cd-4",
+				Namespace: "ns4",
+			},
+			Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
+				Chart: &compositiondefinitionsv1alpha1.ChartInfo{
+					Version: "4.0.0",
+				},
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "g2",
+					Kind:  "Kind2",
+				},
+			},
+		},
+		&compositiondefinitionsv1alpha1.CompositionDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "cd-5",
+				Namespace: "ns5",
+			},
+			Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
+				Chart: &compositiondefinitionsv1alpha1.ChartInfo{
+					Version: "4.0.0",
+				},
+			},
+			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				Managed: compositiondefinitionsv1alpha1.Managed{
+					Group: "g2",
+					Kind:  "Kind2",
+				},
+			},
+		},
+	).Build()
+
+	gk := schema.GroupKind{Group: "g1", Kind: "Kind1"}
+
+	// Test: should return only cd-1 for version 1.0.0
+	comps, err := getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "1.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comps) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(comps))
+	}
+	if comps[0].Name != "cd-1" {
+		t.Errorf("expected cd-1, got %s", comps[0].Name)
+	}
+
+	// Test: should return only cd-2 for version 2.0.0
+	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "2.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comps) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(comps))
+	}
+	if comps[0].Name != "cd-2" {
+		t.Errorf("expected cd-2, got %s", comps[0].Name)
+	}
+
+	// Test: should return none for version that does not exist
+	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "3.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comps) != 0 {
+		t.Fatalf("expected 0 results, got %d", len(comps))
+	}
+
+	// Test: should return none for group/kind mismatch
+	gk2 := schema.GroupKind{Group: "g2", Kind: "Kind2"}
+	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk2, "1.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comps) != 1 || comps[0].Name != "cd-3" {
+		t.Errorf("expected only cd-3, got %+v", comps)
+	}
+
+	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk2, "4.0.0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(comps) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(comps))
+	}
+
+}

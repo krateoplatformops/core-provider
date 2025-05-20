@@ -200,6 +200,26 @@ func getCompositionDefinitions(ctx context.Context, cli client.Client, gk schema
 
 	return lst, nil
 }
+func getCompositionDefinitionsWithVersion(ctx context.Context, cli client.Client, gk schema.GroupKind, chartVersion string) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
+	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
+	err := cli.List(ctx, &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
+	if err != nil {
+		return nil, fmt.Errorf("error listing CompositionDefinitions: %s", err)
+	}
+
+	lst := []compositiondefinitionsv1alpha1.CompositionDefinition{}
+	for i := range cdList.Items {
+		cd := &cdList.Items[i]
+		if cd.Status.Managed.Group == gk.Group &&
+			cd.Status.Managed.Kind == gk.Kind {
+			if cd.Spec.Chart.Version == chartVersion {
+				lst = append(lst, *cd)
+			}
+		}
+	}
+
+	return lst, nil
+}
 
 func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, gvr schema.GroupVersionResource, log func(string, ...any)) error {
 	crd, err := crdtools.Get(ctx, cli, gvr)

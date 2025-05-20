@@ -65,12 +65,12 @@ helm upgrade installer installer \
   --namespace krateo-system \
   --create-namespace \
   --install \
-  --version 2.4.1 \
+  --version 2.4.2 \
   --wait
 ```
 **Expected Behavior:**
 - Helm will create the krateo-system namespace if it doesn't exist
-- The installer chart (version 2.4.1) will be deployed
+- The installer chart (version 2.4.2) will be deployed
 - The --wait flag ensures command completes only when resources are ready
 - Output shows deployment status and namespace information
 
@@ -350,7 +350,7 @@ helm list -n fireworksapp-system
 #### 2. Upgrading Compositions (massive migration)
 
 ##### Scenario:
-You need to upgrade the existing version of the application to a newer version (1.1.14).
+You need to upgrade the existing version of the application to a newer version (1.1.14). To be sure the new version can be deployed, the `values.schema.json` should not add any new required fields or remove any existing required fields. If you need to add new required fields, you should create a new `CompositionDefinition` with the new version of the chart. Refer to [the next section](#3-upgrading-compositions-with-changes-in-the-valuesschemajson) for more details. 
 
 ```bash
 kubectl patch compositiondefinition fireworksapp-cd \
@@ -386,7 +386,129 @@ helm list -n fireworksapp-system
 - You should see both `fireworksapp-composition-1` and `fireworksapp-composition-2` listed
 - Each release corresponds to its respective version but now `fireworksapp-composition-1` will be updated to version 1.1.14
 
-#### 3. Pausing Composition Reconciliation
+
+#### 3. Upgrading Compositions with changes in the `values.schema.json`
+##### Scenario:
+This can be useful for upgrading a chart where you have changed the `values.schema.json` (in particular adding required fields or modifying existing fields) and you want to ensure that the new version can be deployed without issues.
+
+Suppose you have installed composition `fireworksapp-cd` with version 1.1.13 and you want to upgrade it to version 1.1.14, but the new version has changes in the `values.schema.json` that require you to create a new `CompositionDefinition` with the new version of the chart.
+
+The first step is to create a new `CompositionDefinition` with the new version of the chart. You can do this by applying the following manifest as done in [the previous section](#1-deploying-multiple-versions):
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: fireworksapp-cd-v2
+  namespace: fireworksapp-system
+spec:
+  chart:
+    repo: fireworks-app
+    url: https://charts.krateo.io
+    version: 1.1.14
+EOF
+```
+
+At this point, you have two `CompositionDefinition` resources in the cluster: `fireworksapp-cd` with version 1.1.13 and `fireworksapp-cd-v2` with version 1.1.14.
+
+At this point, suppose you need to upgrade an existing release of a composition to the new version. You can do this by following the steps below:
+
+##### Step 1: Pause the Composition with the Old Version
+```bash
+kubectl annotate fireworksapp fireworksapp-composition-1 \
+  -n fireworksapp-system \
+  "krateo.io/paused=true"
+```
+
+This ensures that the old version of the composition is not reconciled while you are upgrading to the new version.
+
+##### Step 2: Create a New FireworksApp Instance with the New Version
+
+Create a new FireworksApp instance with the new version of the chart. Note that you need to add a label called `krateo.io/release-name` to the new FireworksApp instance. This label is used by the `composition-dynamic-controller` to identify the release name of the composition. The value of this label should be the same as the name of the old FireworksApp instance. In the following example, the value of the label is `fireworksapp-composition-1`, which is the name of the release installed at [step 1](#3-creating-the-fireworksapp-instance). Normally, this label is automatically added to the FireworksApp instance when it is created. However, in this case, you need to add it manually because you are creating a new FireworksApp instance with a different name.
+
+You can do that by applying the following manifest:
+
+```bash
+cat <<EOF | kubectl apply -f -
+apiVersion: composition.krateo.io/v1-1-14
+kind: FireworksApp
+metadata:
+  name: fireworksapp-composition-2
+  namespace: fireworksapp-system
+  labels:
+    krateo.io/release-name: fireworksapp-composition-1
+spec:
+  app:
+    service:
+      port: 31180
+      type: NodePort
+  argocd:
+    application:
+      destination:
+        namespace: fireworks-app
+        server: https://kubernetes.default.svc
+      project: default
+      source:
+        path: chart/
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    namespace: krateo-system
+  git:
+    fromRepo:
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      name: krateo-v2-template-fireworksapp
+      org: krateoplatformops
+      path: skeleton/
+      scmUrl: https://github.com
+    insecure: true
+    toRepo:
+      apiUrl: https://api.github.com
+      branch: main
+      credentials:
+        authMethod: generic
+        secretRef:
+          key: token
+          name: github-repo-creds
+          namespace: krateo-system
+      initialize: true
+      org: your-organization
+      name: fireworksapp-test-v2
+      path: /
+      private: false
+      scmUrl: https://github.com
+    unsupportedCapabilities: true
+EOF
+```
+
+At this point, the helm release `fireworksapp-composition-1`  will be upgraded to version 1.1.14. 
+
+##### Step 3: Remove the old composition at version 1.1.13
+```bash
+kubectl delete fireworksapp fireworksapp-composition-1 \
+  -n fireworksapp-system
+```
+
+You also need to remove the finalizer in the old composition because the annotation `krateo.io/paused=true` will prevent the old composition from being deleted. You can do this by applying the following command:
+
+```bash
+kubectl patch fireworksapp fireworksapp-composition-1 \
+  -n fireworksapp-system \
+  --type=merge \
+  -p '{"metadata":{"finalizers":null}}'
+```
+
+At this point, the old composition will be deleted and the new composition will be upgraded to version 1.1.14.
+
+#### 4. Pausing Composition Reconciliation
 
 ##### Use Case:
 Temporarily stop automatic reconciliation during maintenance or troubleshooting.
@@ -517,7 +639,9 @@ kubectl get fireworksapp -n fireworksapp-system -o yaml
 - Controller pod logs for reconciliation errors
 - Helm release history for the composition
 
-#### 4. Certificate Issues: Mutating Webhook Configuration
+#### 4. Certificate Issues: Mutating Webhook Configuration - Valid ONLY for versions of core-provider before <0.24.2>
+**Note:** This issue is only valid for versions of core-provider before <0.24.2. In versions after this, the management of certificates is automatically handled by the core-provider and you should not face this issue.
+
 **Symptoms:**
 - You receive an error like `Internal error occurred: failed calling webhook "core.provider.krateo.io": failed to call webhook: Post "https://core-provider-webhook-
 service.krateo-v2-system.svc:9443/mutate? timeout=10s": t|s: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "crypto/rsa: verification error" while trying to verify candidate authority certificate "core-provider-webhook-
