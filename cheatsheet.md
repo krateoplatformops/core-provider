@@ -639,7 +639,9 @@ kubectl get fireworksapp -n fireworksapp-system -o yaml
 - Controller pod logs for reconciliation errors
 - Helm release history for the composition
 
-#### 4. Certificate Issues: Mutating Webhook Configuration
+#### 4. Certificate Issues: Mutating Webhook Configuration - Valid ONLY for versions of core-provider before <0.24.2>
+**Note:** This issue is only valid for versions of core-provider before <0.24.2. In versions after this, the management of certificates is automatically handled by the core-provider and you should not face this issue.
+
 **Symptoms:**
 - You receive an error like `Internal error occurred: failed calling webhook "core.provider.krateo.io": failed to call webhook: Post "https://core-provider-webhook-
 service.krateo-v2-system.svc:9443/mutate? timeout=10s": t|s: failed to verify certificate: x509: certificate signed by unknown authority (possibly because of "crypto/rsa: verification error" while trying to verify candidate authority certificate "core-provider-webhook-
