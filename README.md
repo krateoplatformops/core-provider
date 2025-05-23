@@ -187,7 +187,7 @@ You can see a more practical guide on `core-provider` usage at [this link](cheat
 
 | Name                                   | Description                | Default Value | Notes         |
 |:---------------------------------------|:---------------------------|:--------------|:--------------|
-| `HELM_REGISTRY_CONFIG_PATH`           | Path to Helm registry configuration file | `/tmp/.config/helm/registry/config.json` | Used for OCI registries |
+| `HELM_REGISTRY_CONFIG_PATH`           | Path to Helm registry configuration file | `/tmp` | Used for OCI registries |
 | `CORE_PROVIDER_DEBUG`                 | Enables debug logging      | `false`       | Use `--debug` flag |
 | `CORE_PROVIDER_SYNC`                  | Sync period for controller manager | `1h`          | Duration |
 | `CORE_PROVIDER_POLL_INTERVAL`         | Poll interval for resource drift checks | `5m`          | Duration |
@@ -195,6 +195,8 @@ You can see a more practical guide on `core-provider` usage at [this link](cheat
 | `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
 | `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
+| `CORE_PROVIDER_TLS_CERTIFICATE_DURATION` | The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval. | `24h`         | Duration |
+| `CORE_PROVIDER_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN` | The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.  | `16h`         | Duration |
 | `URL_PLURALS`                          | NOT USED from version 0.24.2 - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
 
 ## Security Features
