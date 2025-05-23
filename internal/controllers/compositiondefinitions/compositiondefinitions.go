@@ -107,6 +107,44 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
 
+	// Setup any crds and webhooks with cabundle
+	cabundle, err := GetCABundle()
+	if err != nil {
+		return fmt.Errorf("error getting CA bundle: %w", err)
+	}
+
+	// client from the manager is not ready yet, so we need to create a new one (cache is not ready)
+	cliNow, err := client.New(mgr.GetConfig(), client.Options{})
+	if err != nil {
+		return fmt.Errorf("error creating client: %w", err)
+	}
+	var cdList compositiondefinitionsv1alpha1.CompositionDefinitionList
+	err = cliNow.List(context.Background(), &cdList, &client.ListOptions{Namespace: metav1.NamespaceAll})
+	if err != nil {
+		return fmt.Errorf("error listing CompositionDefinitions: %s", err)
+	}
+	for i := range cdList.Items {
+		cd := &cdList.Items[i]
+		if cd.Status.ApiVersion != "" && cd.Status.Kind != "" {
+			gvk := schema.FromAPIVersionAndKind(cd.Status.ApiVersion, cd.Status.Kind)
+			pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
+			if err != nil {
+				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
+			}
+			gvr := schema.GroupVersionResource{
+				Group:    gvk.Group,
+				Version:  gvk.Version,
+				Resource: pluralInfo.Plural,
+			}
+
+			err = propagateCABundle(context.Background(), cliNow, cabundle, gvr, l.Debug)
+			if err != nil {
+				return fmt.Errorf("error updating CA bundle: %w", err)
+			}
+			l.Info("Updated CA bundle for CRD and MutatingWebhookConfiguration", "Name", gvr.String())
+		}
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ForControllerRuntime()).
@@ -202,26 +240,11 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if !crdOk {
 		e.log.Info("CRD not found, waiting for CRD to be created", "gvk", gvk.String())
 		cr.SetConditions(rtv1.Unavailable().
-			WithMessage(fmt.Sprintf("crd for '%s' does not exists yet", gvr.String())))
+			WithMessage(fmt.Sprintf("crd for '%s' does not exists yet", gvk.String())))
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
 		}, nil
-	}
-
-	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
-	if err != nil {
-		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
-	}
-	if len(ul.Items) > 0 {
-		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
-			e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
-			meta.AddFinalizer(cr, compositionStillExistFinalizer)
-			err = e.kube.Update(ctx, cr)
-			if err != nil {
-				return reconciler.ExternalObservation{}, err
-			}
-		}
 	}
 
 	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(e.client, e.log.Debug, CertOpts)
@@ -247,6 +270,21 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		e.log.Debug)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error updating CA bundle: %w", err)
+	}
+
+	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
+	}
+	if len(ul.Items) > 0 {
+		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
+			e.log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
+			meta.AddFinalizer(cr, compositionStillExistFinalizer)
+			err = e.kube.Update(ctx, cr)
+			if err != nil {
+				return reconciler.ExternalObservation{}, err
+			}
+		}
 	}
 
 	e.log.Info("Searching for Dynamic Controller", "gvr", gvr)
@@ -494,7 +532,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		}
 
 		if crd == nil {
-			e.log.Debug("CRD not found, installing new CRD", "gvr", gvr.String())
+			e.log.Debug("CRD not found, installing new CRD", "gvr", gvk.String())
 			return kube.Apply(ctx, e.kube, newcrd, kube.ApplyOptions{})
 		}
 

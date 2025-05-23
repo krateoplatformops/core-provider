@@ -227,6 +227,12 @@ func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, 
 		return fmt.Errorf("error getting CRD: %w", err)
 	}
 
+	crd.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "apiextensions.k8s.io",
+		Kind:    "CustomResourceDefinition",
+		Version: "v1",
+	})
+
 	if len(crd.Spec.Versions) > 1 {
 		log("Updating CA bundle for CRD", "Name", crd.Name)
 		err = crdtools.UpdateCABundle(crd, cabundle)
