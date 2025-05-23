@@ -240,7 +240,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if !crdOk {
 		e.log.Info("CRD not found, waiting for CRD to be created", "gvk", gvk.String())
 		cr.SetConditions(rtv1.Unavailable().
-			WithMessage(fmt.Sprintf("crd for '%s' does not exists yet", gvr.String())))
+			WithMessage(fmt.Sprintf("crd for '%s' does not exists yet", gvk.String())))
 		return reconciler.ExternalObservation{
 			ResourceExists:   false,
 			ResourceUpToDate: true,
@@ -532,7 +532,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		}
 
 		if crd == nil {
-			e.log.Debug("CRD not found, installing new CRD", "gvr", gvr.String())
+			e.log.Debug("CRD not found, installing new CRD", "gvr", gvk.String())
 			return kube.Apply(ctx, e.kube, newcrd, kube.ApplyOptions{})
 		}
 
