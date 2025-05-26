@@ -358,10 +358,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	cr.SetConditions(rtv1.Available())
 
-	log := logging.NewNopLogger()
-	if meta.IsVerbose(cr) {
-		log = e.log
-	}
 	opts := deploy.DeployOptions{
 		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
@@ -374,8 +370,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    log.Debug,
-		DryRunServer:           true,
+		Log: func(msg string, keysAndValues ...any) {
+			if meta.IsVerbose(cr) {
+				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
+			}
+		},
+		DryRunServer: true,
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -588,10 +588,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		"namespace", cr.Namespace,
 	)
 
-	log := logging.NewNopLogger()
-	if meta.IsVerbose(cr) {
-		log = e.log
-	}
 	opts := deploy.DeployOptions{
 		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
@@ -604,7 +600,11 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    log.Debug,
+		Log: func(msg string, keysAndValues ...any) {
+			if meta.IsVerbose(cr) {
+				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
+			}
+		},
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -684,7 +684,11 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			Spec:                   cr.Spec.Chart.DeepCopy(),
 			DeploymentTemplatePath: CDCtemplateDeploymentPath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-			Log:                    e.log.Debug,
+			Log: func(msg string, keysAndValues ...any) {
+				if meta.IsVerbose(cr) {
+					fmt.Println("CompositionDefinition log:", msg, keysAndValues)
+				}
+			},
 		}
 
 		dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -726,7 +730,11 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
-				Log:     e.log.Debug,
+				Log: func(msg string, keysAndValues ...any) {
+					if meta.IsVerbose(cr) {
+						fmt.Println("CompositionDefinition log:", msg, keysAndValues)
+					}
+				},
 			})
 			if err != nil {
 				return err
@@ -856,10 +864,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	}
 
-	log := logging.NewNopLogger()
-	if meta.IsVerbose(cr) {
-		log = e.log
-	}
 	opts := deploy.UndeployOptions{
 		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
 		Spec:            cr.Spec.Chart.DeepCopy(),
@@ -874,7 +878,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		RBACFolderPath:         CDCrbacConfigFolder,
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    log.Debug,
+		Log: func(msg string, keysAndValues ...any) {
+			if meta.IsVerbose(cr) {
+				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
+			}
+		},
 	}
 
 	err = deploy.Undeploy(ctx, e.kube, opts)
