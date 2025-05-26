@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -105,26 +106,48 @@ func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.Names
 }
 
 func installRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any), hsh *hasher.ObjectHash, applyOpts kubecli.ApplyOptions) error {
+	if hsh == nil {
+		return fmt.Errorf("hasher is required")
+	}
 	err := kubecli.Apply(ctx, kubeClient, &clusterrole, applyOpts)
 	if err != nil {
 		logError(log, "Error installing clusterrole", err)
 		return err
 	}
-	log("ClusterRole successfully installed", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+
+	err = hsh.SumHash(clusterrole)
+	if err != nil {
+		return fmt.Errorf("error hashing clusterrole: %v", err)
+	}
+	log("ClusterRole successfully hashed", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
+	b, _ := json.MarshalIndent(clusterrole, "", "  ")
+	fmt.Println("ClusterRole JSON:\n", string(b))
 
 	err = kubecli.Apply(ctx, kubeClient, &clusterrolebinding, applyOpts)
 	if err != nil {
 		logError(log, "Error installing clusterrolebinding", err)
 		return err
 	}
-	log("ClusterRoleBinding successfully installed", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+	err = hsh.SumHash(clusterrolebinding)
+	if err != nil {
+		return fmt.Errorf("error hashing clusterrolebinding: %v", err)
+	}
+	log("ClusterRoleBinding successfully installesd", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(clusterrolebinding, "", "  ")
+	fmt.Println("ClusterRoleBinding JSON:\n", string(b))
 
 	err = kubecli.Apply(ctx, kubeClient, &role, applyOpts)
 	if err != nil {
 		logError(log, "Error installing role", err)
 		return err
 	}
-	log("Role successfully installed", "name", role.Name, "namespace", role.Namespace)
+	err = hsh.SumHash(role)
+	if err != nil {
+		return fmt.Errorf("error hashing role: %v", err)
+	}
+	log("Role successfully installed", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(role, "", "  ")
+	fmt.Println("Role JSON:\n", string(b))
 
 	err = kubecli.Apply(ctx, kubeClient, &rolebinding, applyOpts)
 	if err != nil {
@@ -132,78 +155,93 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 		return err
 	}
 	log("RoleBinding successfully installed", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+	b, _ = json.MarshalIndent(rolebinding, "", "  ")
+	fmt.Println("RoleBinding JSON:\n", string(b))
 
 	err = kubecli.Apply(ctx, kubeClient, &sa, applyOpts)
 	if err != nil {
 		logError(log, "Error installing serviceaccount", err)
 		return err
 	}
-	log("ServiceAccount successfully installed", "name", sa.Name, "namespace", sa.Namespace)
-
-	if hsh != nil {
-		err = hsh.SumHash(
-			clusterrole,
-			clusterrolebinding,
-			role,
-			rolebinding,
-			sa,
-		)
-		if err != nil {
-			return fmt.Errorf("error hashing rbac resources: %v", err)
-		}
+	err = hsh.SumHash(sa)
+	if err != nil {
+		return fmt.Errorf("error hashing serviceaccount: %v", err)
 	}
+	log("ServiceAccount successfully installed", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(sa, "", "  ")
+	fmt.Println("ServiceAccount JSON:\n", string(b))
 
 	return nil
 }
 
 func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any), hsh *hasher.ObjectHash) error {
+	if hsh == nil {
+		return fmt.Errorf("hasher is required")
+	}
 	err := kubecli.Get(ctx, kubeClient, &clusterrole)
 	if err != nil {
 		logError(log, "Error getting clusterrole", err)
 		return err
 	}
-	log("ClusterRole successfully fetched", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+	err = hsh.SumHash(clusterrole)
+	if err != nil {
+		return fmt.Errorf("error hashing clusterrole: %v", err)
+	}
+	log("ClusterRole successfully fetched", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
+	b, _ := json.MarshalIndent(clusterrole, "", "  ")
+	fmt.Println("ClusterRole JSON:\n", string(b))
 
 	err = kubecli.Get(ctx, kubeClient, &clusterrolebinding)
 	if err != nil {
 		logError(log, "Error getting clusterrolebinding", err)
 		return err
 	}
-	log("ClusterRoleBinding successfully fetched", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+	err = hsh.SumHash(clusterrolebinding)
+	if err != nil {
+		return fmt.Errorf("error hashing clusterrolebinding: %v", err)
+	}
+	log("ClusterRoleBinding successfully fetched", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(clusterrolebinding, "", "  ")
+	fmt.Println("ClusterRoleBinding JSON:\n", string(b))
 
 	err = kubecli.Get(ctx, kubeClient, &role)
 	if err != nil {
 		logError(log, "Error getting role", err)
 		return err
 	}
-	log("Role successfully fetched", "name", role.Name, "namespace", role.Namespace)
+	err = hsh.SumHash(role)
+	if err != nil {
+		return fmt.Errorf("error hashing role: %v", err)
+	}
+	log("Role successfully fetched", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(role, "", "  ")
+	fmt.Println("Role JSON:\n", string(b))
 
 	err = kubecli.Get(ctx, kubeClient, &rolebinding)
 	if err != nil {
 		logError(log, "Error getting rolebinding", err)
 		return err
 	}
-	log("RoleBinding successfully fetched", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+	err = hsh.SumHash(rolebinding)
+	if err != nil {
+		return fmt.Errorf("error hashing rolebinding: %v", err)
+	}
+	log("RoleBinding successfully fetched", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(rolebinding, "", "  ")
+	fmt.Println("RoleBinding JSON:\n", string(b))
 
 	err = kubecli.Get(ctx, kubeClient, &sa)
 	if err != nil {
 		logError(log, "Error getting serviceaccount", err)
 		return err
 	}
-	log("ServiceAccount successfully fetched", "name", sa.Name, "namespace", sa.Namespace)
-
-	if hsh != nil {
-		err = hsh.SumHash(
-			clusterrole,
-			clusterrolebinding,
-			role,
-			rolebinding,
-			sa,
-		)
-		if err != nil {
-			return fmt.Errorf("error hashing rbac resources: %v", err)
-		}
+	err = hsh.SumHash(sa)
+	if err != nil {
+		return fmt.Errorf("error hashing serviceaccount: %v", err)
 	}
+	log("ServiceAccount successfully fetched", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(sa, "", "  ")
+	fmt.Println("ServiceAccount JSON:\n", string(b))
 
 	return nil
 }
@@ -289,7 +327,14 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			logError(opts.Log, "Error installing role", err)
 			return "", err
 		}
-		opts.Log("Role successfully installed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
+		err = hsh.SumHash(role)
+		if err != nil {
+			return "", fmt.Errorf("error hashing role: %v", err)
+		}
+
+		opts.Log("Role successfully hashed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+		b, _ := json.MarshalIndent(role, "", "  ")
+		fmt.Println("Secret Role JSON:\n", string(b))
 
 		rolebinding := rbacv1.RoleBinding{}
 		err := objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
@@ -303,15 +348,13 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			logError(opts.Log, "Error installing rolebinding", err)
 			return "", err
 		}
-		opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
-
-		err = hsh.SumHash(
-			rolebinding,
-			role,
-		)
+		err = hsh.SumHash(rolebinding)
 		if err != nil {
 			return "", fmt.Errorf("error hashing rolebinding: %v", err)
 		}
+		opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+		b, _ = json.MarshalIndent(rolebinding, "", "  ")
+		fmt.Println("Secret RoleBinding JSON:\n", string(b))
 	}
 
 	err = installRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log, &hsh, applyOpts)
@@ -336,7 +379,13 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		logError(opts.Log, "Error installing configmap", err)
 		return "", err
 	}
-	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+	err = hsh.SumHash(cm)
+	if err != nil {
+		return "", fmt.Errorf("error hashing configmap: %v", err)
+	}
+	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
+	b, _ := json.MarshalIndent(cm, "", "  ")
+	fmt.Println("Configmap JSON:\n", string(b))
 
 	deploymentNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
@@ -377,15 +426,13 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	deployment.CleanFromRestartAnnotation(&dep)
 
-	err = hsh.SumHash(
-		dep.Spec,
-		cm,
-	)
+	err = hsh.SumHash(dep.Spec)
 	if err != nil {
-		return "", fmt.Errorf("error hashing deployment: %v", err)
+		return "", fmt.Errorf("error hashing deployment spec: %v", err)
 	}
-
-	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(dep, "", "  ")
+	fmt.Println("Deployment JSON:\n", string(b))
 
 	return hsh.GetHash(), nil
 }
@@ -553,7 +600,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			logError(opts.Log, "Error fetching role", err)
 			return "", err
 		}
-		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
+		err = hsh.SumHash(role)
+		if err != nil {
+			return "", fmt.Errorf("error hashing role: %v", err)
+		}
+		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+		b, _ := json.MarshalIndent(role, "", "  ")
+		fmt.Println("Secret Role JSON:\n", string(b))
 
 		rolebinding := rbacv1.RoleBinding{}
 		err = objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
@@ -567,15 +620,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			logError(opts.Log, "Error fetching rolebinding", err)
 			return "", err
 		}
-		opts.Log("RoleBinding successfully fetched", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
-
-		err = hsh.SumHash(
-			rolebinding,
-			role,
-		)
+		err = hsh.SumHash(rolebinding)
 		if err != nil {
 			return "", fmt.Errorf("error hashing rolebinding: %v", err)
 		}
+		opts.Log("RoleBinding successfully fetched", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+		b, _ = json.MarshalIndent(rolebinding, "", "  ")
+		fmt.Println("Secret RoleBinding JSON:\n", string(b))
 	}
 
 	err = lookupRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log, &hsh)
@@ -601,7 +652,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		logError(opts.Log, "Error fetching configmap", err)
 		return "", err
 	}
-	opts.Log("Configmap successfully fetched", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+	err = hsh.SumHash(cm)
+	if err != nil {
+		return "", fmt.Errorf("error hashing configmap: %v", err)
+	}
+	opts.Log("Configmap successfully fetched", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
+	b, _ := json.MarshalIndent(cm, "", "  ")
+	fmt.Println("Configmap JSON:\n", string(b))
 
 	deploymentNSName := types.NamespacedName{
 		Namespace: opts.NamespacedName.Namespace,
@@ -624,17 +681,16 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		logError(opts.Log, "Error fetching deployment", err)
 		return "", err
 	}
-	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
 
 	deployment.CleanFromRestartAnnotation(&dep)
 
-	err = hsh.SumHash(
-		dep.Spec,
-		cm,
-	)
+	err = hsh.SumHash(dep.Spec.Template.Spec)
 	if err != nil {
-		return "", fmt.Errorf("error hashing deployment: %v", err)
+		return "", fmt.Errorf("error hashing deployment spec: %v", err)
 	}
+	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
+	b, _ = json.MarshalIndent(dep, "", "  ")
+	fmt.Println("Deployment JSON:\n", string(b))
 
 	return hsh.GetHash(), nil
 }
