@@ -370,12 +370,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log: func(msg string, keysAndValues ...any) {
-			if meta.IsVerbose(cr) {
-				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
-			}
-		},
-		DryRunServer: true,
+		Log:                    e.log.Debug,
+		DryRunServer:           true,
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -600,11 +596,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log: func(msg string, keysAndValues ...any) {
-			if meta.IsVerbose(cr) {
-				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
-			}
-		},
+		Log:                    e.log.Debug,
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -684,11 +676,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			Spec:                   cr.Spec.Chart.DeepCopy(),
 			DeploymentTemplatePath: CDCtemplateDeploymentPath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-			Log: func(msg string, keysAndValues ...any) {
-				if meta.IsVerbose(cr) {
-					fmt.Println("CompositionDefinition log:", msg, keysAndValues)
-				}
-			},
+			Log:                    e.log.Debug,
 		}
 
 		dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -730,11 +718,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
-				Log: func(msg string, keysAndValues ...any) {
-					if meta.IsVerbose(cr) {
-						fmt.Println("CompositionDefinition log:", msg, keysAndValues)
-					}
-				},
+				Log:     e.log.Debug,
 			})
 			if err != nil {
 				return err
@@ -878,11 +862,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		RBACFolderPath:         CDCrbacConfigFolder,
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log: func(msg string, keysAndValues ...any) {
-			if meta.IsVerbose(cr) {
-				fmt.Println("CompositionDefinition log:", msg, keysAndValues)
-			}
-		},
+		Log:                    e.log.Debug,
 	}
 
 	err = deploy.Undeploy(ctx, e.kube, opts)

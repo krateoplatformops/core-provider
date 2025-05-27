@@ -10,7 +10,7 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
-	github.com/krateoplatformops/crdgen v0.4.2
+	github.com/krateoplatformops/crdgen v0.4.3
 	github.com/krateoplatformops/plumbing v0.4.0
 	github.com/krateoplatformops/provider-runtime v0.9.1
 	github.com/pkg/errors v0.9.1
