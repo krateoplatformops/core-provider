@@ -136,7 +136,6 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 	b, _ = json.MarshalIndent(clusterrolebinding, "", "  ")
 	log("ClusterRoleBinding JSON:\n", string(b))
 
-
 	err = kubecli.Apply(ctx, kubeClient, &role, applyOpts)
 	if err != nil {
 		logError(log, "Error installing role", err)
@@ -155,7 +154,12 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 		logError(log, "Error installing rolebinding", err)
 		return err
 	}
-	log("RoleBinding successfully installed", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+	err = hsh.SumHash(rolebinding)
+	if err != nil {
+		return fmt.Errorf("error hashing rolebinding: %v", err)
+	}
+
+	log("RoleBinding successfully installed", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
 	b, _ = json.MarshalIndent(rolebinding, "", "  ")
 	log("RoleBinding JSON:\n", string(b))
 
@@ -336,7 +340,6 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		opts.Log("Role successfully hashed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
 		b, _ := json.MarshalIndent(role, "", "  ")
 		opts.Log("Secret Role JSON:\n", string(b))
-
 
 		rolebinding := rbacv1.RoleBinding{}
 		err := objects.CreateK8sObject(&rolebinding, opts.GVR, secretNSName, filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
@@ -686,7 +689,7 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	deployment.CleanFromRestartAnnotation(&dep)
 
-	err = hsh.SumHash(dep.Spec.Template.Spec)
+	err = hsh.SumHash(dep.Spec)
 	if err != nil {
 		return "", fmt.Errorf("error hashing deployment spec: %v", err)
 	}
