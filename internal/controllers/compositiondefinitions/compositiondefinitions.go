@@ -62,12 +62,13 @@ var (
 )
 
 var (
-	compositionConversionWebhook = conversion.NewWebhookHandler(runtime.NewScheme())
-	CDCtemplateDeploymentPath    = filepath.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
-	CDCtemplateConfigmapPath     = filepath.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
-	CDCrbacConfigFolder          = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
-	MutatingWebhookPath          = filepath.Join(os.TempDir(), "assets/mutating-webhook-configuration/mutating-webhook.yaml")
-	CertsPath                    = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
+	compositionConversionWebhook    = conversion.NewWebhookHandler(runtime.NewScheme())
+	CDCtemplateDeploymentPath       = filepath.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
+	CDCtemplateConfigmapPath        = filepath.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
+	CDCrbacConfigFolder             = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
+	MutatingWebhookPath             = filepath.Join(os.TempDir(), "assets/mutating-webhook-configuration/mutating-webhook.yaml")
+	JSONSchemaTemplateConfigmapPath = filepath.Join(os.TempDir(), "assets/json-schema-configmap/configmap.yaml")
+	CertsPath                       = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
 )
 
 func GetCABundle() ([]byte, error) {
@@ -358,6 +359,15 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	cr.SetConditions(rtv1.Available())
 
+	pkgInfo, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting chart info: %w", err)
+	}
+	jsonschemaBytes, err := chart.ChartJsonSchemaGetter(pkgInfo, dir).Get()
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting JSON schema: %w", err)
+	}
+
 	opts := deploy.DeployOptions{
 		RBACFolderPath:  CDCrbacConfigFolder,
 		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
@@ -371,6 +381,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 		Log:                    e.log.Debug,
+		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+		JsonSchemaBytes:        jsonschemaBytes,
 		DryRunServer:           true,
 	}
 
@@ -447,6 +459,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			return err
 		}
 	}
+	jsonSchemaGetter := chart.ChartJsonSchemaGetter(pkg, dir)
 
 	var crd *apiextensionsv1.CustomResourceDefinition
 	if !crdOk {
@@ -509,13 +522,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			Reason:             "GeneratingCRD",
 			Message:            fmt.Sprintf("Generating CRD for: %s", gvr),
 		})
-
 		res := crdgen.Generate(ctx, crdgen.Options{
 			Managed:                true,
 			WorkDir:                dir,
 			GVK:                    gvk,
 			Categories:             []string{"compositions", "comps"},
-			SpecJsonSchemaGetter:   chart.ChartJsonSchemaGetter(pkg, dir),
+			SpecJsonSchemaGetter:   jsonSchemaGetter,
 			StatusJsonSchemaGetter: StaticJsonSchemaGetter(),
 		})
 		if res.Err != nil {
@@ -579,6 +591,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		}
 	}
 
+	jsonSchemaBytes, err := jsonSchemaGetter.Get()
+	if err != nil {
+		return fmt.Errorf("error getting JSON schema: %w", err)
+	}
+	e.log.Debug("JSON schema ConfigMap created", "gvr", gvr.String(), "namespace", cr.Namespace)
+
 	e.log.Debug("Deploying Dynamic Controller",
 		"gvr", gvr.String(),
 		"namespace", cr.Namespace,
@@ -596,6 +614,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+		JsonSchemaBytes:        jsonSchemaBytes,
 		Log:                    e.log.Debug,
 	}
 
@@ -663,6 +683,15 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	e.log.Debug("Updating Compositions", "gvr", gvr.String())
 
+	pkgInfo, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
+	if err != nil {
+		return fmt.Errorf("error getting chart info: %w", err)
+	}
+	jsonschemaBytes, err := chart.ChartJsonSchemaGetter(pkgInfo, dir).Get()
+	if err != nil {
+		return fmt.Errorf("error getting JSON schema: %w", err)
+	}
+
 	if oldGVK.Version == gvk.Version {
 		opts := deploy.DeployOptions{
 			RBACFolderPath:  CDCrbacConfigFolder,
@@ -677,6 +706,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			DeploymentTemplatePath: CDCtemplateDeploymentPath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 			Log:                    e.log.Debug,
+			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+			JsonSchemaBytes:        jsonschemaBytes,
 		}
 
 		dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -709,6 +740,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				RBACFolderPath:         CDCrbacConfigFolder,
 				DeploymentTemplatePath: CDCtemplateDeploymentPath,
 				ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+				JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 				DynamicClient:          e.dynamic,
 				Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 				GVR:                    oldGVR,
@@ -777,50 +809,35 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
+	var gvr schema.GroupVersionResource
+	crdOk := true
 	pluralInfo, err := plurals.Get(gvk, plurals.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			e.log.Info("Plural not found, assuming CRD has been deleted, removing finalizers", "gvk", gvk.String())
-			meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
-			return e.kube.Update(ctx, cr)
-		}
+	if apierrors.IsNotFound(err) {
+		crdOk = false
+		e.log.Debug("Plural not found, CRD not found, skipping deletion", "gvk", gvk.String())
+	}
+	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 	}
-	gvr := schema.GroupVersionResource{
-		Group:    gvk.Group,
-		Version:  gvk.Version,
-		Resource: pluralInfo.Plural,
+	if crdOk {
+		gvr = schema.GroupVersionResource{
+			Group:    gvk.Group,
+			Version:  gvk.Version,
+			Resource: pluralInfo.Plural,
+		}
 	}
-
-	var skipCRD bool
-	lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
-		Group: gvr.Group,
-		Kind:  gvk.Kind,
-	})
-	if err != nil {
-		e.log.Debug("Error getting CompositionDefinitions", "error", err)
-		return fmt.Errorf("error getting CompositionDefinitions: %w", err)
-	}
-	if len(lst) > 1 {
-		skipCRD = true
-		e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvr", gvr.String())
-	} else {
-		skipCRD = false
-		e.log.Info("Deleting CRD", "gvr", gvr.String())
-	}
-
-	if skipCRD {
-		lst, err = getCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupKind{
-			Group: gvr.Group,
+	if crdOk {
+		lst, err := getCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupKind{
+			Group: gvk.Group,
 			Kind:  gvk.Kind,
 		}, cr.Spec.Chart.Version)
 		if err != nil {
 			e.log.Debug("Error getting CompositionDefinitions", "error", err)
 			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
-
 		if len(lst) == 1 {
-			e.log.Debug("Deleting Compositions of this version", "gvr", gvr.String())
+			e.log.Debug("Deleting Compositions of this version", "gvk", gvk.String())
+
 			// Delete compositions of this version manually
 			ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
 			if err != nil {
@@ -845,7 +862,23 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 				return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
 			}
 		}
+	}
 
+	var skipCRD bool
+	lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
+		Group: gvk.Group,
+		Kind:  gvk.Kind,
+	})
+	if err != nil {
+		e.log.Debug("Error getting CompositionDefinitions", "error", err)
+		return fmt.Errorf("error getting CompositionDefinitions: %w", err)
+	}
+	if len(lst) > 1 {
+		skipCRD = true
+		e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvk", gvk.String())
+	} else {
+		skipCRD = false
+		e.log.Info("Deleting CRD", "gvk", gvk.String())
 	}
 
 	opts := deploy.UndeployOptions{
@@ -862,6 +895,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		RBACFolderPath:         CDCrbacConfigFolder,
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		Log:                    e.log.Debug,
 	}
 

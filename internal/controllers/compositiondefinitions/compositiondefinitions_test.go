@@ -287,63 +287,6 @@ func TestCreate(t *testing.T) {
 		}
 
 		return ctx
-	}).Assess("Test Patch Template Resource", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-		// r, err := resources.New(cfg.Client().RESTConfig())
-		// if err != nil {
-		// 	t.Fail()
-		// }
-		// apis.AddToScheme(r.GetScheme())
-		// r.WithNamespace(namespace)
-
-		// var res v1alpha1.CompositionDefinition
-		// err = decoder.DecodeFile(
-		// 	os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-		// 	&res,
-		// 	decoder.MutateNamespace(resource_ns),
-		// )
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
-
-		// err = r.Get(ctx, res.Name, resource_ns, &res)
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
-
-		// oldDig := res.Status.Digest
-
-		// // Patch Configmap data
-		// var cm v1.ConfigMap
-		// err = r.Get(ctx, "test-core-provider-cdc-configmap", "demo-system", &cm)
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
-		// cm.Data["TEST"] = "test"
-		// err = r.Update(ctx, &cm)
-		// if err != nil {
-		// 	t.Fatal(err)
-		// }
-
-		// b, _ := json.MarshalIndent(cm, "", "  ")
-		// t.Logf("ConfigMap: %s", string(b))
-
-		// //wait for resource to be created
-		// if err := wait.For(
-		// 	conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-		// 		mg := object.(*v1alpha1.CompositionDefinition)
-		// 		return mg.Status.Digest != oldDig
-		// 	}),
-		// 	wait.WithTimeout(15*time.Minute),
-		// 	wait.WithInterval(15*time.Second),
-		// ); err != nil {
-		// 	obj := v1alpha1.CompositionDefinition{}
-		// 	r.Get(ctx, res.Name, resource_ns, &obj)
-		// 	b, _ := json.MarshalIndent(obj.Status, "", "  ")
-		// 	t.Logf("CompositionDefinition Status: %s", string(b))
-		// 	t.Fatal(err)
-		// }
-
-		return ctx
 	}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 		const NewVersion = "1.1.14"
 		r, err := resources.New(cfg.Client().RESTConfig())
