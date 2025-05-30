@@ -35,15 +35,6 @@ var (
 	namespace   string
 )
 
-const (
-	crdPath       = "../../../crds"
-	testdataPath  = "../../../testdata"
-	manifestsPath = "../../../manifests"
-	scriptsPath   = "../../../scripts"
-
-	testFileName = "compositiondefinition-common.yaml"
-)
-
 func TestMain(m *testing.M) {
 	xenv.SetTestMode(true)
 
@@ -90,6 +81,8 @@ func TestDeploy(t *testing.T) {
 			RBACFolderPath:         "testdata",
 			DeploymentTemplatePath: "testdata/deploy.yaml",
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
+			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
+			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
@@ -136,6 +129,8 @@ func TestDeploy(t *testing.T) {
 			RBACFolderPath:         "testdata",
 			DeploymentTemplatePath: "testdata/deploy.yaml",
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
+			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
+			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
@@ -194,6 +189,8 @@ func TestLookup(t *testing.T) {
 			RBACFolderPath:         "testdata",
 			DeploymentTemplatePath: "testdata/deploy.yaml",
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
+			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
+			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",

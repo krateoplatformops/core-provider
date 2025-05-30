@@ -1,0 +1,16 @@
+# Source: core-provider/templates/configmap-cdc.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-core-provider-jsonschema-configmap
+  namespace: demo-system
+data:
+  configmap.yaml: |-
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: {{ .resource }}-{{ .apiVersion }}-jsonschema-configmap
+      namespace: {{ .namespace }}
+    data:
+      "values.schema.json" : |-
+    {{ .schema | indent 4 }}

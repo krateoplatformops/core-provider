@@ -54,6 +54,9 @@ spec:
         - mountPath: /tmp/assets/mutating-webhook-configuration
           name: mutating-webhook-configuration
           readOnly: true
+        - mountPath: /tmp/assets/json-schema-configmap
+          name: jsonschema-configmap
+          readOnly: true
       volumes:
       # - name: cert
       #   secret:
@@ -71,3 +74,6 @@ spec:
       - name: mutating-webhook-configuration
         configMap:
           name: test-core-provider-mutating-webhook-configuration
+      - name: jsonschema-configmap
+        configMap:
+          name: test-core-provider-jsonschema-configmap
