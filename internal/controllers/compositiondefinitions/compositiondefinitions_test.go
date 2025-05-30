@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/e2e-framework/pkg/envconf"
 	"sigs.k8s.io/e2e-framework/pkg/envfuncs"
 	"sigs.k8s.io/e2e-framework/pkg/features"
+	"sigs.k8s.io/e2e-framework/pkg/utils"
 	"sigs.k8s.io/e2e-framework/support/kind"
 )
 
@@ -63,49 +64,49 @@ func TestMain(m *testing.M) {
 		e2e.CreateNamespace("krateo-system"),
 
 		func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
-			// r, err := resources.New(cfg.Client().RESTConfig())
+			r, err := resources.New(cfg.Client().RESTConfig())
+			if err != nil {
+				return ctx, err
+			}
+			r.WithNamespace(namespace)
+
+			// Build the docker image
+			if p := utils.RunCommand(
+				fmt.Sprintf("docker build -t %s ../../..", "kind.local/core-provider:latest"),
+			); p.Err() != nil {
+				return ctx, p.Err()
+			}
+
+			err = kindCluster.LoadImage(ctx, "kind.local/core-provider:latest")
+			if err != nil {
+				return ctx, err
+			}
+
+			// uncomment to build and load the image in local testing
+			// err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
 			// if err != nil {
 			// 	return ctx, err
 			// }
-			// r.WithNamespace(namespace)
 
-			// // Build the docker image
-			// if p := utils.RunCommand(
-			// 	fmt.Sprintf("docker build -t %s ../../..", "kind.local/core-provider:latest"),
-			// ); p.Err() != nil {
-			// 	return ctx, p.Err()
-			// }
+			certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
+			if err := certificatesProc.Err(); err != nil {
+				return ctx, err
+			}
 
-			// err = kindCluster.LoadImage(ctx, "kind.local/core-provider:latest")
-			// if err != nil {
-			// 	return ctx, err
-			// }
+			// Install CRDs
+			err = decoder.DecodeEachFile(
+				ctx, os.DirFS(filepath.Join(crdPath)), "*.yaml",
+				decoder.CreateIgnoreAlreadyExists(r),
+			)
 
-			// // uncomment to build and load the image in local testing
-			// // err = kindCluster.LoadImage(ctx, "kind.local/composition-dynamic-controller:latest")
-			// // if err != nil {
-			// // 	return ctx, err
-			// // }
-
-			// certificatesProc := utils.RunCommand("../../../scripts/reload.sh")
-			// if err := certificatesProc.Err(); err != nil {
-			// 	return ctx, err
-			// }
-
-			// // Install CRDs
-			// err = decoder.DecodeEachFile(
-			// 	ctx, os.DirFS(filepath.Join(crdPath)), "*.yaml",
-			// 	decoder.CreateIgnoreAlreadyExists(r),
-			// )
-
-			// time.Sleep(1 * time.Minute)
+			time.Sleep(1 * time.Minute)
 
 			return ctx, nil
 		},
 	).Finish(
-	// envfuncs.DeleteNamespace(namespace),
-	// envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
-	// envfuncs.DestroyCluster(clusterName),
+		envfuncs.DeleteNamespace(namespace),
+		envfuncs.TeardownCRDs(crdPath, "core.krateo.io_compositiondefinitions.yaml"),
+		envfuncs.DestroyCluster(clusterName),
 	)
 
 	os.Exit(testenv.Run(m))
