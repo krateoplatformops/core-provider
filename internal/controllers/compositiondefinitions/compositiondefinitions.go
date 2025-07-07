@@ -355,6 +355,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		cr.Status.Managed.Kind = crd.Spec.Names.Kind
 	}
 	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+	cr.Status.Resource = gvr.Resource
 	cr.Status.PackageURL = pkg.PackageURL()
 
 	cr.SetConditions(rtv1.Available())
@@ -770,14 +771,13 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	// Sets the new version as served in the CRD
 	crdtools.SetServedStorage(crd, gvk.Version, true, false)
 
-	// err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 	err = kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 	if err != nil {
 		return err
 	}
 
 	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
-
+	cr.Status.Resource = gvr.Resource
 	err = e.kube.Status().Update(ctx, cr)
 	if err != nil {
 		return err
