@@ -317,14 +317,11 @@ func TestCreate(t *testing.T) {
 
 		res := v1alpha1.CompositionDefinition{}
 
-		err = decoder.DecodeFile(
-			os.DirFS(filepath.Join(testdataPath, "compositiondefinitions_test")), testFileName,
-			&res,
-			decoder.MutateNamespace(resource_ns),
-		)
+		err = r.Get(ctx, "fireworks-app-2", resource_ns, &res)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		// Delete CompositionDefinition
 		err = r.Delete(ctx, &res)
 		if err != nil {
