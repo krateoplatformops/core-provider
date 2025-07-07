@@ -117,6 +117,9 @@ type CompositionDefinitionStatus struct {
 	// Kind: the kind of the custom resource - Last applied kind
 	Kind string `json:"kind,omitempty"`
 
+	// Resource: the resource of the custom resource - Last applied resource
+	Resource string `json:"resource,omitempty"`
+
 	// ApiVersion: the api version of the custom resource - Last applied apiVersion
 	ApiVersion string `json:"apiVersion,omitempty"`
 

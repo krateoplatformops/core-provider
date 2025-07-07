@@ -246,6 +246,10 @@ spec:
               packageUrl:
                 description: 'PackageURL: .tgz or oci chart direct url'
                 type: string
+              resource:
+                description: 'Resource: the resource of the custom resource - Last
+                  applied resource'
+                type: string
             type: object
         type: object
     served: true

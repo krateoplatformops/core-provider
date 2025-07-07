@@ -355,6 +355,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		cr.Status.Managed.Kind = crd.Spec.Names.Kind
 	}
 	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+	cr.Status.Resource = gvr.Resource
 	cr.Status.PackageURL = pkg.PackageURL()
 
 	cr.SetConditions(rtv1.Available())
@@ -426,6 +427,12 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	if !meta.IsActionAllowed(cr, meta.ActionCreate) {
 		e.log.Info("External resource should not be updated by provider, skip creating.")
 		return nil
+	}
+
+	cr.SetConditions(rtv1.Creating())
+	err := e.kube.Status().Update(ctx, cr)
+	if err != nil {
+		return fmt.Errorf("error updating status: %w", err)
 	}
 
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
@@ -652,6 +659,12 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	e.log.Debug("Updating CompositionDefinition", "name", cr.Name)
 
+	cr.SetConditions(rtv1.Creating())
+	err := e.kube.Status().Update(ctx, cr)
+	if err != nil {
+		return fmt.Errorf("error updating status: %w", err)
+	}
+
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return err
@@ -770,14 +783,13 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	// Sets the new version as served in the CRD
 	crdtools.SetServedStorage(crd, gvk.Version, true, false)
 
-	// err = crdtools.Update(ctx, e.kube, crd.Name, crd)
 	err = kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 	if err != nil {
 		return err
 	}
 
 	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
-
+	cr.Status.Resource = gvr.Resource
 	err = e.kube.Status().Update(ctx, cr)
 	if err != nil {
 		return err
@@ -792,11 +804,17 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	e.log.Debug("Deleting CompositionDefinition", "name", cr.Name)
-
 	if !meta.IsActionAllowed(cr, meta.ActionDelete) {
 		e.log.Info("External resource should not be deleted by provider, skip deleting.")
 		return nil
+	}
+
+	e.log.Debug("Deleting CompositionDefinition", "name", cr.Name)
+
+	cr.SetConditions(rtv1.Deleting())
+	err := e.kube.Status().Update(ctx, cr)
+	if err != nil {
+		return fmt.Errorf("error updating status: %w", err)
 	}
 
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
@@ -825,8 +843,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Version:  gvk.Version,
 			Resource: pluralInfo.Plural,
 		}
-	}
-	if crdOk {
+
 		lst, err := getCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupKind{
 			Group: gvk.Group,
 			Kind:  gvk.Kind,
@@ -862,50 +879,52 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 				return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
 			}
 		}
-	}
 
-	var skipCRD bool
-	lst, err := getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
-		Group: gvk.Group,
-		Kind:  gvk.Kind,
-	})
-	if err != nil {
-		e.log.Debug("Error getting CompositionDefinitions", "error", err)
-		return fmt.Errorf("error getting CompositionDefinitions: %w", err)
-	}
-	if len(lst) > 1 {
-		skipCRD = true
-		e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvk", gvk.String())
-	} else {
-		skipCRD = false
-		e.log.Info("Deleting CRD", "gvk", gvk.String())
-	}
-
-	opts := deploy.UndeployOptions{
-		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
-		Spec:            cr.Spec.Chart.DeepCopy(),
-		KubeClient:      e.kube,
-		GVR:             gvr,
-		NamespacedName: types.NamespacedName{
-			Name:      resourceNamer(gvr.Resource, gvr.Version),
-			Namespace: cr.Namespace,
-		},
-		SkipCRD:                skipCRD,
-		DynamicClient:          e.dynamic,
-		RBACFolderPath:         CDCrbacConfigFolder,
-		DeploymentTemplatePath: CDCtemplateDeploymentPath,
-		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
-		Log:                    e.log.Debug,
-	}
-
-	err = deploy.Undeploy(ctx, e.kube, opts)
-	if err != nil {
-		if errors.Is(err, deploy.ErrCompositionStillExist) {
-			return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
+		var skipCRD bool
+		lst, err = getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
+			Group: gvk.Group,
+			Kind:  gvk.Kind,
+		})
+		if err != nil {
+			e.log.Debug("Error getting CompositionDefinitions", "error", err)
+			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
-		return fmt.Errorf("error undeploying CompositionDefinition: %w", err)
+		if len(lst) > 1 {
+			skipCRD = true
+			e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvk", gvk.String())
+		} else {
+			skipCRD = false
+			e.log.Info("Deleting CRD", "gvk", gvk.String())
+		}
 
+		opts := deploy.UndeployOptions{
+			DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
+			Spec:            cr.Spec.Chart.DeepCopy(),
+			KubeClient:      e.kube,
+			GVR:             gvr,
+			NamespacedName: types.NamespacedName{
+				Name:      resourceNamer(gvr.Resource, gvr.Version),
+				Namespace: cr.Namespace,
+			},
+			SkipCRD:                skipCRD,
+			DynamicClient:          e.dynamic,
+			RBACFolderPath:         CDCrbacConfigFolder,
+			DeploymentTemplatePath: CDCtemplateDeploymentPath,
+			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
+			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+			Log:                    e.log.Debug,
+		}
+
+		err = deploy.Undeploy(ctx, e.kube, opts)
+		if err != nil {
+			if errors.Is(err, deploy.ErrCompositionStillExist) {
+				return fmt.Errorf("error undeploying CompositionDefinition: waiting for composition deletion")
+			}
+			return fmt.Errorf("error undeploying CompositionDefinition: %w", err)
+
+		}
+	} else {
+		e.log.Info("CRD not found, deletion has already been completed", "gvk", gvk.String())
 	}
 
 	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
