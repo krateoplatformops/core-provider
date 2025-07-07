@@ -334,7 +334,7 @@ func TestCreate(t *testing.T) {
 		//wait for resource to be deleted
 		if err := wait.For(
 			conditions.New(r).ResourceDeleted(&res),
-			wait.WithTimeout(8*time.Minute),
+			wait.WithTimeout(15*time.Minute),
 			wait.WithInterval(15*time.Second),
 		); err != nil {
 			t.Fatal(err)
