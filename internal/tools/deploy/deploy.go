@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
@@ -44,6 +45,7 @@ type UndeployOptions struct {
 	Log                    func(msg string, keysAndValues ...any)
 	SkipCRD                bool
 	DeploymentTemplatePath string
+	ServiceTemplatePath    string
 	ConfigmapTemplatePath  string
 	JsonSchemaTemplatePath string
 	JsonSchemaBytes        []byte
@@ -59,6 +61,7 @@ type DeployOptions struct {
 	DeploymentTemplatePath string
 	ConfigmapTemplatePath  string
 	JsonSchemaTemplatePath string
+	ServiceTemplatePath    string
 	JsonSchemaBytes        []byte
 	Log                    func(msg string, keysAndValues ...any)
 	// DryRunServer is used to determine if the deployment should be applied in dry-run mode. This is ignored in lookup mode
@@ -418,6 +421,27 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
+	_, err = os.Stat(opts.ServiceTemplatePath)
+	if !os.IsNotExist(err) {
+		svc := corev1.Service{}
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		if err != nil {
+			logError(opts.Log, "Error creating service", err)
+			return "", err
+		}
+
+		err = kubecli.Apply(ctx, opts.KubeClient, &svc, applyOpts)
+		if err != nil {
+			logError(opts.Log, "Error installing service", err)
+			return "", err
+		}
+		err = hsh.SumHash(svc.ObjectMeta.Name, svc.ObjectMeta.Namespace, svc.Spec)
+		if err != nil {
+			return "", fmt.Errorf("error hashing service: %v", err)
+		}
+		opts.Log("Service successfully installed", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+	}
+
 	return hsh.GetHash(), nil
 }
 
@@ -481,6 +505,23 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	err = uninstallRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log)
 	if err != nil {
 		return err
+	}
+
+	_, err = os.Stat(opts.ServiceTemplatePath)
+	if !os.IsNotExist(err) {
+		svc := corev1.Service{}
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		if err != nil {
+			logError(opts.Log, "Error creating service", err)
+			return err
+		}
+
+		err = kubecli.Uninstall(ctx, opts.KubeClient, &svc, kubecli.UninstallOptions{})
+		if err != nil {
+			logError(opts.Log, "Error uninstalling service", err)
+			return err
+		}
+		opts.Log("Service successfully uninstalled", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace)
 	}
 
 	if opts.Spec.Credentials != nil {
@@ -643,6 +684,26 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
+	_, err = os.Stat(opts.ServiceTemplatePath)
+	if !os.IsNotExist(err) {
+		svc := corev1.Service{}
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		if err != nil {
+			logError(opts.Log, "Error creating service", err)
+			return "", err
+		}
+		err = kubecli.Get(ctx, opts.KubeClient, &svc)
+		if err != nil {
+			logError(opts.Log, "Error fetching service", err)
+			return "", err
+		}
+		err = hsh.SumHash(svc.ObjectMeta.Name, svc.ObjectMeta.Namespace, svc.Spec)
+		if err != nil {
+			return "", fmt.Errorf("error hashing service: %v", err)
+		}
+		opts.Log("Service successfully fetched", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+	}
+
 	return hsh.GetHash(), nil
 }
 
@@ -669,5 +730,12 @@ func getJsonSchemaConfigmapNN(nn types.NamespacedName) types.NamespacedName {
 	return types.NamespacedName{
 		Namespace: nn.Namespace,
 		Name:      nn.Name + "-jsonschema" + configmapResourceSuffix,
+	}
+}
+
+func getServiceNN(nn types.NamespacedName) types.NamespacedName {
+	return types.NamespacedName{
+		Namespace: nn.Namespace,
+		Name:      nn.Name + "-service",
 	}
 }
