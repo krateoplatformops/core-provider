@@ -422,7 +422,7 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
 	_, err = os.Stat(opts.ServiceTemplatePath)
-	if !os.IsNotExist(err) {
+	if err == nil {
 		svc := corev1.Service{}
 		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
 		if err != nil {
@@ -508,7 +508,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	}
 
 	_, err = os.Stat(opts.ServiceTemplatePath)
-	if !os.IsNotExist(err) {
+	if err == nil {
 		svc := corev1.Service{}
 		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
 		if err != nil {
@@ -685,7 +685,7 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
 	_, err = os.Stat(opts.ServiceTemplatePath)
-	if !os.IsNotExist(err) {
+	if err == nil {
 		svc := corev1.Service{}
 		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
 		if err != nil {
