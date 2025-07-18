@@ -565,7 +565,7 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 		opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
 	}
 
-	return err
+	return nil
 }
 
 // This function is used to lookup the current state of the deployment and return the hash of the current state
