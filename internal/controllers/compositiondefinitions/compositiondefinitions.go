@@ -68,6 +68,7 @@ var (
 	CDCrbacConfigFolder             = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
 	MutatingWebhookPath             = filepath.Join(os.TempDir(), "assets/mutating-webhook-configuration/mutating-webhook.yaml")
 	JSONSchemaTemplateConfigmapPath = filepath.Join(os.TempDir(), "assets/json-schema-configmap/configmap.yaml")
+	ServiceTemplatePath             = filepath.Join(os.TempDir(), "assets/cdc-service/service.yaml")
 	CertsPath                       = filepath.Join(os.TempDir(), "k8s-webhook-server", "serving-certs")
 )
 
@@ -384,6 +385,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Log:                    e.log.Debug,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		JsonSchemaBytes:        jsonschemaBytes,
+		ServiceTemplatePath:    ServiceTemplatePath,
 		DryRunServer:           true,
 	}
 
@@ -622,6 +624,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+		ServiceTemplatePath:    ServiceTemplatePath,
 		JsonSchemaBytes:        jsonSchemaBytes,
 		Log:                    e.log.Debug,
 	}
@@ -720,6 +723,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 			Log:                    e.log.Debug,
 			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+			ServiceTemplatePath:    ServiceTemplatePath,
 			JsonSchemaBytes:        jsonschemaBytes,
 		}
 
@@ -754,6 +758,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 				DeploymentTemplatePath: CDCtemplateDeploymentPath,
 				ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 				JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
+				ServiceTemplatePath:    ServiceTemplatePath,
 				DynamicClient:          e.dynamic,
 				Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 				GVR:                    oldGVR,
@@ -910,6 +915,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			DynamicClient:          e.dynamic,
 			RBACFolderPath:         CDCrbacConfigFolder,
 			DeploymentTemplatePath: CDCtemplateDeploymentPath,
+			ServiceTemplatePath:    ServiceTemplatePath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 			Log:                    e.log.Debug,

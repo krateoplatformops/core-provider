@@ -83,6 +83,7 @@ func TestDeploy(t *testing.T) {
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
 			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
 			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
+			ServiceTemplatePath:    "testdata/service.yaml",
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
@@ -130,6 +131,7 @@ func TestDeploy(t *testing.T) {
 			DeploymentTemplatePath: "testdata/deploy.yaml",
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
 			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
+			ServiceTemplatePath:    "testdata/service.yaml",
 			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
@@ -190,6 +192,7 @@ func TestLookup(t *testing.T) {
 			DeploymentTemplatePath: "testdata/deploy.yaml",
 			ConfigmapTemplatePath:  "testdata/cm.yaml",
 			JsonSchemaTemplatePath: "testdata/configmap_jsonschema.yaml",
+			ServiceTemplatePath:    "testdata/service.yaml",
 			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
 			NamespacedName: types.NamespacedName{
