@@ -222,6 +222,11 @@ func getCompositionDefinitionsWithVersion(ctx context.Context, cli client.Client
 }
 
 func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, gvr schema.GroupVersionResource, log func(string, ...any)) error {
+	if log == nil {
+		log = func(msg string, keysAndValues ...any) {
+			// No-op logger
+		}
+	}
 	crd, err := crdtools.Get(ctx, cli, gvr)
 	if err != nil {
 		return fmt.Errorf("error getting CRD: %w", err)

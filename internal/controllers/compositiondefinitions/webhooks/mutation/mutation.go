@@ -64,7 +64,7 @@ func NewWebhookHandler(cli client.Client) *webhook.Admission {
 
 			if req.Operation == v1.Create {
 				labels := unstructuredObj.GetLabels()
-				if labels == nil || len(labels) == 0 {
+				if len(labels) == 0 {
 					patch = append(patch,
 						webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels", Value: map[string]string{}},
 						webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
