@@ -12,7 +12,6 @@ import (
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
-	"github.com/krateoplatformops/core-provider/internal/controllers/logger"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
@@ -169,14 +168,11 @@ func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconcile
 		return nil, errors.New(errNotCR)
 	}
 
-	log := logger.Logger{
-		Verbose: meta.IsVerbose(cr),
-		Logger:  c.log,
-	}
+	log := c.log.WithValues("name", cr.Name, "namespace", cr.Namespace)
 
 	return &external{
 		kube:    c.kube,
-		log:     &log,
+		log:     log,
 		dynamic: c.dynamic,
 		client:  c.client,
 		rec:     c.recorder,
@@ -203,6 +199,13 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			ResourceExists:   false,
 			ResourceUpToDate: true,
 		}, e.Delete(ctx, cr)
+	}
+
+	var verboseLogger func(msg string, keysAndValues ...any)
+	if meta.IsVerbose(cr) {
+		verboseLogger = e.log.Debug
+	} else {
+		verboseLogger = logging.NewNopLogger().Debug
 	}
 
 	pkg, err := chartfs.ForSpec(ctx, e.kube, cr.Spec.Chart)
@@ -237,7 +240,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			return reconciler.ExternalObservation{}, err
 		}
 	}
-	e.log.Info("Observing", "gvk", gvk.String())
+	e.log.Info("Observing CompositionDefinition")
 
 	if !crdOk {
 		e.log.Info("CRD not found, waiting for CRD to be created", "gvk", gvk.String())
@@ -249,17 +252,17 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(e.client, e.log.Debug, CertOpts)
+	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(e.client, verboseLogger, CertOpts)
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
 	if !ok {
-		e.log.Info("Certificate has been regenerated, updating certificates for webhook server")
+		e.log.Debug("Certificate has been regenerated, updating certificates for webhook server")
 		err = certs.UpdateCerts(cert, key, CertsPath)
 		if err != nil {
 			return reconciler.ExternalObservation{}, err
 		}
-		e.log.Info("Updating certficates for CRDs and Mutating Webhook Configurations")
+		e.log.Debug("Updating certficates for CRDs and Mutating Webhook Configurations")
 	}
 	cabundle, err := GetCABundle()
 	if err != nil {
@@ -269,12 +272,12 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		e.kube,
 		cabundle,
 		gvr,
-		e.log.Debug)
+		verboseLogger)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error updating CA bundle: %w", err)
 	}
 
-	ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+	ul, err := getCompositions(ctx, e.dynamic, verboseLogger, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
 	}
@@ -289,7 +292,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}
 	}
 
-	e.log.Info("Searching for Dynamic Controller", "gvr", gvr)
+	e.log.Debug("Searching for Dynamic Controller", "gvr", gvr)
 
 	obj := appsv1.Deployment{}
 	err = objects.CreateK8sObject(&obj, gvr, types.NamespacedName{
@@ -382,7 +385,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    e.log.Debug,
+		Log:                    verboseLogger,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		JsonSchemaBytes:        jsonschemaBytes,
 		ServiceTemplatePath:    ServiceTemplatePath,
@@ -426,10 +429,14 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	if !meta.IsActionAllowed(cr, meta.ActionCreate) {
-		e.log.Info("External resource should not be updated by provider, skip creating.")
-		return nil
+	var verboseLogger func(msg string, keysAndValues ...any)
+	if meta.IsVerbose(cr) {
+		verboseLogger = e.log.Debug
+	} else {
+		verboseLogger = logging.NewNopLogger().Debug
 	}
+
+	e.log.Info("Creating CompositionDefinition")
 
 	cr.SetConditions(rtv1.Creating())
 	err := e.kube.Status().Update(ctx, cr)
@@ -590,9 +597,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 			return errors.New("CRD not found")
 		}
 
-		if meta.IsVerbose(cr) {
-			e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
-		}
+		e.log.Debug("CRD already generated, checking served resources", "gvr", gvr.String())
 
 		err = kube.Apply(ctx, e.kube, crd, kube.ApplyOptions{})
 		if err != nil {
@@ -626,7 +631,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		ServiceTemplatePath:    ServiceTemplatePath,
 		JsonSchemaBytes:        jsonSchemaBytes,
-		Log:                    e.log.Debug,
+		Log:                    verboseLogger,
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -655,12 +660,14 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	if !meta.IsActionAllowed(cr, meta.ActionUpdate) {
-		e.log.Info("External resource should not be updated by provider, skip updating.")
-		return nil
+	var verboseLogger func(msg string, keysAndValues ...any)
+	if meta.IsVerbose(cr) {
+		verboseLogger = e.log.Debug
+	} else {
+		verboseLogger = logging.NewNopLogger().Debug
 	}
 
-	e.log.Debug("Updating CompositionDefinition", "name", cr.Name)
+	e.log.Info("Updating CompositionDefinition")
 
 	cr.SetConditions(rtv1.Creating())
 	err := e.kube.Status().Update(ctx, cr)
@@ -721,7 +728,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 			Spec:                   cr.Spec.Chart.DeepCopy(),
 			DeploymentTemplatePath: CDCtemplateDeploymentPath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-			Log:                    e.log.Debug,
+			Log:                    verboseLogger,
 			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 			ServiceTemplatePath:    ServiceTemplatePath,
 			JsonSchemaBytes:        jsonschemaBytes,
@@ -768,7 +775,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 					Namespace: cr.Namespace,
 				},
 				SkipCRD: true,
-				Log:     e.log.Debug,
+				Log:     verboseLogger,
 			})
 			if err != nil {
 				return err
@@ -778,7 +785,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	}
 
 	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
-		err = updateCompositionsVersion(ctx, e.dynamic, e.log.Debug, oldGVR, gvk.Version)
+		err = updateCompositionsVersion(ctx, e.dynamic, verboseLogger, oldGVR, gvk.Version)
 		if err != nil {
 			return fmt.Errorf("error updating compositions version: %w", err)
 		}
@@ -809,12 +816,14 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 
-	if !meta.IsActionAllowed(cr, meta.ActionDelete) {
-		e.log.Info("External resource should not be deleted by provider, skip deleting.")
-		return nil
+	var verboseLogger func(msg string, keysAndValues ...any)
+	if meta.IsVerbose(cr) {
+		verboseLogger = e.log.Debug
+	} else {
+		verboseLogger = logging.NewNopLogger().Debug
 	}
 
-	e.log.Debug("Deleting CompositionDefinition", "name", cr.Name)
+	e.log.Debug("Deleting CompositionDefinition")
 
 	cr.SetConditions(rtv1.Deleting())
 	err := e.kube.Status().Update(ctx, cr)
@@ -861,9 +870,9 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			e.log.Debug("Deleting Compositions of this version", "gvk", gvk.String())
 
 			// Delete compositions of this version manually
-			ul, err := getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+			ul, err := getCompositions(ctx, e.dynamic, verboseLogger, gvr)
 			if err != nil {
-				e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+				e.log.Debug("Error getting compositions", "gvr", gvr, "error", err)
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
 
@@ -875,9 +884,9 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 				}
 			}
 
-			ul, err = getCompositions(ctx, e.dynamic, e.log.Debug, gvr)
+			ul, err = getCompositions(ctx, e.dynamic, verboseLogger, gvr)
 			if err != nil {
-				e.log.Info("Error getting compositions", "gvr", gvr, "error", err)
+				e.log.Debug("Error getting compositions", "gvr", gvr, "error", err)
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
 			if len(ul.Items) > 0 {
@@ -896,10 +905,10 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		}
 		if len(lst) > 1 {
 			skipCRD = true
-			e.log.Info("Skipping CRD deletion, other CompositionDefinitions exist", "gvk", gvk.String())
+			e.log.Debug("Skipping CRD deletion, other CompositionDefinitions exist", "gvk", gvk.String())
 		} else {
 			skipCRD = false
-			e.log.Info("Deleting CRD", "gvk", gvk.String())
+			e.log.Debug("Deleting CRD", "gvk", gvk.String())
 		}
 
 		opts := deploy.UndeployOptions{
@@ -918,7 +927,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			ServiceTemplatePath:    ServiceTemplatePath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
-			Log:                    e.log.Debug,
+			Log:                    verboseLogger,
 		}
 
 		err = deploy.Undeploy(ctx, e.kube, opts)

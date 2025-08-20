@@ -4,18 +4,21 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"time"
+
+	"github.com/go-logr/logr"
 
 	"github.com/krateoplatformops/core-provider/internal/controllers"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	"github.com/krateoplatformops/plumbing/env"
+	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -68,13 +71,26 @@ func main() {
 		return
 	}
 
-	zl := zap.New(zap.UseDevMode(*debug))
-	logr := logging.NewLogrLogger(zl.WithName(fmt.Sprintf("%s-provider", strcase.KebabCase(providerName))))
+	logLevel := slog.LevelInfo
 	if *debug {
-		ctrl.SetLogger(zl)
+		logLevel = slog.LevelDebug
 	}
 
-	logr.Debug("Starting",
+	lh := prettylog.New(&slog.HandlerOptions{
+		Level:     logLevel,
+		AddSource: false,
+	},
+		prettylog.WithDestinationWriter(os.Stderr),
+		prettylog.WithColor(),
+		prettylog.WithOutputEmptyAttrs(),
+	)
+
+	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
+	log := logging.NewLogrLogger(logrlog)
+
+	ctrl.SetLogger(logrlog)
+
+	log.Debug("Starting",
 		"sync-period", syncPeriod.String(),
 		"poll-interval", pollInterval.String(),
 		"max-reconcile-rate", *maxReconcileRate,
@@ -89,13 +105,13 @@ func main() {
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
-		log.Fatalf("Cannot get API server rest config: %v", err)
-		return
+		log.Info("Cannot get API server rest config", "error", err)
+		os.Exit(1)
 	}
 	client, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		log.Fatalf("Cannot create kubernetes client: %v", err)
-		return
+		log.Info("Cannot create kubernetes client", "error", err)
+		os.Exit(1)
 	}
 
 	compositiondefinitions.WebhookServiceName = *webhookServiceName
@@ -108,15 +124,15 @@ func main() {
 		LeaseExpirationMargin: *tlsCertificateLeaseExpirationMargin,
 	}
 
-	cert, key, err := certs.GenerateClientCertAndKey(client, logr.Debug, compositiondefinitions.CertOpts)
+	cert, key, err := certs.GenerateClientCertAndKey(client, log.Debug, compositiondefinitions.CertOpts)
 	if err != nil {
-		log.Fatalf("Cannot generate client certificate and key: %v", err)
-		return
+		log.Info("Cannot generate client certificate and key", "error", err)
+		os.Exit(1)
 	}
 	err = certs.UpdateCerts(cert, key, compositiondefinitions.CertsPath)
 	if err != nil {
-		log.Fatalf("Cannot update certificates: %v", err)
-		return
+		log.Info("Cannot update certificates", "error", err)
+		os.Exit(1)
 	}
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
@@ -136,27 +152,27 @@ func main() {
 		}),
 	})
 	if err != nil {
-		log.Fatalf("Cannot create controller manager: %v", err)
-		return
+		log.Info("Cannot create controller manager", "error", err)
+		os.Exit(1)
 	}
 
 	o := controller.Options{
-		Logger:                  logr,
+		Logger:                  log,
 		MaxConcurrentReconciles: *maxReconcileRate,
 		PollInterval:            *pollInterval,
 		GlobalRateLimiter:       ratelimiter.NewGlobalExponential(*minErrorRetryInterval, *maxErrorRetryInterval),
 	}
 
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Fatalf("Cannot add APIs to scheme: %v", err)
-		return
+		log.Info("Cannot add APIs to scheme", "error", err)
+		os.Exit(1)
 	}
 	if err := controllers.Setup(mgr, o); err != nil {
-		log.Fatalf("Cannot setup controllers: %v", err)
-		return
+		log.Info("Cannot setup controllers", "error", err)
+		os.Exit(1)
 	}
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Fatalf("Cannot start controller manager: %v", err)
-		return
+		log.Info("Cannot start controller manager", "error", err)
+		os.Exit(1)
 	}
 }
