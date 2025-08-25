@@ -3,33 +3,48 @@ package conversion
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"os"
 
+	"github.com/go-logr/logr"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/convertible"
+	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
+	"github.com/krateoplatformops/provider-runtime/pkg/logging"
+
 	apix "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
-)
-
-var (
-	log = logf.Log.WithName("conversion-webhook")
 )
 
 func NewWebhookHandler(scheme *runtime.Scheme) http.Handler {
-	return &webhook{scheme: scheme}
+	lh := prettylog.New(&slog.HandlerOptions{
+		Level:     slog.LevelError,
+		AddSource: false,
+	},
+		prettylog.WithDestinationWriter(os.Stderr),
+		prettylog.WithColor(),
+		prettylog.WithOutputEmptyAttrs(),
+	)
+
+	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
+	log := logging.NewLogrLogger(logrlog)
+
+	return &webhook{scheme: scheme, log: log.WithName("core-provider-conversion-webhook")}
 }
 
 // webhook implements a CRD conversion webhook HTTP handler.
 type webhook struct {
 	scheme *runtime.Scheme
+	log    logging.Logger
 }
 
 // ensure Webhook implements http.Handler
 var _ http.Handler = &webhook{}
 
 func (wh *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log := wh.log
 	convertReview := &apix.ConversionReview{}
 	err := json.NewDecoder(r.Body).Decode(convertReview)
 	if err != nil {

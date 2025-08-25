@@ -142,7 +142,7 @@ func Setup(mgr ctrl.Manager, o controller.Options) error {
 			if err != nil {
 				return fmt.Errorf("error updating CA bundle: %w", err)
 			}
-			l.Info("Updated CA bundle for CRD and MutatingWebhookConfiguration", "Name", gvr.String())
+			l.Debug("Updated CA bundle for CRD and MutatingWebhookConfiguration", "Name", gvr.String())
 		}
 	}
 
@@ -203,7 +203,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	var verboseLogger func(msg string, keysAndValues ...any)
 	if meta.IsVerbose(cr) {
-		verboseLogger = e.log.Debug
+		verboseLogger = e.log.Info // use Info here to have the logs in the events event when debug logs are not enabled
 	} else {
 		verboseLogger = logging.NewNopLogger().Debug
 	}
@@ -341,7 +341,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	// if version is different, Update
 	oldGVK := schema.FromAPIVersionAndKind(cr.Status.ApiVersion, cr.Status.Kind)
 	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
-		e.log.Info("Updating CompositionDefinition GVK", "old", oldGVK, "new", gvk)
+		e.log.Debug("Updating CompositionDefinition GVK", "old", oldGVK, "new", gvk)
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
 			ResourceUpToDate: false,
@@ -398,7 +398,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	if cr.Status.Digest != dig {
-		e.log.Info("Rendered resources digest changed", "status", cr.Status.Digest, "rendered", dig)
+		e.log.Debug("Rendered resources digest changed", "status", cr.Status.Digest, "rendered", dig)
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
 			ResourceUpToDate: false,
@@ -410,7 +410,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 	if cr.Status.Digest != dig {
-		e.log.Info("Deployed resources digest changed", "status", cr.Status.Digest, "deployed", dig)
+		e.log.Debug("Deployed resources digest changed", "status", cr.Status.Digest, "deployed", dig)
 		return reconciler.ExternalObservation{
 			ResourceExists:   true,
 			ResourceUpToDate: false,
@@ -431,7 +431,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	var verboseLogger func(msg string, keysAndValues ...any)
 	if meta.IsVerbose(cr) {
-		verboseLogger = e.log.Debug
+		verboseLogger = e.log.Info // use Info here to have the logs in the events event when debug logs are not enabled
 	} else {
 		verboseLogger = logging.NewNopLogger().Debug
 	}
@@ -662,7 +662,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	var verboseLogger func(msg string, keysAndValues ...any)
 	if meta.IsVerbose(cr) {
-		verboseLogger = e.log.Debug
+		verboseLogger = e.log.Info // use Info here to have the logs in the events event when debug logs are not enabled
 	} else {
 		verboseLogger = logging.NewNopLogger().Debug
 	}
@@ -818,7 +818,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	var verboseLogger func(msg string, keysAndValues ...any)
 	if meta.IsVerbose(cr) {
-		verboseLogger = e.log.Debug
+		verboseLogger = e.log.Info // use Info here to have the logs in the events event when debug logs are not enabled
 	} else {
 		verboseLogger = logging.NewNopLogger().Debug
 	}
@@ -863,7 +863,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Kind:  gvk.Kind,
 		}, cr.Spec.Chart.Version)
 		if err != nil {
-			e.log.Debug("Error getting CompositionDefinitions", "error", err)
 			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
 		if len(lst) == 1 {
@@ -872,7 +871,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			// Delete compositions of this version manually
 			ul, err := getCompositions(ctx, e.dynamic, verboseLogger, gvr)
 			if err != nil {
-				e.log.Debug("Error getting compositions", "gvr", gvr, "error", err)
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
 
@@ -886,7 +884,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 			ul, err = getCompositions(ctx, e.dynamic, verboseLogger, gvr)
 			if err != nil {
-				e.log.Debug("Error getting compositions", "gvr", gvr, "error", err)
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
 			if len(ul.Items) > 0 {
@@ -900,7 +897,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			Kind:  gvk.Kind,
 		})
 		if err != nil {
-			e.log.Debug("Error getting CompositionDefinitions", "error", err)
 			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
 		if len(lst) > 1 {
@@ -939,7 +935,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 		}
 	} else {
-		e.log.Info("CRD not found, deletion has already been completed", "gvk", gvk.String())
+		e.log.Debug("CRD not found, deletion has already been completed", "gvk", gvk.String())
 	}
 
 	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
