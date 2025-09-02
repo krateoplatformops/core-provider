@@ -54,6 +54,9 @@ const (
           },
           "namespace": {
             "type": "string"
+          },
+		  "path": {
+            "type": "string"
           }
         }
       }
