@@ -513,7 +513,7 @@ At this point, the old composition will be deleted and the new composition will 
 ##### Use Case:
 Temporarily stop automatic reconciliation during maintenance or troubleshooting.
 
-#### Step 1: Pause Composition
+##### Step 1: Pause Composition
 ```bash
 kubectl annotate fireworksapp fireworksapp-composition-1 \
   -n fireworksapp-system \
@@ -533,13 +533,13 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
   ```
 
 
-#### Step 2: Make Manual Changes
+##### Step 2: Make Manual Changes
 During paused state, you can:
 - Manually modify resources
 - Troubleshoot issues
 - Perform maintenance
 
-#### Step 3: Resume Reconciliation
+##### Step 3: Resume Reconciliation
 ```bash
 kubectl annotate fireworksapp fireworksapp-composition-1 \
   -n fireworksapp-system \
@@ -551,7 +551,14 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
 - Controller resumes normal operation
 - Changes are reconciled according to desired state
 
-#### 4. Safely Deleting Compositions
+
+
+#### 5. Pausing Composition Gracefully
+`composition-dynamic-controller` 0.19.3 and later (released with `core-provider-chart` 0.33.4) supports a graceful pause mechanism that ensures any resource managed by the composition will be paused *before* the composition reconciliation is paused. This means the resources managed by the composition will not be reconciled until the composition is resumed.
+
+To support this feature, you need to follow the steps described in the [`composition-dynamic-controller` documentation](https://github.com/krateoplatformops/composition-dynamic-controller?tab=readme-ov-file#about-the-gracefullypaused-value). Please note that this feature is not supported for compositions created with versions of `composition-dynamic-controller` earlier than 0.19.3, and you will need to modify your chart according to the documentation linked above.
+
+#### 6. Safely Deleting Compositions
 
 You can safely delete all compositions and their associated resources using the following command:
 
