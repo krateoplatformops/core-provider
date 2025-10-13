@@ -38,6 +38,14 @@ const (
     "helmChartVersion": {
       "type": "string"
     },
+	"digest": {
+	  "type": "string",
+	  "default": ""
+	},
+	"previousDigest": {
+	  "type": "string",
+	  "default": ""
+	},
     "managed": {
       "type": "array",
       "items": {
