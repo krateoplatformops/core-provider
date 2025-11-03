@@ -65,7 +65,7 @@ var (
 
 const (
 	crdPath       = "../../../crds"
-	testdataPath  = "../../../testdata"
+	testdataPath  = "../../../testdata/test"
 	manifestsPath = "./testdata/manifests"
 
 	namespace = "test-system"
