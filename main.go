@@ -10,15 +10,17 @@ import (
 
 	"github.com/go-logr/logr"
 
-	"github.com/krateoplatformops/core-provider/internal/controllers"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/certificates"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
+	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/plumbing/env"
+	"github.com/krateoplatformops/plumbing/ptr"
 	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
-	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/config"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
@@ -41,7 +43,7 @@ func main() {
 	debug := flag.Bool("debug", env.Bool(fmt.Sprintf("%s_DEBUG", envVarPrefix), false), "Run with debug logging.")
 	syncPeriod := flag.Duration("sync", env.Duration(fmt.Sprintf("%s_SYNC", envVarPrefix), time.Hour*1), "Controller manager sync period such as 300ms, 1.5h, or 2h45m")
 	pollInterval := flag.Duration("poll", env.Duration(fmt.Sprintf("%s_POLL_INTERVAL", envVarPrefix), time.Minute*3), "Poll interval controls how often an individual resource should be checked for drift.")
-	maxReconcileRate := flag.Int("max-reconcile-rate", env.Int(fmt.Sprintf("%s_MAX_RECONCILE_RATE", envVarPrefix), 3), "The global maximum rate per second at which resources may checked for drift from the desired state.")
+	maxReconcileRate := flag.Int("max-reconcile-rate", env.Int(fmt.Sprintf("%s_MAX_RECONCILE_RATE", envVarPrefix), 5), "The global maximum rate per second at which resources may checked for drift from the desired state.")
 	leaderElection := flag.Bool("leader-election", env.Bool(fmt.Sprintf("%s_LEADER_ELECTION", envVarPrefix), false), "Use leader election for the controller manager.")
 	maxErrorRetryInterval := flag.Duration("max-error-retry-interval", env.Duration(fmt.Sprintf("%s_MAX_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Minute), "The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.")
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
@@ -88,7 +90,15 @@ func main() {
 	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
 	log := logging.NewLogrLogger(logrlog)
 
-	ctrl.SetLogger(logrlog)
+	// Set the logger for controller-runtime. This only have to log in INFO level as all debug logs are handled by our logger above.
+	ctrl.SetLogger(logr.FromSlogHandler(slog.New(prettylog.New(&slog.HandlerOptions{
+		Level:     slog.LevelInfo,
+		AddSource: false,
+	},
+		prettylog.WithDestinationWriter(os.Stderr),
+		prettylog.WithColor(),
+		prettylog.WithOutputEmptyAttrs(),
+	)).Handler()))
 
 	log.Debug("Starting",
 		"sync-period", syncPeriod.String(),
@@ -108,30 +118,30 @@ func main() {
 		log.Info("Cannot get API server rest config", "error", err)
 		os.Exit(1)
 	}
-	client, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		log.Info("Cannot create kubernetes client", "error", err)
-		os.Exit(1)
-	}
 
-	compositiondefinitions.WebhookServiceName = *webhookServiceName
-	compositiondefinitions.WebhookServiceNamespace = *webhookServiceNamespace
 	chartfs.HelmRegistryConfigPath = *helmRegistryConfigPath
-	compositiondefinitions.CertOpts = certs.GenerateClientCertAndKeyOpts{
+
+	certOpts := certs.GenerateClientCertAndKeyOpts{
 		Duration:              *tlsCertificateDuration,
-		Username:              fmt.Sprintf("%s.%s.svc", compositiondefinitions.WebhookServiceName, compositiondefinitions.WebhookServiceNamespace),
+		Username:              fmt.Sprintf("%s.%s.svc", *webhookServiceName, *webhookServiceNamespace),
 		Approver:              strcase.KebabCase(envVarPrefix),
 		LeaseExpirationMargin: *tlsCertificateLeaseExpirationMargin,
 	}
-
-	cert, key, err := certs.GenerateClientCertAndKey(client, log.Debug, compositiondefinitions.CertOpts)
+	certMgr, err := certificates.NewCertManager(certificates.Opts{
+		WebhookServiceName:          *webhookServiceName,
+		WebhookServiceNamespace:     *webhookServiceNamespace,
+		MutatingWebhookTemplatePath: compositiondefinitions.MutatingWebhookPath,
+		CertOpts:                    certOpts,
+		RestConfig:                  cfg,
+	})
 	if err != nil {
-		log.Info("Cannot generate client certificate and key", "error", err)
+		log.Info("Cannot create certificate manager", "error", err)
 		os.Exit(1)
 	}
-	err = certs.UpdateCerts(cert, key, compositiondefinitions.CertsPath)
+
+	err = certMgr.RefreshCertificates()
 	if err != nil {
-		log.Info("Cannot update certificates", "error", err)
+		log.Info("Cannot refresh certificates", "error", err)
 		os.Exit(1)
 	}
 
@@ -150,6 +160,9 @@ func main() {
 			CertName: "tls.crt",
 			KeyName:  "tls.key",
 		}),
+		Controller: config.Controller{
+			UsePriorityQueue: ptr.To(true),
+		},
 	})
 	if err != nil {
 		log.Info("Cannot create controller manager", "error", err)
@@ -167,7 +180,11 @@ func main() {
 		log.Info("Cannot add APIs to scheme", "error", err)
 		os.Exit(1)
 	}
-	if err := controllers.Setup(mgr, o); err != nil {
+	if err := compositiondefinitions.Setup(mgr, compositiondefinitions.Options{
+		ControllerOptions: o,
+		CertManager:       certMgr,
+		Pluralizer:        pluralizer.New(false),
+	}); err != nil {
 		log.Info("Cannot setup controllers", "error", err)
 		os.Exit(1)
 	}

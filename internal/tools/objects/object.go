@@ -48,7 +48,7 @@ func CreateK8sObject(obj runtime.Object, gvr schema.GroupVersionResource, nn typ
 
 	_, _, err = s.Decode(dat, nil, obj)
 	if err != nil {
-		return fmt.Errorf("failed to decode object: %w", err)
+		return fmt.Errorf("failed to decode object: %w - path: %s - values: %s", err, path, dat)
 	}
 	return nil
 }

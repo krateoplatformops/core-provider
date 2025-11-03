@@ -6,6 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	"github.com/krateoplatformops/core-provider/internal/tools/kube/watcher"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -55,6 +59,7 @@ type DeployOptions struct {
 	GVR                    schema.GroupVersionResource
 	DiscoveryClient        discovery.CachedDiscoveryInterface
 	KubeClient             client.Client
+	DynClient              dynamic.Interface
 	NamespacedName         types.NamespacedName
 	Spec                   *definitionsv1alpha1.ChartInfo
 	RBACFolderPath         string
@@ -178,8 +183,13 @@ func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterr
 	}
 	err := kubecli.Get(ctx, kubeClient, &clusterrole)
 	if err != nil {
-		logError(log, "Error getting clusterrole", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log("ClusterRole not found", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+			clusterrole = rbacv1.ClusterRole{}
+		} else {
+			logError(log, "Error getting clusterrole", err)
+			return fmt.Errorf("error getting clusterrole: %w", err)
+		}
 	}
 	err = hsh.SumHash(clusterrole.ObjectMeta.Name, clusterrole.ObjectMeta.Namespace, clusterrole.Rules)
 	if err != nil {
@@ -189,8 +199,13 @@ func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterr
 
 	err = kubecli.Get(ctx, kubeClient, &clusterrolebinding)
 	if err != nil {
-		logError(log, "Error getting clusterrolebinding", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log("ClusterRoleBinding not found", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+			clusterrolebinding = rbacv1.ClusterRoleBinding{}
+		} else {
+			logError(log, "Error getting clusterrolebinding", err)
+			return fmt.Errorf("error getting clusterrolebinding: %w", err)
+		}
 	}
 	err = hsh.SumHash(clusterrolebinding.ObjectMeta.Name, clusterrolebinding.ObjectMeta.Namespace, clusterrolebinding.Subjects, clusterrolebinding.RoleRef)
 	if err != nil {
@@ -200,8 +215,13 @@ func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterr
 
 	err = kubecli.Get(ctx, kubeClient, &role)
 	if err != nil {
-		logError(log, "Error getting role", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log("Role not found", "name", role.Name, "namespace", role.Namespace)
+			role = rbacv1.Role{}
+		} else {
+			logError(log, "Error getting role", err)
+			return fmt.Errorf("error getting role: %w", err)
+		}
 	}
 	err = hsh.SumHash(role.ObjectMeta.Name, role.ObjectMeta.Namespace, role.Rules)
 	if err != nil {
@@ -211,8 +231,13 @@ func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterr
 
 	err = kubecli.Get(ctx, kubeClient, &rolebinding)
 	if err != nil {
-		logError(log, "Error getting rolebinding", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log("RoleBinding not found", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+			rolebinding = rbacv1.RoleBinding{}
+		} else {
+			logError(log, "Error getting rolebinding", err)
+			return fmt.Errorf("error getting rolebinding: %w", err)
+		}
 	}
 	err = hsh.SumHash(rolebinding.ObjectMeta.Name, rolebinding.ObjectMeta.Namespace, rolebinding.Subjects, rolebinding.RoleRef)
 	if err != nil {
@@ -222,8 +247,13 @@ func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterr
 
 	err = kubecli.Get(ctx, kubeClient, &sa)
 	if err != nil {
-		logError(log, "Error getting serviceaccount", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log("ServiceAccount not found", "name", sa.Name, "namespace", sa.Namespace)
+			sa = corev1.ServiceAccount{}
+		} else {
+			logError(log, "Error getting serviceaccount", err)
+			return fmt.Errorf("error getting serviceaccount: %w", err)
+		}
 	}
 	err = hsh.SumHash(sa.ObjectMeta.Name, sa.ObjectMeta.Namespace)
 	if err != nil {
@@ -396,23 +426,6 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		return "", err
 	}
 
-	if !opts.DryRunServer {
-		// Deployment needs to be restarted if the hash changes to get the new configmap
-		err = kubecli.Get(ctx, opts.KubeClient, &dep)
-		if err != nil {
-			logError(opts.Log, "Error installing deployment", err)
-			return "", err
-		}
-		// restart only if deployment is presently running
-		if dep.Status.ReadyReplicas == dep.Status.Replicas {
-			err = deployment.RestartDeployment(ctx, opts.KubeClient, &dep)
-			if err != nil {
-				logError(opts.Log, "Error restarting deployment", err)
-				return "", err
-			}
-		}
-	}
-
 	deployment.CleanFromRestartAnnotation(&dep)
 
 	err = hsh.SumHash(dep.ObjectMeta.Name, dep.ObjectMeta.Namespace, dep.Spec)
@@ -440,6 +453,35 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			return "", fmt.Errorf("error hashing service: %v", err)
 		}
 		opts.Log("Service successfully installed", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+	}
+
+	if !opts.DryRunServer {
+		// Wait for deployment to be ready after creation
+		err := watcher.NewWatcher(opts.DynClient,
+			appsv1.SchemeGroupVersion.WithResource("deployments"),
+			1*time.Minute,
+			deployment.IsReady).WatchResource(ctx, dep.GetNamespace(), dep.GetName())
+		if err != nil {
+			logError(opts.Log, "Error waiting for deployment to be ready", err)
+			return "", fmt.Errorf("error waiting for deployment to be ready: %w", err)
+		}
+
+		// Deployment needs to be restarted if the hash changes to get the new configmap
+		err = deployment.RestartDeployment(ctx, opts.KubeClient, &dep)
+		if err != nil {
+			logError(opts.Log, "Error restarting deployment", err)
+			return "", err
+		}
+
+		// Wait for deployment to be ready after restart
+		err = watcher.NewWatcher(opts.DynClient,
+			appsv1.SchemeGroupVersion.WithResource("deployments"),
+			1*time.Minute,
+			deployment.IsReady).WatchResource(ctx, dep.GetNamespace(), dep.GetName())
+		if err != nil {
+			logError(opts.Log, "Error waiting for deployment to be ready", err)
+			return "", fmt.Errorf("error waiting for deployment to be ready: %w", err)
+		}
 	}
 
 	return hsh.GetHash(), nil
@@ -633,7 +675,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Get(ctx, opts.KubeClient, &jsonSchemaConfigmap)
 	if err != nil {
-		return "", fmt.Errorf("error fetching ConfigMap for JSON schema: %w", err)
+		if apierrors.IsNotFound(err) {
+			opts.Log("JSON Schema ConfigMap not found", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace)
+			jsonSchemaConfigmap = corev1.ConfigMap{}
+		} else {
+			logError(opts.Log, "Error fetching ConfigMap for JSON schema", err)
+			return "", fmt.Errorf("error fetching ConfigMap for JSON schema: %w", err)
+		}
 	}
 	err = hsh.SumHash(jsonSchemaConfigmap.ObjectMeta.Name, jsonSchemaConfigmap.ObjectMeta.Namespace)
 	if err != nil {
@@ -650,8 +698,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Get(ctx, opts.KubeClient, &cm)
 	if err != nil {
-		logError(opts.Log, "Error fetching configmap", err)
-		return "", err
+		if apierrors.IsNotFound(err) {
+			opts.Log("Configmap not found", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+			cm = corev1.ConfigMap{}
+		} else {
+			logError(opts.Log, "Error fetching configmap", err)
+			return "", fmt.Errorf("error fetching configmap: %w", err)
+		}
 	}
 	err = hsh.SumHash(cm.ObjectMeta.Name, cm.ObjectMeta.Namespace, cm.Data)
 	if err != nil {
@@ -672,8 +725,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	err = kubecli.Get(ctx, opts.KubeClient, &dep)
 	if err != nil {
-		logError(opts.Log, "Error fetching deployment", err)
-		return "", err
+		if apierrors.IsNotFound(err) {
+			opts.Log("Deployment not found", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+			dep = appsv1.Deployment{}
+		} else {
+			logError(opts.Log, "Error fetching deployment", err)
+			return "", fmt.Errorf("error fetching deployment: %w", err)
+		}
 	}
 
 	deployment.CleanFromRestartAnnotation(&dep)
@@ -694,8 +752,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		}
 		err = kubecli.Get(ctx, opts.KubeClient, &svc)
 		if err != nil {
-			logError(opts.Log, "Error fetching service", err)
-			return "", err
+			if apierrors.IsNotFound(err) {
+				opts.Log("Service not found", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace)
+				svc = corev1.Service{}
+			} else {
+				logError(opts.Log, "Error fetching service", err)
+				return "", fmt.Errorf("error fetching service: %w", err)
+			}
 		}
 		err = hsh.SumHash(svc.ObjectMeta.Name, svc.ObjectMeta.Namespace, svc.Spec)
 		if err != nil {

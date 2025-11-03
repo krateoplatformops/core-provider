@@ -2,26 +2,27 @@ package compositiondefinitions
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
+	"io/fs"
 	"strings"
+	"time"
 
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/certificates"
+	"github.com/krateoplatformops/core-provider/internal/tools/chart"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
+	"github.com/krateoplatformops/core-provider/internal/tools/kube/watcher"
+	crdgen "github.com/krateoplatformops/crdgen/v2"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
-	"github.com/krateoplatformops/core-provider/internal/tools/objects"
-	"github.com/krateoplatformops/crdgen"
-	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/selection"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -73,9 +74,9 @@ const (
 }`
 )
 
-var _ crdgen.JsonSchemaGetter = (*staticJsonSchemaGetter)(nil)
+// var _ crdgen.JsonSchemaGetter = (*staticJsonSchemaGetter)(nil)
 
-func StaticJsonSchemaGetter() crdgen.JsonSchemaGetter {
+func StaticJsonSchemaGetter() *staticJsonSchemaGetter {
 	return &staticJsonSchemaGetter{}
 }
 
@@ -232,47 +233,167 @@ func getCompositionDefinitionsWithVersion(ctx context.Context, cli client.Client
 	return lst, nil
 }
 
-func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, gvr schema.GroupVersionResource, log func(string, ...any)) error {
-	if log == nil {
-		log = func(msg string, keysAndValues ...any) {
-			// No-op logger
-		}
-	}
-	crd, err := crdtools.Get(ctx, cli, gvr)
+// func propagateCABundle(ctx context.Context, cli client.Client, cabundle []byte, gvr schema.GroupVersionResource, log func(string, ...any)) error {
+// 	if log == nil {
+// 		log = func(msg string, keysAndValues ...any) {
+// 			// No-op logger
+// 		}
+// 	}
+// 	crd, err := crdtools.Get(ctx, cli, gvr.GroupResource())
+// 	if err != nil {
+// 		return fmt.Errorf("error getting CRD: %w", err)
+// 	}
+
+// 	crd.SetGroupVersionKind(schema.GroupVersionKind{
+// 		Group:   "apiextensions.k8s.io",
+// 		Kind:    "CustomResourceDefinition",
+// 		Version: "v1",
+// 	})
+
+// 	if len(crd.Spec.Versions) > 1 {
+// 		log("Updating CA bundle for CRD", "Name", crd.Name)
+// 		err = crdtools.UpdateCABundle(crd, cabundle)
+// 		if err != nil {
+// 			return fmt.Errorf("error updating CA bundle: %w", err)
+// 		}
+// 		// Update the CRD with the new CA bundle
+// 		err = kube.Apply(ctx, cli, crd, kube.ApplyOptions{})
+// 		if err != nil {
+// 			return fmt.Errorf("error applying CRD: %w", err)
+// 		}
+// 	}
+
+// 	// Update the mutating webhook config with the new CA bundle
+// 	mutatingWebhookConfig := admissionregistrationv1.MutatingWebhookConfiguration{}
+// 	err = objects.CreateK8sObject(&mutatingWebhookConfig, schema.GroupVersionResource{}, types.NamespacedName{}, MutatingWebhookPath, "caBundle", base64.StdEncoding.EncodeToString(cabundle))
+// 	if err != nil {
+// 		return fmt.Errorf("error creating mutating webhook config: %w", err)
+// 	}
+// 	log("Updating CA bundle for MutatingWebhookConfiguration", "Name", mutatingWebhookConfig.Name)
+// 	err = kube.Apply(ctx, cli, &mutatingWebhookConfig, kube.ApplyOptions{})
+// 	if err != nil {
+// 		return fmt.Errorf("error applying mutating webhook config: %w", err)
+// 	}
+
+// 	return nil
+// }
+
+func generateCRD(pkg fs.FS, dir string, gvk schema.GroupVersionKind, onlyMetadata bool) ([]byte, error) {
+
+	var specSchema []byte
+	var statusSchema []byte
+	var err error
+
+	jsonSchemaGetter := chart.ChartJsonSchemaGetter(pkg, dir)
+	specSchema, err = jsonSchemaGetter.Get()
 	if err != nil {
-		return fmt.Errorf("error getting CRD: %w", err)
+		return nil, fmt.Errorf("error getting JSON schema: %w", err)
 	}
 
-	crd.SetGroupVersionKind(schema.GroupVersionKind{
-		Group:   "apiextensions.k8s.io",
-		Kind:    "CustomResourceDefinition",
-		Version: "v1",
+	statusSchema, err = StaticJsonSchemaGetter().Get()
+	if err != nil {
+		return nil, fmt.Errorf("error getting status JSON schema: %w", err)
+	}
+
+	if onlyMetadata {
+		const emptySchema = `{
+  "$schema": "http://json-schema.org",
+  "type": "object",
+  "properties": {
+		"empty": {
+		  "type": "string"
+		}
+  }
+}`
+		specSchema = []byte(emptySchema)
+		statusSchema = []byte(emptySchema)
+	}
+
+	res, err := crdgen.Generate(crdgen.Options{
+		Group:        gvk.Group,
+		Version:      gvk.Version,
+		Kind:         gvk.Kind,
+		Managed:      true,
+		Categories:   []string{"compositions", "comps"},
+		SpecSchema:   specSchema,
+		StatusSchema: statusSchema,
 	})
-
-	if len(crd.Spec.Versions) > 1 {
-		log("Updating CA bundle for CRD", "Name", crd.Name)
-		err = crdtools.UpdateCABundle(crd, cabundle)
-		if err != nil {
-			return fmt.Errorf("error updating CA bundle: %w", err)
-		}
-		// Update the CRD with the new CA bundle
-		err = kube.Apply(ctx, cli, crd, kube.ApplyOptions{})
-		if err != nil {
-			return fmt.Errorf("error applying CRD: %w", err)
-		}
-	}
-
-	// Update the mutating webhook config with the new CA bundle
-	mutatingWebhookConfig := admissionregistrationv1.MutatingWebhookConfiguration{}
-	err = objects.CreateK8sObject(&mutatingWebhookConfig, schema.GroupVersionResource{}, types.NamespacedName{}, MutatingWebhookPath, "caBundle", base64.StdEncoding.EncodeToString(cabundle))
 	if err != nil {
-		return fmt.Errorf("error creating mutating webhook config: %w", err)
+		return nil, fmt.Errorf("generating crd: %w", err)
 	}
-	log("Updating CA bundle for MutatingWebhookConfiguration", "Name", mutatingWebhookConfig.Name)
-	err = kube.Apply(ctx, cli, &mutatingWebhookConfig, kube.ApplyOptions{})
-	if err != nil {
-		return fmt.Errorf("error applying mutating webhook config: %w", err)
+	return res, nil
+}
+
+func applyOrUpdateCRD(ctx context.Context,
+	cli client.Client,
+	dyn dynamic.Interface,
+	newcrd *apiextensionsv1.CustomResourceDefinition,
+	certMgr *certificates.CertManager,
+	log func(msg string, keysAndValues ...any)) (schema.GroupVersionResource, error) {
+
+	// Getting GVR from CRD
+	gvr := schema.GroupVersionResource{
+		Group:    newcrd.Spec.Group,
+		Version:  newcrd.Spec.Versions[0].Name,
+		Resource: newcrd.Spec.Names.Plural,
 	}
 
-	return nil
+	crd, err := crdtools.Get(ctx, cli, gvr.GroupResource())
+	if err != nil {
+		return gvr, fmt.Errorf("error getting CRD: %w", err)
+	}
+
+	if crd == nil {
+		log("Creating CRD", "gvr", gvr.String())
+		err = kube.Apply(ctx, cli, newcrd, kube.ApplyOptions{})
+		if err != nil {
+			return gvr, fmt.Errorf("error applying CRD: %w", err)
+		}
+		err = watcher.NewWatcher(
+			dyn,
+			apiextensionsv1.SchemeGroupVersion.WithResource("customresourcedefinitions"),
+			1*time.Minute,
+			crdtools.IsReady).WatchResource(ctx, "", newcrd.Name)
+		if err != nil {
+			return gvr, fmt.Errorf("error waiting for CRD to be established: %w", err)
+		}
+
+		return gvr, nil
+	}
+	log("Updating CRD", "gvr", gvr.String())
+	versionExist, err := crdtools.Lookup(ctx, cli, gvr)
+	if err != nil {
+		return gvr, fmt.Errorf("error looking up CRD version: %w", err)
+	}
+	if versionExist {
+		err = crdtools.UpdateVersion(crd, newcrd.Spec.Versions[0])
+		if err != nil {
+			return gvr, fmt.Errorf("error updating CRD version: %w", err)
+		}
+		return gvr, nil
+	}
+
+	crd, err = crdtools.AppendVersion(*crd, *newcrd)
+	if err != nil {
+		return gvr, fmt.Errorf("error appending version to CRD: %w", err)
+	}
+
+	certMgr.InjectConversionConfToCRD(crd)
+
+	crdtools.SetServedStorage(crd, gvr.Version, true, false)
+	err = kube.Apply(ctx, cli, crd, kube.ApplyOptions{})
+	if err != nil {
+		return gvr, fmt.Errorf("error setting properties on CRD: %w", err)
+	}
+
+	err = watcher.NewWatcher(
+		dyn,
+		apiextensionsv1.SchemeGroupVersion.WithResource("customresourcedefinitions"),
+		1*time.Minute,
+		crdtools.IsReady).WatchResource(ctx, "", crd.Name)
+	if err != nil {
+		return gvr, fmt.Errorf("error waiting for CRD to be established: %w", err)
+	}
+
+	return gvr, nil
 }

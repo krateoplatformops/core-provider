@@ -2,14 +2,10 @@ package crd
 
 import (
 	"fmt"
+	"slices"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
-
-func ConversionConf(crd apiextensionsv1.CustomResourceDefinition, conf *apiextensionsv1.CustomResourceConversion) *apiextensionsv1.CustomResourceDefinition {
-	crd.Spec.Conversion = conf
-	return &crd
-}
 
 func UpdateCABundle(crd *apiextensionsv1.CustomResourceDefinition, caBundle []byte) error {
 	if crd.Spec.Conversion == nil {
@@ -99,6 +95,16 @@ func AppendVersion(crd apiextensionsv1.CustomResourceDefinition, toadd apiextens
 	}
 
 	return &crd, nil
+}
+
+func UpdateVersion(crd *apiextensionsv1.CustomResourceDefinition, version apiextensionsv1.CustomResourceDefinitionVersion) error {
+	if i := slices.IndexFunc(crd.Spec.Versions, func(v apiextensionsv1.CustomResourceDefinitionVersion) bool {
+		return v.Name == version.Name
+	}); i != -1 {
+		crd.Spec.Versions[i] = version
+		return nil
+	}
+	return fmt.Errorf("version %s not found in CRD %s", version.Name, crd.Name)
 }
 
 type VersionConf struct {

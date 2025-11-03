@@ -31,12 +31,8 @@ var (
 )
 
 const (
-	crdPath       = "../../../crds"
-	testdataPath  = "../../../testdata"
-	manifestsPath = "../../../manifests"
-	scriptsPath   = "../../../scripts"
-
-	testFileName = "compositiondefinition-common.yaml"
+	crdPath      = "../../../crds"
+	testdataPath = "../../../testdata"
 )
 
 func TestMain(m *testing.M) {
@@ -165,7 +161,7 @@ func TestGet(t *testing.T) {
 				Resource: "CompositionDefinition",
 			}
 
-			crd, err := Get(context.Background(), kube, gvr)
+			crd, err := Get(context.Background(), kube, gvr.GroupResource())
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
 			}

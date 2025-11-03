@@ -14,7 +14,6 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/resolvers"
 	"github.com/krateoplatformops/core-provider/internal/tools/strutil"
 	"github.com/krateoplatformops/core-provider/internal/tools/tgzfs"
-	"github.com/krateoplatformops/crdgen"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -97,13 +96,13 @@ func ChartGroupVersionKind(tgzFS fs.FS, rootDir string) (schema.GroupVersionKind
 	}, nil
 }
 
-func ChartJsonSchemaGetter(tgzFS fs.FS, rootDir string) crdgen.JsonSchemaGetter {
+func ChartJsonSchemaGetter(tgzFS fs.FS, rootDir string) *chartJsonSchemaGetter {
 	return &chartJsonSchemaGetter{
 		tgzFS: tgzFS, rootDir: rootDir,
 	}
 }
 
-var _ crdgen.JsonSchemaGetter = (*chartJsonSchemaGetter)(nil)
+// var _ crdgen.JsonSchemaGetter = (*chartJsonSchemaGetter)(nil)
 
 type chartJsonSchemaGetter struct {
 	tgzFS   fs.FS

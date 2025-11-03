@@ -23,6 +23,7 @@ func InferGroupResource(gk schema.GroupKind) schema.GroupResource {
 		Group:    gk.Group,
 		Resource: strings.ToLower(namer.Name(&kind)),
 	}
+
 }
 
 func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource) error {
@@ -56,13 +57,13 @@ func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource)
 	)
 }
 
-func Get(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource) (*apiextensionsv1.CustomResourceDefinition, error) {
+func Get(ctx context.Context, kube client.Client, gr schema.GroupResource) (*apiextensionsv1.CustomResourceDefinition, error) {
 	if err := registerEventually(); err != nil {
 		return nil, err
 	}
 
 	res := apiextensionsv1.CustomResourceDefinition{}
-	err := kube.Get(ctx, client.ObjectKey{Name: gvr.GroupResource().String()}, &res, &client.GetOptions{})
+	err := kube.Get(ctx, client.ObjectKey{Name: gr.String()}, &res, &client.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil, nil
@@ -118,4 +119,15 @@ func registerEventually() error {
 	}
 
 	return apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
+}
+
+func IsReady(crd *apiextensionsv1.CustomResourceDefinition) bool {
+	if crd != nil {
+		for _, cond := range crd.Status.Conditions {
+			if cond.Type == apiextensionsv1.Established && cond.Status == apiextensionsv1.ConditionTrue {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -25,9 +25,8 @@ func NewWebhookHandler(cli client.Client) *webhook.Admission {
 				return webhook.Errored(http.StatusBadRequest, err)
 			}
 			// Get CRD from the request
-			crd, err := crdtools.Get(ctx, cli, schema.GroupVersionResource{
+			crd, err := crdtools.Get(ctx, cli, schema.GroupResource{
 				Group:    req.Kind.Group,
-				Version:  req.Kind.Version,
 				Resource: req.Resource.Resource,
 			})
 			if err != nil {
@@ -45,7 +44,6 @@ func NewWebhookHandler(cli client.Client) *webhook.Admission {
 			}
 			err = defaults.PopulateDefaultsFromCRD(crd, &modObj)
 			if err != nil {
-				fmt.Println("Error populating defaults from CRD:", err)
 				return webhook.Errored(http.StatusBadRequest, err)
 			}
 
