@@ -76,6 +76,7 @@ func TestDeploy(t *testing.T) {
 			t.Fatalf("failed to create client: %v", err)
 			return ctx
 		}
+		dyn := dynamic.NewForConfigOrDie(cfg.Client().RESTConfig())
 		opts := DeployOptions{
 			DiscoveryClient:        memory.NewMemCacheClient(discovery.NewDiscoveryClientForConfigOrDie(cfg.Client().RESTConfig())),
 			RBACFolderPath:         "testdata",
@@ -85,6 +86,7 @@ func TestDeploy(t *testing.T) {
 			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			ServiceTemplatePath:    "testdata/service.yaml",
 			KubeClient:             cli,
+			DynClient:              dyn,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
 				Name:      "test-deploy",
@@ -185,6 +187,7 @@ func TestLookup(t *testing.T) {
 			t.Fatalf("failed to create client: %v", err)
 			return ctx
 		}
+		dyn := dynamic.NewForConfigOrDie(cfg.Client().RESTConfig())
 
 		opts := DeployOptions{
 			DiscoveryClient:        memory.NewMemCacheClient(discovery.NewDiscoveryClientForConfigOrDie(cfg.Client().RESTConfig())),
@@ -195,6 +198,7 @@ func TestLookup(t *testing.T) {
 			ServiceTemplatePath:    "testdata/service.yaml",
 			JsonSchemaBytes:        []byte(`{"type": "object", "properties": {"key": {"type": "string"}}}`),
 			KubeClient:             cli,
+			DynClient:              dyn,
 			NamespacedName: types.NamespacedName{
 				Namespace: "default",
 				Name:      "test-lookup",
