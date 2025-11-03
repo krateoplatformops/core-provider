@@ -1,5 +1,5 @@
 # Build phase
-FROM golang:1.24.3-bookworm AS builder
+FROM golang:1.25.0-bookworm AS builder
 LABEL stage=builder
 
 ARG DEBIAN_FRONTEND=noninteractive

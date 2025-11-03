@@ -1,4 +1,5 @@
 #!/bin/bash
 
-ko build -t latest --base-import-paths . --local
+KO_DOCKER_REPO=kind.local KIND_CLUSTER_NAME=kind ko build --base-import-paths .
+
 
