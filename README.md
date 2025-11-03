@@ -191,7 +191,7 @@ You can see a more practical guide on `core-provider` usage at [this link](cheat
 | `CORE_PROVIDER_DEBUG`                 | Enables debug logging      | `false`       | Use `--debug` flag |
 | `CORE_PROVIDER_SYNC`                  | Sync period for controller manager | `1h`          | Duration |
 | `CORE_PROVIDER_POLL_INTERVAL`         | Poll interval for resource drift checks | `5m`          | Duration |
-| `CORE_PROVIDER_MAX_RECONCILE_RATE`    | Maximum reconcile rate per second | `3`           | Integer |
+| `CORE_PROVIDER_MAX_RECONCILE_RATE`    | Maximum reconcile rate per second | `5`           | Integer |
 | `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
 | `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
