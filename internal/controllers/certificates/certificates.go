@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
+	crdclient "github.com/krateoplatformops/core-provider/internal/tools/crd"
+	crdutils "github.com/krateoplatformops/core-provider/internal/tools/crd/generation"
+
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -169,25 +169,16 @@ func (m *CertManager) GetCertsPath() string {
 	return m.certPath
 }
 
-func (m *CertManager) InjectConversionConfToCRD(crd *apiextensionsv1.CustomResourceDefinition) {
-	whport := int32(9443)
-	whpath := "/convert"
-	conf := &apiextensionsv1.CustomResourceConversion{
-		Strategy: apiextensionsv1.WebhookConverter,
-		Webhook: &apiextensionsv1.WebhookConversion{
-			ConversionReviewVersions: []string{"v1", "v1alpha1", "v1alpha2"},
-			ClientConfig: &apiextensionsv1.WebhookClientConfig{
-				Service: &apiextensionsv1.ServiceReference{
-					Namespace: m.webhookServiceMeta.Namespace,
-					Name:      m.webhookServiceMeta.Name,
-					Port:      &whport,
-					Path:      &whpath,
-				},
-				CABundle: m.caBundle,
-			},
-		},
-	}
-	crd.Spec.Conversion = conf
+func (m *CertManager) GetCABundle() []byte {
+	return m.caBundle
+}
+
+func (m *CertManager) GetServiceNamespace() string {
+	return m.webhookServiceMeta.Namespace
+}
+
+func (m *CertManager) GetServiceName() string {
+	return m.webhookServiceMeta.Name
 }
 
 func getCABundle(certsPath string) ([]byte, error) {
@@ -200,7 +191,7 @@ func getCABundle(certsPath string) ([]byte, error) {
 }
 
 func (m *CertManager) propagateCABundle(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
-	crd, err := crdtools.Get(ctx, m.kube, gvr.GroupResource())
+	crd, err := crdclient.Get(ctx, m.kube, gvr.GroupResource())
 	if err != nil {
 		return fmt.Errorf("error getting CRD: %w", err)
 	}
@@ -213,7 +204,7 @@ func (m *CertManager) propagateCABundle(ctx context.Context, cabundle []byte, gv
 
 	if len(crd.Spec.Versions) > 1 {
 		m.log("Updating CA bundle for CRD", "Name", crd.Name)
-		err = crdtools.UpdateCABundle(crd, cabundle)
+		err = crdutils.UpdateCABundle(crd, cabundle)
 		if err != nil {
 			return fmt.Errorf("error updating CA bundle: %w", err)
 		}

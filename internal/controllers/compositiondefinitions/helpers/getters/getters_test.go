@@ -1,4 +1,4 @@
-package compositiondefinitions
+package getters
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
-	"github.com/krateoplatformops/provider-runtime/pkg/logging"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -16,55 +14,6 @@ import (
 
 	fakeclient "sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
-
-func TestUpdateVersionInfo(t *testing.T) {
-	cr := &compositiondefinitionsv1alpha1.CompositionDefinition{
-		Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
-			Managed: compositiondefinitionsv1alpha1.Managed{
-				VersionInfo: []compositiondefinitionsv1alpha1.VersionDetail{},
-			},
-		},
-		Spec: compositiondefinitionsv1alpha1.CompositionDefinitionSpec{
-			Chart: &compositiondefinitionsv1alpha1.ChartInfo{
-				Repo:    "test-repo",
-				Url:     "test-url",
-				Version: "test-version",
-			},
-		},
-	}
-
-	crd := &apiextensionsv1.CustomResourceDefinition{
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{
-				{
-					Name:    "v1",
-					Served:  true,
-					Storage: true,
-				},
-			},
-		},
-	}
-
-	gvr := schema.GroupVersionResource{
-		Group:    "test-group",
-		Version:  "v1",
-		Resource: "test-resource",
-	}
-
-	updateVersionInfo(cr, crd, gvr)
-
-	if len(cr.Status.Managed.VersionInfo) != 1 {
-		t.Fatalf("expected 1 version info, got %d", len(cr.Status.Managed.VersionInfo))
-	}
-
-	vi := cr.Status.Managed.VersionInfo[0]
-	if vi.Version != "v1" {
-		t.Errorf("expected version 'v1', got '%s'", vi.Version)
-	}
-	if vi.Chart == nil {
-		t.Fatal("expected chart info to be set")
-	}
-}
 
 func TestUpdateCompositionsVersion(t *testing.T) {
 	scheme := runtime.NewScheme()
@@ -84,15 +33,13 @@ func TestUpdateCompositionsVersion(t *testing.T) {
 		{Group: "composition.krateo.io", Version: "v0-3-0", Resource: "fireworksapps"}: "TheCompositionsList",
 	}, obj1)
 
-	log := logging.NewNopLogger()
-
 	gvr := schema.GroupVersionResource{
 		Group:    "composition.krateo.io",
 		Version:  "v0-3-0",
 		Resource: "fireworksapps",
 	}
 
-	err := updateCompositionsVersion(context.Background(), dyn, log.Debug, gvr, "v2")
+	err := UpdateCompositionsVersion(context.Background(), dyn, gvr, "v2")
 	if err != nil {
 		t.Fatalf("updateCompositionsVersion failed: %v", err)
 	}
@@ -122,6 +69,8 @@ func TestGetCompositionDefinitions(t *testing.T) {
 				Namespace: "demo-system",
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "test-group/v1-0-0",
+				Kind:       "TestKind",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "test-group",
 					Kind:  "TestKind",
@@ -134,6 +83,8 @@ func TestGetCompositionDefinitions(t *testing.T) {
 				Namespace: "default",
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "test-group/v2-0-0",
+				Kind:       "OtherKind",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "test-group",
 					Kind:  "OtherKind",
@@ -154,7 +105,7 @@ func TestGetCompositionDefinitions(t *testing.T) {
 		Kind:  "TestKind",
 	}
 
-	compositions, err := getCompositionDefinitions(context.Background(), cli, gk)
+	compositions, err := GetCompositionDefinitions(context.Background(), cli, gk)
 	if err != nil {
 		t.Fatalf("getCompositionDefinitions failed: %v", err)
 	}
@@ -183,6 +134,8 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 				},
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "g1/v1-0-0",
+				Kind:       "Kind1",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "g1",
 					Kind:  "Kind1",
@@ -200,6 +153,8 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 				},
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "g1/v2-0-0",
+				Kind:       "Kind1",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "g1",
 					Kind:  "Kind1",
@@ -217,6 +172,8 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 				},
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "g2/v1-0-0",
+				Kind:       "Kind2",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "g2",
 					Kind:  "Kind2",
@@ -234,6 +191,8 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 				},
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "g2/v4-0-0",
+				Kind:       "Kind2",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "g2",
 					Kind:  "Kind2",
@@ -251,6 +210,8 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 				},
 			},
 			Status: compositiondefinitionsv1alpha1.CompositionDefinitionStatus{
+				ApiVersion: "g2/v4-0-0",
+				Kind:       "Kind2",
 				Managed: compositiondefinitionsv1alpha1.Managed{
 					Group: "g2",
 					Kind:  "Kind2",
@@ -262,7 +223,7 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 	gk := schema.GroupKind{Group: "g1", Kind: "Kind1"}
 
 	// Test: should return only cd-1 for version 1.0.0
-	comps, err := getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "1.0.0")
+	comps, err := GetCompositionDefinitionsWithVersion(context.Background(), cli, gk.WithVersion("v1-0-0"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -274,7 +235,7 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 	}
 
 	// Test: should return only cd-2 for version 2.0.0
-	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "2.0.0")
+	comps, err = GetCompositionDefinitionsWithVersion(context.Background(), cli, gk.WithVersion("v2-0-0"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,7 +247,7 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 	}
 
 	// Test: should return none for version that does not exist
-	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk, "3.0.0")
+	comps, err = GetCompositionDefinitionsWithVersion(context.Background(), cli, gk.WithVersion("v3-0-0"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -296,7 +257,7 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 
 	// Test: should return none for group/kind mismatch
 	gk2 := schema.GroupKind{Group: "g2", Kind: "Kind2"}
-	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk2, "1.0.0")
+	comps, err = GetCompositionDefinitionsWithVersion(context.Background(), cli, gk2.WithVersion("v1-0-0"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -304,7 +265,7 @@ func TestGetCompositionDefinitionsWithVersion(t *testing.T) {
 		t.Errorf("expected only cd-3, got %+v", comps)
 	}
 
-	comps, err = getCompositionDefinitionsWithVersion(context.Background(), cli, gk2, "4.0.0")
+	comps, err = GetCompositionDefinitionsWithVersion(context.Background(), cli, gk2.WithVersion("v4-0-0"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

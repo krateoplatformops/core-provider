@@ -7,15 +7,19 @@ import (
 	"path/filepath"
 	"time"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/certificates"
+	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/helpers/getters"
+	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/helpers/status"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
-	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
+	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
+	crdclient "github.com/krateoplatformops/core-provider/internal/tools/crd"
+	crdutils "github.com/krateoplatformops/core-provider/internal/tools/crd/generation"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
 	"github.com/krateoplatformops/core-provider/internal/tools/objects"
@@ -30,8 +34,6 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/resource"
 	"github.com/pkg/errors"
 	appsv1 "k8s.io/api/apps/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -39,7 +41,6 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -47,7 +48,6 @@ import (
 
 const (
 	errNotCR                       = "managed resource is not a Definition custom resource"
-	reconcileGracePeriod           = 1 * time.Minute
 	reconcileTimeout               = 4 * time.Minute
 	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
 )
@@ -70,7 +70,7 @@ type Options struct {
 }
 
 func Setup(mgr ctrl.Manager, o Options) error {
-	_ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
+	// _ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
 
 	name := reconciler.ControllerName(compositiondefinitionsv1alpha1.CompositionDefinitionGroupKind)
 
@@ -98,7 +98,7 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
 
-	ctx, cancel := context.WithTimeout(context.Background(), reconcileGracePeriod)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	err := o.CertManager.UpdateExistingResources(ctx)
 	if err != nil {
@@ -157,12 +157,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, errors.New(errNotCR)
 	}
 	log := e.log.WithValues("operation", "observe")
-	var verboseLogger func(msg string, keysAndValues ...any)
-	if meta.IsVerbose(cr) {
-		verboseLogger = log.Info // use Info here to have the logs in the events event when debug logs are not enabled
-	} else {
-		verboseLogger = logging.NewNopLogger().Debug
-	}
+	ctx = contexttools.CtxWithLogger(ctx, log)
 
 	if meta.WasDeleted(cr) {
 		log.Debug("CompositionDefinition was deleted, skipping observation")
@@ -188,30 +183,24 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if err != nil {
 		return reconciler.ExternalObservation{}, err
 	}
+	specSchemaBytes, err := chart.ChartJsonSchema(pkgInfo, dir)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error getting spec schema: %w", err)
+	}
 
 	gvr, err := e.pluralizer.GVKtoGVR(chartGVK)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			// fallback to generate the GVR from the chart info
-			bcrd, err := generateCRD(pkg, dir, chartGVK, true)
+			gvr, err = crdutils.GetGVRFromGeneratedCRD(specSchemaBytes, chartGVK)
 			if err != nil {
-				return reconciler.ExternalObservation{}, fmt.Errorf("error generating CRD for GVR fallback: %w", err)
-			}
-			crd, err := crdtools.Unmarshal(bcrd)
-			if err != nil {
-				return reconciler.ExternalObservation{}, fmt.Errorf("error unmarshalling generated CRD for GVR fallback: %w", err)
-			}
-			gvr = schema.GroupVersionResource{
-				Group:    crd.Spec.Group,
-				Version:  crd.Spec.Versions[0].Name,
-				Resource: crd.Spec.Names.Plural,
+				return reconciler.ExternalObservation{}, fmt.Errorf("error getting GVR from generated CRD for GVR fallback: %w", err)
 			}
 		} else {
 			return reconciler.ExternalObservation{}, fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, chartGVK.String())
 		}
 	}
 
-	crd, err := crdtools.Get(ctx, e.kube, gvr.GroupResource())
+	crd, err := crdclient.Get(ctx, e.kube, gvr.GroupResource())
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error getting CRD: %w", err)
 	}
@@ -224,7 +213,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 			ResourceUpToDate: false,
 		}, nil
 	}
-	existVersion, err := crdtools.Lookup(ctx, e.kube, gvr)
+
+	existVersion, err := crdclient.Lookup(ctx, e.kube, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error looking up existing CRD version: %w", err)
 	}
@@ -238,12 +228,30 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
+	genCRD, err := crdutils.GenerateCRD(specSchemaBytes, chartGVK)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error generating CRD: %w", err)
+	}
+
+	statusChanged, err := crdutils.StatusEqual(crd, genCRD)
+	if err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error comparing CRD status: %w", err)
+	}
+
+	if !statusChanged {
+		log.Debug("CRD status changed", "gvr", gvr.String())
+		return reconciler.ExternalObservation{
+			ResourceExists:   true,
+			ResourceUpToDate: false,
+		}, nil
+	}
+
 	err = e.certManager.ManageCertificates(ctx, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error managing certificates: %w", err)
 	}
 
-	ul, err := getCompositions(ctx, e.dynamic, verboseLogger, gvr)
+	ul, err := getters.GetCompositions(ctx, e.dynamic, gvr)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
 	}
@@ -269,31 +277,21 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, err
 	}
 
-	jsonschemaBytes, err := chart.ChartJsonSchemaGetter(pkgInfo, dir).Get()
-	if err != nil {
-		return reconciler.ExternalObservation{}, fmt.Errorf("error getting JSON schema: %w", err)
-	}
-
 	opts := deploy.DeployOptions{
-		RBACFolderPath:  CDCrbacConfigFolder,
-		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
-		KubeClient:      e.kube,
-		NamespacedName: types.NamespacedName{
-			Namespace: cr.Namespace,
-			Name:      resourceNamer(gvr.Resource, gvr.Version),
-		},
+		RBACFolderPath:         CDCrbacConfigFolder,
+		DiscoveryClient:        memory.NewMemCacheClient(e.client.Discovery()),
+		KubeClient:             e.kube,
+		Namespace:              cr.Namespace,
 		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
-		Log:                    verboseLogger,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
-		JsonSchemaBytes:        jsonschemaBytes,
+		JsonSchemaBytes:        specSchemaBytes,
 		ServiceTemplatePath:    ServiceTemplatePath,
 		DynClient:              e.dynamic,
 		DryRunServer:           true,
 	}
-
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
 	if err != nil {
 		return reconciler.ExternalObservation{}, fmt.Errorf("error deploying dynamic controller in dry-run mode: %w", err)
@@ -320,7 +318,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	// Sets the status of the CompositionDefinition
-	updateVersionInfo(cr, crd, gvr)
+	status.UpdateVersionInfo(cr, crd, gvr)
 	cr.Status.Managed.Group = crd.Spec.Group
 	cr.Status.Managed.Kind = crd.Spec.Names.Kind
 	cr.Status.ApiVersion, cr.Status.Kind = chartGVK.ToAPIVersionAndKind()
@@ -342,6 +340,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	}
 
 	log := e.log.WithValues("operation", "create")
+	ctx = contexttools.CtxWithLogger(ctx, log)
 
 	log.Info("Creating CompositionDefinition")
 
@@ -361,52 +360,40 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	var crd *apiextensionsv1.CustomResourceDefinition
-	bcrd, err := generateCRD(pkg, dir, gvk, false)
+	specSchemaBytes, err := chart.ChartJsonSchema(pkg, dir)
+	if err != nil {
+		return fmt.Errorf("error getting JSON schema: %w", err)
+	}
+	crd, err := crdutils.GenerateCRD(specSchemaBytes, gvk)
 	if err != nil {
 		return fmt.Errorf("error generating CRD: %w", err)
-	}
-	crd, err = crdtools.Unmarshal(bcrd)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling generated CRD: %w", err)
 	}
 	if crd == nil {
 		return fmt.Errorf("error generating CRD: crd is nil")
 	}
 
-	gvr, err := applyOrUpdateCRD(ctx, e.kube, e.dynamic, crd, e.certManager, log.Debug)
+	gvr, err := crdclient.ApplyOrUpdateCRD(ctx, e.kube, e.dynamic, crd, crdclient.ApplyOpts{
+		CABundle:                e.certManager.GetCABundle(),
+		WebhookServiceNamespace: e.certManager.GetServiceNamespace(),
+		WebhookServiceName:      e.certManager.GetServiceName(),
+	})
 	if err != nil {
 		return fmt.Errorf("error applying or updating CRD: %w", err)
 	}
 
-	jsonSchemaGetter := chart.ChartJsonSchemaGetter(pkg, dir)
-	jsonSchemaBytes, err := jsonSchemaGetter.Get()
-	if err != nil {
-		return fmt.Errorf("error getting JSON schema: %w", err)
-	}
 	opts := deploy.DeployOptions{
-		RBACFolderPath:  CDCrbacConfigFolder,
-		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
-		KubeClient:      e.kube,
-		NamespacedName: types.NamespacedName{
-			Namespace: cr.Namespace,
-			Name:      resourceNamer(gvr.Resource, gvr.Version),
-		},
+		RBACFolderPath:         CDCrbacConfigFolder,
+		DiscoveryClient:        memory.NewMemCacheClient(e.client.Discovery()),
+		KubeClient:             e.kube,
+		Namespace:              cr.Namespace,
 		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		ServiceTemplatePath:    ServiceTemplatePath,
-		JsonSchemaBytes:        jsonSchemaBytes,
+		JsonSchemaBytes:        specSchemaBytes,
 		DynClient:              e.dynamic,
-		Log: func(msg string, keysAndValues ...any) {
-			if meta.IsVerbose(cr) {
-				log.Debug(msg, keysAndValues...)
-			} else {
-				logging.NewNopLogger().Debug(msg, keysAndValues...)
-			}
-		},
 	}
 
 	dig, err := deploy.Deploy(ctx, e.kube, opts)
@@ -436,14 +423,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	}
 
 	log := e.log.WithValues("operation", "update")
-
-	verboseLogger := func(msg string, keysAndValues ...any) {
-		if meta.IsVerbose(cr) {
-			log.Debug(msg, keysAndValues...)
-		} else {
-			logging.NewNopLogger().Debug(msg, keysAndValues...)
-		}
-	}
+	ctx = contexttools.CtxWithLogger(ctx, log)
 
 	log.Info("Updating CompositionDefinition")
 
@@ -468,45 +448,39 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return err
 	}
 
-	var crd *apiextensionsv1.CustomResourceDefinition
-	bcrd, err := generateCRD(pkg, dir, gvk, false)
+	specSchemaBytes, err := chart.ChartJsonSchema(pkg, dir)
+	if err != nil {
+		return fmt.Errorf("error getting JSON schema: %w", err)
+	}
+	crd, err := crdutils.GenerateCRD(specSchemaBytes, gvk)
 	if err != nil {
 		return fmt.Errorf("error generating CRD: %w", err)
-	}
-	crd, err = crdtools.Unmarshal(bcrd)
-	if err != nil {
-		return fmt.Errorf("error unmarshalling generated CRD: %w", err)
 	}
 	if crd == nil {
 		return fmt.Errorf("error generating CRD: crd is nil")
 	}
 
-	gvr, err := applyOrUpdateCRD(ctx, e.kube, e.dynamic, crd, e.certManager, log.Debug)
+	gvr, err := crdclient.ApplyOrUpdateCRD(ctx, e.kube, e.dynamic, crd, crdclient.ApplyOpts{
+		CABundle:                e.certManager.GetCABundle(),
+		WebhookServiceNamespace: e.certManager.GetServiceNamespace(),
+		WebhookServiceName:      e.certManager.GetServiceName(),
+	})
 	if err != nil {
 		return fmt.Errorf("error applying or updating CRD: %w", err)
 	}
 
-	jsonschemaBytes, err := chart.ChartJsonSchemaGetter(pkg, dir).Get()
-	if err != nil {
-		return fmt.Errorf("error getting JSON schema: %w", err)
-	}
-
 	opts := deploy.DeployOptions{
-		RBACFolderPath:  CDCrbacConfigFolder,
-		DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
-		KubeClient:      e.kube,
-		NamespacedName: types.NamespacedName{
-			Namespace: cr.Namespace,
-			Name:      resourceNamer(gvr.Resource, gvr.Version),
-		},
+		RBACFolderPath:         CDCrbacConfigFolder,
+		DiscoveryClient:        memory.NewMemCacheClient(e.client.Discovery()),
+		KubeClient:             e.kube,
+		Namespace:              cr.Namespace,
 		GVR:                    gvr,
 		Spec:                   cr.Spec.Chart.DeepCopy(),
 		DeploymentTemplatePath: CDCtemplateDeploymentPath,
 		ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 		JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
 		ServiceTemplatePath:    ServiceTemplatePath,
-		JsonSchemaBytes:        jsonschemaBytes,
-		Log:                    verboseLogger,
+		JsonSchemaBytes:        specSchemaBytes,
 		DynClient:              e.dynamic,
 	}
 
@@ -542,12 +516,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 					Spec:                   (*compositiondefinitionsv1alpha1.ChartInfo)(vi.Chart),
 					GVR:                    oldGVR,
 					KubeClient:             e.kube,
-					NamespacedName: types.NamespacedName{
-						Name:      resourceNamer(oldGVR.Resource, oldGVR.Version),
-						Namespace: cr.Namespace,
-					},
-					SkipCRD: true,
-					Log:     verboseLogger,
+					Namespace:              cr.Namespace,
+					SkipCRD:                true,
 				})
 				if err != nil {
 					return fmt.Errorf("error undeploying older version of dynamic controller: %w", err)
@@ -558,7 +528,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	}
 	log.Debug("Updating Compositions", "gvr", gvr.String())
 	if oldGVK.Version != gvk.Version && cr.Status.Kind == gvk.Kind && oldGVK.Group == gvk.Group {
-		err = updateCompositionsVersion(ctx, e.dynamic, verboseLogger, oldGVR, gvk.Version)
+		err = getters.UpdateCompositionsVersion(ctx, e.dynamic, oldGVR, gvk.Version)
 		if err != nil {
 			return fmt.Errorf("error updating compositions version: %w", err)
 		}
@@ -580,13 +550,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return errors.New(errNotCR)
 	}
 	log := e.log.WithValues("operation", "delete")
-
-	var verboseLogger func(msg string, keysAndValues ...any)
-	if meta.IsVerbose(cr) {
-		verboseLogger = log.Info // use Info here to have the logs in the events event when debug logs are not enabled
-	} else {
-		verboseLogger = logging.NewNopLogger().Debug
-	}
+	ctx = contexttools.CtxWithLogger(ctx, log)
 
 	cr.SetConditions(rtv1.Deleting())
 	err := e.kube.Status().Update(ctx, cr)
@@ -596,12 +560,12 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting chart info: %w", err)
 	}
 
 	gvk, err := chart.ChartGroupVersionKind(pkg, dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("error getting chart GVK: %w", err)
 	}
 
 	var gvr schema.GroupVersionResource
@@ -615,10 +579,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 	}
 	if crdExist {
-		lst, err := getCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupKind{
-			Group: gvk.Group,
-			Kind:  gvk.Kind,
-		}, cr.Spec.Chart.Version)
+		lst, err := getters.GetCompositionDefinitionsWithVersion(ctx, e.kube, schema.GroupVersionKind{
+			Group:   gvk.Group,
+			Kind:    gvk.Kind,
+			Version: gvk.Version,
+		})
 		if err != nil {
 			return fmt.Errorf("error getting CompositionDefinitions: %w", err)
 		}
@@ -626,7 +591,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			log.Debug("Deleting Compositions of this version", "gvk", gvk.String())
 
 			// Delete compositions of this version manually
-			ul, err := getCompositions(ctx, e.dynamic, verboseLogger, gvr)
+			ul, err := getters.GetCompositions(ctx, e.dynamic, gvr)
 			if err != nil {
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
@@ -639,7 +604,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 				}
 			}
 
-			ul, err = getCompositions(ctx, e.dynamic, verboseLogger, gvr)
+			ul, err = getters.GetCompositions(ctx, e.dynamic, gvr)
 			if err != nil {
 				return fmt.Errorf("error getting compositions: %w", err)
 			}
@@ -649,7 +614,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		}
 
 		var skipCRD bool
-		lst, err = getCompositionDefinitions(ctx, e.kube, schema.GroupKind{
+		lst, err = getters.GetCompositionDefinitions(ctx, e.kube, schema.GroupKind{
 			Group: gvk.Group,
 			Kind:  gvk.Kind,
 		})
@@ -665,14 +630,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		}
 
 		opts := deploy.UndeployOptions{
-			DiscoveryClient: memory.NewMemCacheClient(e.client.Discovery()),
-			Spec:            cr.Spec.Chart.DeepCopy(),
-			KubeClient:      e.kube,
-			GVR:             gvr,
-			NamespacedName: types.NamespacedName{
-				Name:      resourceNamer(gvr.Resource, gvr.Version),
-				Namespace: cr.Namespace,
-			},
+			DiscoveryClient:        memory.NewMemCacheClient(e.client.Discovery()),
+			Spec:                   cr.Spec.Chart.DeepCopy(),
+			KubeClient:             e.kube,
+			GVR:                    gvr,
+			Namespace:              cr.Namespace,
 			SkipCRD:                skipCRD,
 			DynamicClient:          e.dynamic,
 			RBACFolderPath:         CDCrbacConfigFolder,
@@ -680,7 +642,6 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 			ServiceTemplatePath:    ServiceTemplatePath,
 			ConfigmapTemplatePath:  CDCtemplateConfigmapPath,
 			JsonSchemaTemplatePath: JSONSchemaTemplateConfigmapPath,
-			Log:                    verboseLogger,
 		}
 
 		err = deploy.Undeploy(ctx, e.kube, opts)

@@ -21,7 +21,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ .name }}
     spec:
-      serviceAccountName: {{ .name }}
+      serviceAccountName: {{ .resource }}-{{ .apiVersion }}
       securityContext:
         {}
       containers:

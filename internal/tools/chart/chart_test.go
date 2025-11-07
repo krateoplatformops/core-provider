@@ -116,7 +116,7 @@ func TestJsonSchemaFromOCI(t *testing.T) {
 
 		t.Logf("root dir: %s\n", rootdir)
 
-		s, err := ChartJsonSchemaGetter(pkg, rootdir).Get()
+		s, err := ChartJsonSchema(pkg, rootdir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,15 +145,7 @@ func TestCRDGenFromOCI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// res := crdgen.Generate(context.TODO(), crdgen.Options{
-	// 	Managed:              true,
-	// 	WorkDir:              dir,
-	// 	GVK:                  gvk,
-	// 	Categories:           []string{"compositions", "comps"},
-	// 	SpecJsonSchemaGetter: ChartJsonSchemaGetter(pkg, dir),
-	// })
-
-	specSchema, err := ChartJsonSchemaGetter(pkg, dir).Get()
+	specSchema, err := ChartJsonSchema(pkg, dir)
 	if err != nil {
 		t.Fatal(err)
 	}

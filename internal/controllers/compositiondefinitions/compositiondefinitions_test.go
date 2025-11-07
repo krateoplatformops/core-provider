@@ -28,6 +28,8 @@ import (
 	"github.com/stoewer/go-strcase"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -35,19 +37,21 @@ import (
 
 	"github.com/krateoplatformops/core-provider/apis"
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/certificates"
+	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
+	"github.com/krateoplatformops/core-provider/internal/tools/kube/watcher"
 	"github.com/krateoplatformops/plumbing/e2e"
 	xenv "github.com/krateoplatformops/plumbing/env"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
+	"k8s.io/client-go/dynamic"
+	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
 	"sigs.k8s.io/e2e-framework/klient/decoder"
-	"sigs.k8s.io/e2e-framework/klient/k8s"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
 	"sigs.k8s.io/e2e-framework/klient/wait"
 	"sigs.k8s.io/e2e-framework/klient/wait/conditions"
@@ -77,6 +81,9 @@ func TestMain(m *testing.M) {
 	clusterName = "krateo-core-provider-controller"
 	testenv = env.New()
 	kindCluster := kind.NewCluster(clusterName)
+
+	_ = apiextensionsv1.AddToScheme(clientsetscheme.Scheme)
+	_ = apis.AddToScheme(clientsetscheme.Scheme)
 
 	cleanAssetFolder := func(ctx context.Context, c *envconf.Config) (context.Context, error) {
 		err := os.RemoveAll(filepath.Join(os.TempDir(), "assets"))
@@ -271,10 +278,10 @@ func TestController(t *testing.T) {
 			GlobalRateLimiter:       ratelimiter.NewGlobalExponential(1*time.Second, 1*time.Minute),
 		}
 
-		if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-			log.Info("Cannot add APIs to scheme", "error", err)
-			os.Exit(1)
-		}
+		// if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
+		// 	log.Info("Cannot add APIs to scheme", "error", err)
+		// 	os.Exit(1)
+		// }
 
 		if err := Setup(mgr, Options{
 			ControllerOptions: o,
@@ -297,18 +304,42 @@ func TestController(t *testing.T) {
 		}
 		var cdli []v1alpha1.CompositionDefinition
 		for _, fi := range fli {
-			cd, ok := fi.(*v1alpha1.CompositionDefinition)
-			if !ok {
-				t.Fatalf("expected CompositionDefinition, got %T", fi)
+			switch v := fi.(type) {
+			case *v1alpha1.CompositionDefinition:
+				cdli = append(cdli, *v)
+			case *unstructured.Unstructured:
+				var cd v1alpha1.CompositionDefinition
+				if err := runtime.DefaultUnstructuredConverter.FromUnstructured(v.Object, &cd); err != nil {
+					t.Fatalf("unable to convert unstructured to CompositionDefinition: %v", err)
+				}
+				cdli = append(cdli, cd)
+			default:
+				t.Fatalf("expected CompositionDefinition or Unstructured, got %T", fi)
 			}
-			cdli = append(cdli, *cd)
 		}
 		return cdli
 	}
 
+	var r *resources.Resources
+
 	f := features.New("Setup").
 		Setup(func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			stopCtx, stop := context.WithCancel(context.Background())
+
+			var err error
+			r, err = resources.New(cfg.Client().RESTConfig())
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			err = apis.AddToScheme(r.GetScheme())
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = apiextensionsv1.AddToScheme(r.GetScheme())
+			if err != nil {
+				t.Fatal(err)
+			}
 
 			go func() {
 				_, err := setupController(stopCtx, cfg)
@@ -322,33 +353,41 @@ func TestController(t *testing.T) {
 			return ctx
 		}).
 		Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-			r, err := resources.New(cfg.Client().RESTConfig())
-			if err != nil {
-				t.Fail()
-			}
+			// r, err := resources.New(cfg.Client().RESTConfig())
+			// if err != nil {
+			// 	t.Fail()
+			// }
 
-			apis.AddToScheme(r.GetScheme())
+			// apis.AddToScheme(r.GetScheme())
 			r.WithNamespace(namespace)
 
 			cdli := getCDLI(ctx)
 			for _, res := range cdli {
 				// Create CompositionDefinition
-				err = r.Create(ctx, &res)
+				err := r.Create(ctx, &res)
 				if err != nil {
 					t.Fatal(err)
 				}
 			}
 
+			time.Sleep(5 * time.Second) // wait for the controller to pick up the new resources
+
+			dynamic := dynamic.NewForConfigOrDie(cfg.Client().RESTConfig())
 			for _, res := range cdli {
 				//wait for resource to be created
-				if err := wait.For(
-					conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-						mg := object.(*v1alpha1.CompositionDefinition)
-						return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable && mg.GetCondition(rtv1.TypeReady).Status == metav1.ConditionTrue
-					}),
-					wait.WithTimeout(5*time.Minute),
-					wait.WithInterval(5*time.Second),
-				); err != nil {
+
+				if err := watcher.NewWatcher(
+					dynamic,
+					schema.GroupVersionResource{
+						Group:    v1alpha1.Group,
+						Version:  v1alpha1.Version,
+						Resource: "compositiondefinitions",
+					},
+					5*time.Minute,
+					func(cd *v1alpha1.CompositionDefinition) bool {
+						return cd.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable && cd.GetCondition(rtv1.TypeReady).Status == metav1.ConditionTrue
+					},
+				).WatchResource(ctx, namespace, res.Name); err != nil {
 					obj := v1alpha1.CompositionDefinition{}
 					r.Get(ctx, res.Name, namespace, &obj)
 					b, _ := json.MarshalIndent(obj.Status, "", "  ")
@@ -370,16 +409,16 @@ func TestController(t *testing.T) {
 			},
 		}
 
-		r, err := resources.New(cfg.Client().RESTConfig())
-		if err != nil {
-			t.Fail()
-		}
-		apis.AddToScheme(r.GetScheme())
+		// r, err := resources.New(cfg.Client().RESTConfig())
+		// if err != nil {
+		// 	t.Fail()
+		// }
+		// apis.AddToScheme(r.GetScheme())
 		r.WithNamespace(namespace)
 
 		for _, test := range toUpgrade {
 			var res v1alpha1.CompositionDefinition
-			err = decoder.DecodeFile(
+			err := decoder.DecodeFile(
 				os.DirFS(filepath.Join(testdataPath)), test.filename,
 				&res,
 				decoder.MutateNamespace(namespace),
@@ -405,7 +444,7 @@ func TestController(t *testing.T) {
 			oldVersionNormalized := normalizeVersion(test.currentVersion, '-')
 			newVersionNormalized := normalizeVersion(test.newVersion, '-')
 			var res v1alpha1.CompositionDefinition
-			err = decoder.DecodeFile(
+			err := decoder.DecodeFile(
 				os.DirFS(filepath.Join(testdataPath)), test.filename,
 				&res,
 				decoder.MutateNamespace(namespace),
@@ -414,25 +453,25 @@ func TestController(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			t.Logf("Checking CompositionDefinition %s for upgrade to version %s", test.filename, newVersionNormalized)
-
 			//wait for resource to be created
-			if err := wait.For(
-				conditions.New(r).ResourceMatch(&res, func(object k8s.Object) bool {
-					t.Logf("Checking CompositionDefinition %s for new version %s", test.filename, newVersionNormalized)
-					b, _ := json.MarshalIndent(object, "", "  ")
-					t.Logf("CompositionDefinition Object: %s", string(b))
-					mg := object.(*v1alpha1.CompositionDefinition)
-					return mg.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
-						len(mg.Status.Managed.VersionInfo) == 3 &&
-						slices.ContainsFunc(mg.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
-							t.Logf("Checking version %s against new version %s", v.Version, newVersionNormalized)
+
+			watcher := watcher.NewWatcher(
+				dynamic.NewForConfigOrDie(cfg.Client().RESTConfig()),
+				schema.GroupVersionResource{
+					Group:    v1alpha1.Group,
+					Version:  v1alpha1.Version,
+					Resource: "compositiondefinitions",
+				},
+				3*time.Minute,
+				func(cd *v1alpha1.CompositionDefinition) bool {
+					return cd.GetCondition(rtv1.TypeReady).Reason == rtv1.ReasonAvailable &&
+						len(cd.Status.Managed.VersionInfo) == 3 &&
+						slices.ContainsFunc(cd.Status.Managed.VersionInfo, func(v v1alpha1.VersionDetail) bool {
 							return v.Version == newVersionNormalized
 						})
-				}),
-				wait.WithTimeout(15*time.Minute),
-				wait.WithInterval(15*time.Second),
-			); err != nil {
+				},
+			)
+			if err := watcher.WatchResource(ctx, namespace, res.Name); err != nil {
 				obj := v1alpha1.CompositionDefinition{}
 				r.Get(ctx, res.Name, namespace, &obj)
 				b, _ := json.MarshalIndent(obj.Status, "", "  ")
@@ -440,9 +479,14 @@ func TestController(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			err = r.Get(ctx, res.Name, namespace, &res)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			var crd apiextensionsv1.CustomResourceDefinition
 
-			apiextensionsv1.AddToScheme(r.GetScheme())
+			// apiextensionsv1.AddToScheme(r.GetScheme())
 
 			gv, err := schema.ParseGroupVersion(res.Status.ApiVersion)
 			if err != nil {
@@ -477,18 +521,18 @@ func TestController(t *testing.T) {
 
 		return ctx
 	}).Assess("Test Delete", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
-		r, err := resources.New(cfg.Client().RESTConfig())
-		if err != nil {
-			t.Fail()
-		}
-		apis.AddToScheme(r.GetScheme())
+		// r, err := resources.New(cfg.Client().RESTConfig())
+		// if err != nil {
+		// 	t.Fail()
+		// }
+		// apis.AddToScheme(r.GetScheme())
 		r.WithNamespace(namespace)
 
 		cdli := getCDLI(ctx)
 
 		for _, res := range cdli {
 			// Delete CompositionDefinition
-			err = r.Delete(ctx, &res)
+			err := r.Delete(ctx, &res)
 			if err != nil {
 				t.Fatal(err)
 			}

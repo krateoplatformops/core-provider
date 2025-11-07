@@ -96,21 +96,8 @@ func ChartGroupVersionKind(tgzFS fs.FS, rootDir string) (schema.GroupVersionKind
 	}, nil
 }
 
-func ChartJsonSchemaGetter(tgzFS fs.FS, rootDir string) *chartJsonSchemaGetter {
-	return &chartJsonSchemaGetter{
-		tgzFS: tgzFS, rootDir: rootDir,
-	}
-}
-
-// var _ crdgen.JsonSchemaGetter = (*chartJsonSchemaGetter)(nil)
-
-type chartJsonSchemaGetter struct {
-	tgzFS   fs.FS
-	rootDir string
-}
-
-func (g *chartJsonSchemaGetter) Get() ([]byte, error) {
-	fin, err := g.tgzFS.Open(g.rootDir + "/values.schema.json")
+func ChartJsonSchema(tgzFS fs.FS, rootDir string) ([]byte, error) {
+	fin, err := tgzFS.Open(rootDir + "/values.schema.json")
 	if err != nil {
 		return nil, err
 	}

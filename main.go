@@ -10,8 +10,8 @@ import (
 
 	"github.com/go-logr/logr"
 
+	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
-	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/certificates"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
