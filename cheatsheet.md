@@ -511,9 +511,6 @@ kubectl patch fireworksapp fireworksapp-composition-1 \
 
 At this point, the old composition will be deleted and the new composition will be upgraded to version 1.1.14.
 
-
-
-
 #### 4. Upgrading a single Composition or a subset of Compositions to a new version of a CompositionDefinition
 
 ##### Scenario:
