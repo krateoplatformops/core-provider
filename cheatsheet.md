@@ -10,9 +10,10 @@
     - [1. Deploying Multiple Versions](#1-deploying-multiple-versions)
     - [2. Upgrading Compositions (massive migration)](#2-upgrading-compositions-massive-migration)
     - [3. Upgrading Compositions with changes in the `values.schema.json`](#3-upgrading-compositions-with-changes-in-the-valuesschemajson)
-    - [4. Pausing Composition Reconciliation](#4-pausing-composition-reconciliation)
-    - [5. Pausing Composition Gracefully](#5-pausing-composition-gracefully)
-    - [6. Safely Deleting Compositions](#6-safely-deleting-compositions)
+    - [4. Upgrading a single Composition or a subset of Compositions to a new version of a CompositionDefinition](#4-upgrading-a-single-composition-or-a-subset-of-compositions-to-a-new-version-of-a-compositiondefinition)
+    - [5. Pausing Composition Reconciliation](#5-pausing-composition-reconciliation)
+    - [6. Pausing Composition Gracefully](#6-pausing-composition-gracefully)
+    - [7. Safely Deleting Compositions](#7-safely-deleting-compositions)
 - [Troubleshooting Guide](#troubleshooting-guide)
   - [Common Issues and Diagnostic Procedures](#common-issues-and-diagnostic-procedures)
     - [1. CompositionDefinition Not Becoming Ready](#1-compositiondefinition-not-becoming-ready)
@@ -510,7 +511,215 @@ kubectl patch fireworksapp fireworksapp-composition-1 \
 
 At this point, the old composition will be deleted and the new composition will be upgraded to version 1.1.14.
 
-#### 4. Pausing Composition Reconciliation
+#### 4. Upgrading a single Composition or a subset of Compositions to a new version of a CompositionDefinition
+
+##### Scenario:
+This can be useful when you want to upgrade only specific Compositions after a new version of a CompositionDefinition is released, while keeping other Compositions on the previous version. This allows for a gradual migration and testing of the new version without impacting all existing Compositions at once.
+
+Suppose you have installed the CompositionDefinition `github-scaffolding-lifecycle-v1` with version 0.0.1, you have already created some Compositions based on it, and now you want to upgrade only some of these Compositions to version 0.0.2 of the CompositionDefinition.
+Note that the version 0.0.2 of the CompositionDefinition introduces an additional field `description` at path `git.toRepo.description`, with a default value.
+
+##### Step 1: Setup Initial CompositionDefinition and Compositions
+
+Let's setup the initial CompositionDefinition with version 0.0.1:
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: github-scaffolding-lifecycle-v1
+  namespace: default
+spec:
+  chart:
+    repo: github-scaffolding-lifecycle
+    url: https://marketplace.krateo.io
+    version: 0.0.1
+EOF
+```
+
+Now, let's create two Compositions based on this CompositionDefinition:
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: composition.krateo.io/v0-0-1
+kind: GithubScaffoldingLifecycle
+metadata:
+  name: composition-1
+  namespace: default
+spec:
+  argocd:
+    namespace: krateo-system
+    application:
+      project: default
+      source:
+        path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: fireworks-app
+      syncEnabled: false
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  app:
+    service:
+      type: NodePort
+      port: 31180
+  git:
+    unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-test
+      name: postdemoday-1
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
+EOF
+```
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: composition.krateo.io/v0-0-1
+kind: GithubScaffoldingLifecycle
+metadata:
+  name: composition-2
+  namespace: default
+spec:
+  argocd:
+    namespace: krateo-system
+    application:
+      project: default
+      source:
+        path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: fireworks-app
+      syncEnabled: false
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  app:
+    service:
+      type: NodePort
+      port: 31180
+  git:
+    unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-test
+      name: postdemoday-1
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
+EOF
+```
+
+At this point, both `composition-1` and `composition-2` are based on version 0.0.1 of the CompositionDefinition and are managed by the same CDC (`githubscaffoldinglifecycles-v0-0-1-controller`).
+
+##### Step 2: Apply the New Version of the CompositionDefinition
+
+Now, let's apply the new version 0.0.2 of the CompositionDefinition:
+
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: github-scaffolding-lifecycle-v2
+  namespace: default
+spec:
+  chart:
+    repo: github-scaffolding-lifecycle
+    url: https://marketplace.krateo.io
+    version: 0.0.2
+EOF
+```
+
+##### Step 3: Upgrade Specific Composition to the New Version
+
+In order to upgrade only `composition-2` to version 0.0.2 of the CompositionDefinition, we need to update 2 labels on the `composition-2` resource.
+
+From:
+```yaml
+krateo.io/composition-definition-name: github-scaffolding-lifecycle-v1
+krateo.io/composition-version: v0-0-1
+```
+To:
+```yaml
+krateo.io/composition-definition-name: github-scaffolding-lifecycle-v2
+krateo.io/composition-version: v0-0-2
+```
+
+The other labels should remain unchanged.
+
+##### Step 4: Verify the Upgrade
+
+At this point, the CDC `githubscaffoldinglifecycles-v0-0-2-controller` will take over the management of `composition-2` while `composition-1` will still be managed by the previous CDC `githubscaffoldinglifecycles-v0-0-1-controller`.
+
+To check whether the upgrade was successful, you can check the newly added default field `description` in the `toRepo` section of `composition-2`:
+
+```sh
+kubectl get githubscaffoldinglifecycles.v0-0-2.composition.krateo.io composition-2 -o yaml
+```
+
+Note that checking the version v0-0-1 of `composition-2` will not show the new `description` field.
+
+Additionally, checking the logs of both CDCs will show that `composition-2` is being reconciled by the new CDC
+(`githubscaffoldinglifecycles-v0-0-2-controller`) while `composition-1` continues to be reconciled by the old CDC (`githubscaffoldinglifecycles-v0-0-1-controller`).
+
+#### 5. Pausing Composition Reconciliation
 
 ##### Use Case:
 Temporarily stop automatic reconciliation during maintenance or troubleshooting.
@@ -555,12 +764,12 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
 
 
 
-#### 5. Pausing Composition Gracefully
+#### 6. Pausing Composition Gracefully
 `composition-dynamic-controller` 0.19.3 and later (released with `core-provider-chart` 0.33.4) supports a graceful pause mechanism that ensures any resource managed by the composition will be paused *before* the composition reconciliation is paused. This means the resources managed by the composition will not be reconciled until the composition is resumed.
 
 To support this feature, you need to follow the steps described in the [`composition-dynamic-controller` documentation](https://github.com/krateoplatformops/composition-dynamic-controller?tab=readme-ov-file#about-the-gracefullypaused-value). Please note that this feature is not supported for compositions created with versions of `composition-dynamic-controller` earlier than 0.19.3, and you will need to modify your chart according to the documentation linked above.
 
-#### 6. Safely Deleting Compositions
+#### 7. Safely Deleting Compositions
 
 You can safely delete all compositions and their associated resources using the following command:
 
