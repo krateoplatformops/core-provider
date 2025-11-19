@@ -11,7 +11,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
-	github.com/krateoplatformops/crdgen/v2 v2.0.0-20251107101456-5eda518e4e2f
+	github.com/krateoplatformops/crdgen/v2 v2.0.0-20251118105831-3961a71aad61
 	github.com/krateoplatformops/plumbing v0.7.2
 	github.com/krateoplatformops/provider-runtime v0.10.1-0.20251103163105-99c0637f4654
 	github.com/pkg/errors v0.9.1
