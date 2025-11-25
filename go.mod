@@ -1,6 +1,6 @@
 module github.com/krateoplatformops/core-provider
 
-go 1.25.0
+go 1.25.3
 
 require (
 	github.com/Masterminds/semver v1.5.0
@@ -11,8 +11,7 @@ require (
 	github.com/go-logr/logr v1.4.3
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
-	github.com/krateoplatformops/crdgen/v2 v2.0.0-20251118105831-3961a71aad61
-	github.com/krateoplatformops/plumbing v0.7.2
+	github.com/krateoplatformops/plumbing v0.8.0
 	github.com/krateoplatformops/provider-runtime v0.10.1-0.20251103163105-99c0637f4654
 	github.com/pkg/errors v0.9.1
 	github.com/stoewer/go-strcase v1.3.0

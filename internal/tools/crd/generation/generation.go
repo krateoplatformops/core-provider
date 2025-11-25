@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer/json"
 
 	hasher "github.com/krateoplatformops/core-provider/internal/tools/hash"
-	"github.com/krateoplatformops/crdgen/v2"
+	"github.com/krateoplatformops/plumbing/crdgen"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -181,6 +181,23 @@ func StatusEqual(crd1, crd2 *apiextensionsv1.CustomResourceDefinition) (bool, er
 	}
 
 	return crdHasher.GetHash() == genCRDHasher.GetHash(), nil
+}
+
+func GVKExists(crd *apiextensionsv1.CustomResourceDefinition, gvk schema.GroupVersionKind) bool {
+	// Check if the CRD has the given GVK
+	if crd.Spec.Group != gvk.Group {
+		return false
+	}
+	if crd.Spec.Names.Kind != gvk.Kind {
+		return false
+	}
+
+	for _, v := range crd.Spec.Versions {
+		if v.Name == gvk.Version {
+			return true
+		}
+	}
+	return false
 }
 
 func GetGVRFromGeneratedCRD(specSchema []byte, gvk schema.GroupVersionKind) (schema.GroupVersionResource, error) {

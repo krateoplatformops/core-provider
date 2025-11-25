@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/crdgen/v2"
+	"github.com/krateoplatformops/plumbing/crdgen"
 	"github.com/krateoplatformops/plumbing/e2e"
 	xenv "github.com/krateoplatformops/plumbing/env"
 	"sigs.k8s.io/controller-runtime/pkg/client"

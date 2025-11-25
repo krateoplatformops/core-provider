@@ -184,6 +184,14 @@ func ApplyOrUpdateCRD(ctx context.Context,
 		}
 		return gvr, nil
 	}
+	if generation.GVKExists(crd, schema.GroupVersionKind{
+		Group:   newcrd.Spec.Group,
+		Kind:    newcrd.Spec.Names.Kind,
+		Version: gvr.Version,
+	}) {
+		log.Debug("CRD version exists and is equal, skipping update", "crd", crd.Name, "version", gvr.Version)
+		return gvr, nil
+	}
 
 	crd, err = generation.AppendVersion(*crd, *newcrd)
 	if err != nil {
