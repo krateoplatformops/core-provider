@@ -1,6 +1,6 @@
 builds:
-- id: core-provider
-  #main: main.go
+- id: core-provider-dev
+  main: main.go
   dir: . 
   env:
   - CGO_ENABLED=0
@@ -10,5 +10,5 @@ builds:
   - -extldflags "-static"
 defaultPlatforms:
 - linux/arm64
-#- linux/amd64
-defaultBaseImage: golang:1.25.0-alpine
+- linux/amd64
+defaultBaseImage: golang:1.25.3-alpine

@@ -12,7 +12,7 @@ require (
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
 	github.com/krateoplatformops/plumbing v0.8.0
-	github.com/krateoplatformops/provider-runtime v0.10.1-0.20251103163105-99c0637f4654
+	github.com/krateoplatformops/provider-runtime v0.10.2
 	github.com/pkg/errors v0.9.1
 	github.com/stoewer/go-strcase v1.3.0
 	github.com/stretchr/testify v1.11.1
