@@ -11,4 +11,4 @@ builds:
 defaultPlatforms:
 - linux/arm64
 #- linux/amd64
-defaultBaseImage: golang:1.24.3-alpine
+defaultBaseImage: golang:1.25.0-alpine

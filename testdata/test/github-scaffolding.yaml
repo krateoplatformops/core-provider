@@ -1,0 +1,11 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: github-scaffolding
+  annotations:
+    krateo.io/connector-verbose: "true"
+spec:
+  chart:
+    repo: github-scaffolding
+    url: https://marketplace.krateo.io
+    version: 1.0.0

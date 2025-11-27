@@ -6,6 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
+
+	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
+	"github.com/krateoplatformops/provider-runtime/pkg/logging"
+
+	"github.com/krateoplatformops/core-provider/internal/tools/kube/watcher"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	definitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crd "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -38,11 +45,10 @@ type UndeployOptions struct {
 	DiscoveryClient        discovery.CachedDiscoveryInterface
 	KubeClient             client.Client
 	DynamicClient          dynamic.Interface
-	NamespacedName         types.NamespacedName
+	Namespace              string
 	GVR                    schema.GroupVersionResource
 	Spec                   *definitionsv1alpha1.ChartInfo
 	RBACFolderPath         string
-	Log                    func(msg string, keysAndValues ...any)
 	SkipCRD                bool
 	DeploymentTemplatePath string
 	ServiceTemplatePath    string
@@ -55,7 +61,8 @@ type DeployOptions struct {
 	GVR                    schema.GroupVersionResource
 	DiscoveryClient        discovery.CachedDiscoveryInterface
 	KubeClient             client.Client
-	NamespacedName         types.NamespacedName
+	DynClient              dynamic.Interface
+	Namespace              string
 	Spec                   *definitionsv1alpha1.ChartInfo
 	RBACFolderPath         string
 	DeploymentTemplatePath string
@@ -63,15 +70,12 @@ type DeployOptions struct {
 	JsonSchemaTemplatePath string
 	ServiceTemplatePath    string
 	JsonSchemaBytes        []byte
-	Log                    func(msg string, keysAndValues ...any)
 	// DryRunServer is used to determine if the deployment should be applied in dry-run mode. This is ignored in lookup mode
 	DryRunServer bool
 }
 
-func logError(log func(msg string, keysAndValues ...any), msg string, err error) {
-	if log != nil {
-		log(msg, "error", err)
-	}
+func resourceNamer(resourceName string, chartVersion string) string {
+	return fmt.Sprintf("%s-%s", resourceName, chartVersion)
 }
 
 func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.NamespacedName, rbacFolderPath string) (corev1.ServiceAccount, rbacv1.ClusterRole, rbacv1.ClusterRoleBinding, rbacv1.Role, rbacv1.RoleBinding, error) {
@@ -108,13 +112,14 @@ func createRBACResources(gvr schema.GroupVersionResource, rbacNSName types.Names
 	return sa, clusterrole, clusterrolebinding, role, rolebinding, nil
 }
 
-func installRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any), hsh *hasher.ObjectHash, applyOpts kubecli.ApplyOptions) error {
+func installRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, hsh *hasher.ObjectHash, applyOpts kubecli.ApplyOptions) error {
 	if hsh == nil {
 		return fmt.Errorf("hasher is required")
 	}
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
 	err := kubecli.Apply(ctx, kubeClient, &clusterrole, applyOpts)
 	if err != nil {
-		logError(log, "Error installing clusterrole", err)
+		log.Error(err, "installing clusterrole", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
 		return err
 	}
 
@@ -122,33 +127,33 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 	if err != nil {
 		return fmt.Errorf("error hashing clusterrole: %v", err)
 	}
-	log("ClusterRole successfully hashed", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
+	log.Debug("ClusterRole successfully hashed", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Apply(ctx, kubeClient, &clusterrolebinding, applyOpts)
 	if err != nil {
-		logError(log, "Error installing clusterrolebinding", err)
+		log.Error(err, "installing clusterrolebinding", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
 		return err
 	}
 	err = hsh.SumHash(clusterrolebinding.ObjectMeta.Name, clusterrolebinding.ObjectMeta.Namespace, clusterrolebinding.Subjects, clusterrolebinding.RoleRef)
 	if err != nil {
 		return fmt.Errorf("error hashing clusterrolebinding: %v", err)
 	}
-	log("ClusterRoleBinding successfully installesd", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
+	log.Debug("ClusterRoleBinding successfully installed", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Apply(ctx, kubeClient, &role, applyOpts)
 	if err != nil {
-		logError(log, "Error installing role", err)
+		log.Error(err, "installing role", "name", role.Name, "namespace", role.Namespace)
 		return err
 	}
 	err = hsh.SumHash(role.ObjectMeta.Name, role.ObjectMeta.Namespace, role.Rules)
 	if err != nil {
 		return fmt.Errorf("error hashing role: %v", err)
 	}
-	log("Role successfully installed", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+	log.Debug("Role successfully installed", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Apply(ctx, kubeClient, &rolebinding, applyOpts)
 	if err != nil {
-		logError(log, "Error installing rolebinding", err)
+		log.Error(err, "installing rolebinding", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 		return err
 	}
 	err = hsh.SumHash(rolebinding.ObjectMeta.Name, rolebinding.ObjectMeta.Namespace, rolebinding.Subjects, rolebinding.RoleRef)
@@ -156,121 +161,143 @@ func installRBACResources(ctx context.Context, kubeClient client.Client, cluster
 		return fmt.Errorf("error hashing rolebinding: %v", err)
 	}
 
-	log("RoleBinding successfully installed", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+	log.Debug("RoleBinding successfully installed", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Apply(ctx, kubeClient, &sa, applyOpts)
 	if err != nil {
-		logError(log, "Error installing serviceaccount", err)
+		log.Error(err, "installing serviceaccount", "name", sa.Name, "namespace", sa.Namespace)
 		return err
 	}
 	err = hsh.SumHash(sa.ObjectMeta.Name, sa.ObjectMeta.Namespace)
 	if err != nil {
 		return fmt.Errorf("error hashing serviceaccount: %v", err)
 	}
-	log("ServiceAccount successfully installed", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
+	log.Debug("ServiceAccount successfully installed", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
 
 	return nil
 }
 
-func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any), hsh *hasher.ObjectHash) error {
+func lookupRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, hsh *hasher.ObjectHash) error {
 	if hsh == nil {
 		return fmt.Errorf("hasher is required")
 	}
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
+
 	err := kubecli.Get(ctx, kubeClient, &clusterrole)
 	if err != nil {
-		logError(log, "Error getting clusterrole", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log.Debug("ClusterRole not found", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+			clusterrole = rbacv1.ClusterRole{}
+		} else {
+			return fmt.Errorf("error getting clusterrole: %w", err)
+		}
 	}
 	err = hsh.SumHash(clusterrole.ObjectMeta.Name, clusterrole.ObjectMeta.Namespace, clusterrole.Rules)
 	if err != nil {
 		return fmt.Errorf("error hashing clusterrole: %v", err)
 	}
-	log("ClusterRole successfully fetched", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
+	log.Debug("ClusterRole successfully fetched", "name", clusterrole.Name, "namespace", clusterrole.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Get(ctx, kubeClient, &clusterrolebinding)
 	if err != nil {
-		logError(log, "Error getting clusterrolebinding", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log.Debug("ClusterRoleBinding not found", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+			clusterrolebinding = rbacv1.ClusterRoleBinding{}
+		} else {
+			return fmt.Errorf("error getting clusterrolebinding: %w", err)
+		}
 	}
 	err = hsh.SumHash(clusterrolebinding.ObjectMeta.Name, clusterrolebinding.ObjectMeta.Namespace, clusterrolebinding.Subjects, clusterrolebinding.RoleRef)
 	if err != nil {
 		return fmt.Errorf("error hashing clusterrolebinding: %v", err)
 	}
-	log("ClusterRoleBinding successfully fetched", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
+	log.Debug("ClusterRoleBinding successfully fetched", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Get(ctx, kubeClient, &role)
 	if err != nil {
-		logError(log, "Error getting role", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log.Debug("Role not found", "name", role.Name, "namespace", role.Namespace)
+			role = rbacv1.Role{}
+		} else {
+			return fmt.Errorf("error getting role: %w", err)
+		}
 	}
 	err = hsh.SumHash(role.ObjectMeta.Name, role.ObjectMeta.Namespace, role.Rules)
 	if err != nil {
 		return fmt.Errorf("error hashing role: %v", err)
 	}
-	log("Role successfully fetched", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+	log.Debug("Role successfully fetched", "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Get(ctx, kubeClient, &rolebinding)
 	if err != nil {
-		logError(log, "Error getting rolebinding", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log.Debug("RoleBinding not found", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+			rolebinding = rbacv1.RoleBinding{}
+		} else {
+			return fmt.Errorf("error getting rolebinding: %w", err)
+		}
 	}
 	err = hsh.SumHash(rolebinding.ObjectMeta.Name, rolebinding.ObjectMeta.Namespace, rolebinding.Subjects, rolebinding.RoleRef)
 	if err != nil {
 		return fmt.Errorf("error hashing rolebinding: %v", err)
 	}
-	log("RoleBinding successfully fetched", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+	log.Debug("RoleBinding successfully fetched", "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
 
 	err = kubecli.Get(ctx, kubeClient, &sa)
 	if err != nil {
-		logError(log, "Error getting serviceaccount", err)
-		return err
+		if apierrors.IsNotFound(err) {
+			log.Debug("ServiceAccount not found", "name", sa.Name, "namespace", sa.Namespace)
+			sa = corev1.ServiceAccount{}
+		} else {
+			return fmt.Errorf("error getting serviceaccount: %w", err)
+		}
 	}
 	err = hsh.SumHash(sa.ObjectMeta.Name, sa.ObjectMeta.Namespace)
 	if err != nil {
 		return fmt.Errorf("error hashing serviceaccount: %v", err)
 	}
-	log("ServiceAccount successfully fetched", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
+	log.Debug("ServiceAccount successfully fetched", "name", sa.Name, "namespace", sa.Namespace, "digest", hsh.GetHash())
 
 	return nil
 }
 
-func uninstallRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount, log func(msg string, keysAndValues ...any)) error {
-	if log == nil {
-		return fmt.Errorf("log function is required")
-	}
+func uninstallRBACResources(ctx context.Context, kubeClient client.Client, clusterrole rbacv1.ClusterRole, clusterrolebinding rbacv1.ClusterRoleBinding, role rbacv1.Role, rolebinding rbacv1.RoleBinding, sa corev1.ServiceAccount) error {
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
+
 	err := kubecli.Uninstall(ctx, kubeClient, &clusterrole, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(log, "Error uninstalling clusterrole", err)
+		log.Error(err, "Error uninstalling clusterrole", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
 		return err
 	}
-	log("ClusterRole successfully uninstalled", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
+	log.Debug("ClusterRole successfully uninstalled", "name", clusterrole.Name, "namespace", clusterrole.Namespace)
 
 	err = kubecli.Uninstall(ctx, kubeClient, &clusterrolebinding, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(log, "Error uninstalling clusterrolebinding", err)
+		log.Error(err, "Error uninstalling clusterrolebinding", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+		return err
 	}
-	log("ClusterRoleBinding successfully uninstalled", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
+	log.Debug("ClusterRoleBinding successfully uninstalled", "name", clusterrolebinding.Name, "namespace", clusterrolebinding.Namespace)
 
 	err = kubecli.Uninstall(ctx, kubeClient, &role, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(log, "Error uninstalling role", err)
+		log.Error(err, "uninstalling role", "name", role.Name, "namespace", role.Namespace)
 		return err
 	}
-	log("Role successfully uninstalled", "name", role.Name, "namespace", role.Namespace)
+	log.Debug("Role successfully uninstalled", "name", role.Name, "namespace", role.Namespace)
 
 	err = kubecli.Uninstall(ctx, kubeClient, &rolebinding, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(log, "Error uninstalling rolebinding", err)
+		log.Error(err, "uninstalling rolebinding", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 		return err
 	}
-	log("RoleBinding successfully uninstalled", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+	log.Debug("RoleBinding successfully uninstalled", "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 
 	err = kubecli.Uninstall(ctx, kubeClient, &sa, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(log, "Error uninstalling serviceaccount", err)
+		log.Error(err, "uninstalling serviceaccount", "name", sa.Name, "namespace", sa.Namespace)
 		return err
 	}
-	log("ServiceAccount successfully uninstalled", "name", sa.Name, "namespace", sa.Namespace)
+	log.Debug("ServiceAccount successfully uninstalled", "name", sa.Name, "namespace", sa.Namespace)
 
 	return nil
 }
@@ -278,15 +305,18 @@ func uninstallRBACResources(ctx context.Context, kubeClient client.Client, clust
 func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest string, err error) {
 	applyOpts := kubecli.ApplyOptions{}
 
+	namespacedName := types.NamespacedName{
+		Namespace: opts.Namespace,
+		Name:      resourceNamer(opts.GVR.Resource, opts.GVR.Version),
+	}
+
 	if opts.DryRunServer {
 		applyOpts.DryRun = []string{"All"}
 	}
 
-	if opts.Log == nil {
-		return "", fmt.Errorf("log function is required")
-	}
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
 
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(opts.NamespacedName), opts.RBACFolderPath)
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(namespacedName), opts.RBACFolderPath)
 	if err != nil {
 		return "", err
 	}
@@ -296,17 +326,17 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 		role := rbacv1.Role{}
 		err = objects.CreateK8sObject(&role,
 			opts.GVR,
-			getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}),
+			getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}),
 			filepath.Join(opts.RBACFolderPath, "secret-role.yaml"),
 			"secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
-			logError(opts.Log, "Error creating role", err)
+			log.Error(err, "creating role")
 			return "", err
 		}
 
 		err = kubecli.Apply(ctx, kube, &role, applyOpts)
 		if err != nil {
-			logError(opts.Log, "Error installing role", err)
+			log.Error(err, "installing role")
 			return "", err
 		}
 		err = hsh.SumHash(role.ObjectMeta.Name, role.ObjectMeta.Namespace, role.Rules)
@@ -314,39 +344,39 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 			return "", fmt.Errorf("error hashing role: %v", err)
 		}
 
-		opts.Log("Role successfully hashed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+		log.Debug("Role successfully hashed", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
 
 		rolebinding := rbacv1.RoleBinding{}
 		err := objects.CreateK8sObject(&rolebinding,
 			opts.GVR,
-			getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}),
+			getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}),
 			filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"),
 			"serviceAccount", sa.Name,
 			"saNamespace", sa.Namespace)
 		if err != nil {
-			logError(opts.Log, "Error creating rolebinding", err)
+			log.Error(err, "creating rolebinding")
 			return "", err
 		}
 
 		err = kubecli.Apply(ctx, kube, &rolebinding, applyOpts)
 		if err != nil {
-			logError(opts.Log, "Error installing rolebinding", err)
+			log.Error(err, "installing rolebinding")
 			return "", err
 		}
 		err = hsh.SumHash(rolebinding.ObjectMeta.Name, rolebinding.ObjectMeta.Namespace, rolebinding.Subjects, rolebinding.RoleRef)
 		if err != nil {
 			return "", fmt.Errorf("error hashing rolebinding: %v", err)
 		}
-		opts.Log("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+		log.Debug("RoleBinding successfully installed", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
 	}
 
-	err = installRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log, &hsh, applyOpts)
+	err = installRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, &hsh, applyOpts)
 	if err != nil {
 		return "", err
 	}
 
 	jsonSchemaConfigmap := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(opts.NamespacedName), opts.JsonSchemaTemplatePath,
+	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(namespacedName), opts.JsonSchemaTemplatePath,
 		"schema", string(opts.JsonSchemaBytes),
 	)
 	if err != nil {
@@ -360,10 +390,10 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	if err != nil {
 		return "", fmt.Errorf("error hashing JSON schema configmap: %v", err)
 	}
-	opts.Log("JSON Schema ConfigMap successfully installed", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace, "digest", hsh.GetHash())
+	log.Debug("JSON Schema ConfigMap successfully installed", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace, "digest", hsh.GetHash())
 
 	cm := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(opts.NamespacedName), opts.ConfigmapTemplatePath,
+	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(namespacedName), opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -371,20 +401,20 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Apply(ctx, opts.KubeClient, &cm, applyOpts)
 	if err != nil {
-		logError(opts.Log, "Error installing configmap", err)
+		log.Error(err, "installing configmap")
 		return "", err
 	}
 	err = hsh.SumHash(cm.ObjectMeta.Name, cm.ObjectMeta.Namespace, cm.Data)
 	if err != nil {
 		return "", fmt.Errorf("error hashing configmap: %v", err)
 	}
-	opts.Log("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
+	log.Debug("Configmap successfully installed", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
 
 	dep := appsv1.Deployment{}
 	err = objects.CreateK8sObject(
 		&dep,
 		opts.GVR,
-		getCDCDeploymentNN(opts.NamespacedName),
+		getCDCDeploymentNN(namespacedName),
 		opts.DeploymentTemplatePath,
 		"serviceAccountName", sa.Name)
 	if err != nil {
@@ -392,25 +422,8 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Apply(ctx, opts.KubeClient, &dep, applyOpts)
 	if err != nil {
-		logError(opts.Log, "Error installing deployment", err)
+		log.Error(err, "installing deployment")
 		return "", err
-	}
-
-	if !opts.DryRunServer {
-		// Deployment needs to be restarted if the hash changes to get the new configmap
-		err = kubecli.Get(ctx, opts.KubeClient, &dep)
-		if err != nil {
-			logError(opts.Log, "Error installing deployment", err)
-			return "", err
-		}
-		// restart only if deployment is presently running
-		if dep.Status.ReadyReplicas == dep.Status.Replicas {
-			err = deployment.RestartDeployment(ctx, opts.KubeClient, &dep)
-			if err != nil {
-				logError(opts.Log, "Error restarting deployment", err)
-				return "", err
-			}
-		}
 	}
 
 	deployment.CleanFromRestartAnnotation(&dep)
@@ -419,44 +432,76 @@ func Deploy(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	if err != nil {
 		return "", fmt.Errorf("error hashing deployment spec: %v", err)
 	}
-	opts.Log("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
+	log.Debug("Deployment successfully installed", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
 	_, err = os.Stat(opts.ServiceTemplatePath)
 	if err == nil {
 		svc := corev1.Service{}
-		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(namespacedName), opts.ServiceTemplatePath)
 		if err != nil {
-			logError(opts.Log, "Error creating service", err)
+			log.Error(err, "creating service")
 			return "", err
 		}
 
 		err = kubecli.Apply(ctx, opts.KubeClient, &svc, applyOpts)
 		if err != nil {
-			logError(opts.Log, "Error installing service", err)
+			log.Error(err, "installing service")
 			return "", err
 		}
 		err = hsh.SumHash(svc.ObjectMeta.Name, svc.ObjectMeta.Namespace, svc.Spec)
 		if err != nil {
 			return "", fmt.Errorf("error hashing service: %v", err)
 		}
-		opts.Log("Service successfully installed", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+		log.Debug("Service successfully installed", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+	}
+
+	if !opts.DryRunServer {
+		// Wait for deployment to be ready after creation
+		err := watcher.NewWatcher(opts.DynClient,
+			appsv1.SchemeGroupVersion.WithResource("deployments"),
+			1*time.Minute,
+			deployment.IsReady).WatchResource(ctx, dep.GetNamespace(), dep.GetName())
+		if err != nil {
+			log.Error(err, "waiting for deployment to be ready")
+			return "", fmt.Errorf("error waiting for deployment to be ready: %w", err)
+		}
+
+		// Deployment needs to be restarted if the hash changes to get the new configmap
+		err = deployment.RestartDeployment(ctx, opts.KubeClient, &dep)
+		if err != nil {
+			log.Error(err, "restarting deployment")
+			return "", err
+		}
+
+		// Wait for deployment to be ready after restart
+		err = watcher.NewWatcher(opts.DynClient,
+			appsv1.SchemeGroupVersion.WithResource("deployments"),
+			1*time.Minute,
+			deployment.IsReady).WatchResource(ctx, dep.GetNamespace(), dep.GetName())
+		if err != nil {
+			log.Error(err, "waiting for deployment to be ready")
+			return "", fmt.Errorf("waiting for deployment to be ready: %w", err)
+		}
 	}
 
 	return hsh.GetHash(), nil
 }
 
 func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) error {
-	if opts.Log == nil {
-		return fmt.Errorf("log function is required")
+	namespacedName := types.NamespacedName{
+		Namespace: opts.Namespace,
+		Name:      resourceNamer(opts.GVR.Resource, opts.GVR.Version),
 	}
 
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(opts.NamespacedName), opts.RBACFolderPath)
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
+
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(namespacedName), opts.RBACFolderPath)
 	if err != nil {
 		return err
 	}
 
 	jsonSchemaConfigmap := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(opts.NamespacedName), opts.JsonSchemaTemplatePath,
+	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(namespacedName), opts.JsonSchemaTemplatePath,
 		"schema", string(opts.JsonSchemaBytes),
 	)
 	if err != nil {
@@ -464,16 +509,16 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	}
 	err = kubecli.Uninstall(ctx, opts.KubeClient, &jsonSchemaConfigmap, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(opts.Log, "Error uninstalling ConfigMap for JSON schema", err)
+		log.Error(err, "Error uninstalling ConfigMap for JSON schema")
 		return err
 	}
-	opts.Log("JSON Schema ConfigMap successfully uninstalled", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace)
+	log.Debug("JSON Schema ConfigMap successfully uninstalled", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace)
 
 	dep := appsv1.Deployment{}
 	err = objects.CreateK8sObject(
 		&dep,
 		opts.GVR,
-		getCDCDeploymentNN(opts.NamespacedName),
+		getCDCDeploymentNN(namespacedName),
 		opts.DeploymentTemplatePath,
 		"serviceAccountName", sa.Name)
 	if err != nil {
@@ -482,13 +527,13 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 
 	err = kubecli.Uninstall(ctx, opts.KubeClient, &dep, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(opts.Log, "Error uninstalling deployment", err)
+		log.Error(err, "Error uninstalling deployment", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
 		return err
 	}
-	opts.Log("Deployment successfully uninstalled", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+	log.Debug("Deployment successfully uninstalled", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
 
 	cm := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(opts.NamespacedName), opts.ConfigmapTemplatePath,
+	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(namespacedName), opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -497,12 +542,12 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 
 	err = kubecli.Uninstall(ctx, opts.KubeClient, &cm, kubecli.UninstallOptions{})
 	if err != nil {
-		logError(opts.Log, "Error uninstalling configmap", err)
+		log.Error(err, "uninstalling configmap")
 		return err
 	}
-	opts.Log("Configmap successfully uninstalled", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+	log.Debug("Configmap successfully uninstalled", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
 
-	err = uninstallRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log)
+	err = uninstallRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa)
 	if err != nil {
 		return err
 	}
@@ -510,59 +555,59 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 	_, err = os.Stat(opts.ServiceTemplatePath)
 	if err == nil {
 		svc := corev1.Service{}
-		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(namespacedName), opts.ServiceTemplatePath)
 		if err != nil {
-			logError(opts.Log, "Error creating service", err)
+			log.Error(err, "creating service")
 			return err
 		}
 
 		err = kubecli.Uninstall(ctx, opts.KubeClient, &svc, kubecli.UninstallOptions{})
 		if err != nil {
-			logError(opts.Log, "Error uninstalling service", err)
+			log.Error(err, "uninstalling service")
 			return err
 		}
-		opts.Log("Service successfully uninstalled", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace)
+		log.Debug("Service successfully uninstalled", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace)
 	}
 
 	if opts.Spec.Credentials != nil {
 		role := rbacv1.Role{}
-		err = objects.CreateK8sObject(&role, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		err = objects.CreateK8sObject(&role, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
-			logError(opts.Log, "Error creating role", err)
+			log.Error(err, "creating role")
 			return err
 		}
 
 		err = kubecli.Uninstall(ctx, opts.KubeClient, &role, kubecli.UninstallOptions{})
 		if err != nil {
-			logError(opts.Log, "Error uninstalling role", err)
+			log.Error(err, "uninstalling role")
 			return err
 		}
-		opts.Log("Role successfully uninstalled", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
+		log.Debug("Role successfully uninstalled", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace)
 
 		rolebinding := rbacv1.RoleBinding{}
-		err = objects.CreateK8sObject(&rolebinding, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"))
 		if err != nil {
-			logError(opts.Log, "Error creating rolebinding", err)
+			log.Error(err, "creating rolebinding")
 			return err
 		}
 
 		err = kubecli.Uninstall(ctx, opts.KubeClient, &rolebinding, kubecli.UninstallOptions{})
 		if err != nil {
-			logError(opts.Log, "Error uninstalling rolebinding", err)
+			log.Error(err, "uninstalling rolebinding")
 			return err
 		}
-		opts.Log("RoleBinding successfully uninstalled", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
+		log.Debug("RoleBinding successfully uninstalled", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace)
 	}
 
-	opts.Log("RBAC resources successfully uninstalled", "gvr", opts.GVR.String())
+	log.Debug("RBAC resources successfully uninstalled", "gvr", opts.GVR.String())
 
 	if !opts.SkipCRD {
 		err := crd.Uninstall(ctx, opts.KubeClient, opts.GVR.GroupResource())
 		if err != nil {
-			opts.Log("Error uninstalling CRD", "name", opts.GVR.GroupResource().String(), "error", err)
+			log.Debug("Error uninstalling CRD", "name", opts.GVR.GroupResource().String(), "error", err)
 			return err
 		}
-		opts.Log("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
+		log.Debug("CRD successfully uninstalled", "name", opts.GVR.GroupResource().String())
 	}
 
 	return nil
@@ -571,11 +616,14 @@ func Undeploy(ctx context.Context, kube client.Client, opts UndeployOptions) err
 // This function is used to lookup the current state of the deployment and return the hash of the current state
 // This is used to determine if the deployment needs to be updated or not
 func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest string, err error) {
-	if opts.Log == nil {
-		return "", fmt.Errorf("log function is required")
+	namespacedName := types.NamespacedName{
+		Namespace: opts.Namespace,
+		Name:      resourceNamer(opts.GVR.Resource, opts.GVR.Version),
 	}
 
-	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(opts.NamespacedName), opts.RBACFolderPath)
+	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
+
+	sa, clusterrole, clusterrolebinding, role, rolebinding, err := createRBACResources(opts.GVR, getCDCrbacNN(namespacedName), opts.RBACFolderPath)
 	if err != nil {
 		return "", err
 	}
@@ -583,49 +631,49 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	hsh := hasher.NewFNVObjectHash()
 	if opts.Spec.Credentials != nil {
 		role := rbacv1.Role{}
-		err = objects.CreateK8sObject(&role, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
+		err = objects.CreateK8sObject(&role, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-role.yaml"), "secretName", opts.Spec.Credentials.PasswordRef.Name)
 		if err != nil {
-			logError(opts.Log, "Error creating role", err)
+			log.Error(err, "creating role")
 			return "", err
 		}
 
 		err = kubecli.Get(ctx, kube, &role)
 		if err != nil {
-			logError(opts.Log, "Error fetching role", err)
+			log.Error(err, "fetching role")
 			return "", err
 		}
 		err = hsh.SumHash(role.ObjectMeta.Name, role.ObjectMeta.Namespace, role.Rules)
 		if err != nil {
 			return "", fmt.Errorf("error hashing role: %v", err)
 		}
-		opts.Log("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
+		log.Debug("Role successfully fetched", "gvr", opts.GVR.String(), "name", role.Name, "namespace", role.Namespace, "digest", hsh.GetHash())
 
 		rolebinding := rbacv1.RoleBinding{}
-		err = objects.CreateK8sObject(&rolebinding, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: opts.NamespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
+		err = objects.CreateK8sObject(&rolebinding, opts.GVR, getCDCrbacNN(types.NamespacedName{Namespace: opts.Spec.Credentials.PasswordRef.Namespace, Name: namespacedName.Name}), filepath.Join(opts.RBACFolderPath, "secret-rolebinding.yaml"), "serviceAccount", sa.Name, "saNamespace", sa.Namespace)
 		if err != nil {
-			logError(opts.Log, "Error creating rolebinding", err)
+			log.Error(err, "creating rolebinding")
 			return "", err
 		}
 
 		err = kubecli.Get(ctx, kube, &rolebinding)
 		if err != nil {
-			logError(opts.Log, "Error fetching rolebinding", err)
+			log.Error(err, "fetching rolebinding")
 			return "", err
 		}
 		err = hsh.SumHash(rolebinding.ObjectMeta.Name, rolebinding.ObjectMeta.Namespace, rolebinding.Subjects, rolebinding.RoleRef)
 		if err != nil {
 			return "", fmt.Errorf("error hashing rolebinding: %v", err)
 		}
-		opts.Log("RoleBinding successfully fetched", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
+		log.Debug("RoleBinding successfully fetched", "gvr", opts.GVR.String(), "name", rolebinding.Name, "namespace", rolebinding.Namespace, "digest", hsh.GetHash())
 	}
 
-	err = lookupRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, opts.Log, &hsh)
+	err = lookupRBACResources(ctx, opts.KubeClient, clusterrole, clusterrolebinding, role, rolebinding, sa, &hsh)
 	if err != nil {
 		return "", err
 	}
 
 	jsonSchemaConfigmap := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(opts.NamespacedName), opts.JsonSchemaTemplatePath,
+	err = objects.CreateK8sObject(&jsonSchemaConfigmap, opts.GVR, getJsonSchemaConfigmapNN(namespacedName), opts.JsonSchemaTemplatePath,
 		"schema", string(opts.JsonSchemaBytes),
 	)
 	if err != nil {
@@ -633,16 +681,22 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Get(ctx, opts.KubeClient, &jsonSchemaConfigmap)
 	if err != nil {
-		return "", fmt.Errorf("error fetching ConfigMap for JSON schema: %w", err)
+		if apierrors.IsNotFound(err) {
+			log.Debug("JSON Schema ConfigMap not found", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace)
+			jsonSchemaConfigmap = corev1.ConfigMap{}
+		} else {
+			log.Error(err, "fetching ConfigMap for JSON schema")
+			return "", fmt.Errorf("error fetching ConfigMap for JSON schema: %w", err)
+		}
 	}
 	err = hsh.SumHash(jsonSchemaConfigmap.ObjectMeta.Name, jsonSchemaConfigmap.ObjectMeta.Namespace)
 	if err != nil {
 		return "", fmt.Errorf("error hashing JSON schema configmap: %v", err)
 	}
-	opts.Log("JSON Schema ConfigMap successfully fetched", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace, "digest", hsh.GetHash())
+	log.Debug("JSON Schema ConfigMap successfully fetched", "gvr", opts.GVR.String(), "name", jsonSchemaConfigmap.Name, "namespace", jsonSchemaConfigmap.Namespace, "digest", hsh.GetHash())
 
 	cm := corev1.ConfigMap{}
-	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(opts.NamespacedName), opts.ConfigmapTemplatePath,
+	err = objects.CreateK8sObject(&cm, opts.GVR, getCDCConfigmapNN(namespacedName), opts.ConfigmapTemplatePath,
 		"composition_controller_sa_name", sa.Name,
 		"composition_controller_sa_namespace", sa.Namespace)
 	if err != nil {
@@ -650,20 +704,25 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	}
 	err = kubecli.Get(ctx, opts.KubeClient, &cm)
 	if err != nil {
-		logError(opts.Log, "Error fetching configmap", err)
-		return "", err
+		if apierrors.IsNotFound(err) {
+			log.Debug("Configmap not found", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace)
+			cm = corev1.ConfigMap{}
+		} else {
+			log.Error(err, "fetching configmap")
+			return "", fmt.Errorf("error fetching configmap: %w", err)
+		}
 	}
 	err = hsh.SumHash(cm.ObjectMeta.Name, cm.ObjectMeta.Namespace, cm.Data)
 	if err != nil {
 		return "", fmt.Errorf("error hashing configmap: %v", err)
 	}
-	opts.Log("Configmap successfully fetched", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
+	log.Debug("Configmap successfully fetched", "gvr", opts.GVR.String(), "name", cm.Name, "namespace", cm.Namespace, "digest", hsh.GetHash())
 
 	dep := appsv1.Deployment{}
 	err = objects.CreateK8sObject(
 		&dep,
 		opts.GVR,
-		getCDCDeploymentNN(opts.NamespacedName),
+		getCDCDeploymentNN(namespacedName),
 		opts.DeploymentTemplatePath,
 		"serviceAccountName", sa.Name)
 	if err != nil {
@@ -672,8 +731,13 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 
 	err = kubecli.Get(ctx, opts.KubeClient, &dep)
 	if err != nil {
-		logError(opts.Log, "Error fetching deployment", err)
-		return "", err
+		if apierrors.IsNotFound(err) {
+			log.Debug("Deployment not found", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace)
+			dep = appsv1.Deployment{}
+		} else {
+			log.Error(err, "fetching deployment")
+			return "", fmt.Errorf("error fetching deployment: %w", err)
+		}
 	}
 
 	deployment.CleanFromRestartAnnotation(&dep)
@@ -682,26 +746,31 @@ func Lookup(ctx context.Context, kube client.Client, opts DeployOptions) (digest
 	if err != nil {
 		return "", fmt.Errorf("error hashing deployment spec: %v", err)
 	}
-	opts.Log("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
+	log.Debug("Deployment successfully fetched", "gvr", opts.GVR.String(), "name", dep.Name, "namespace", dep.Namespace, "digest", hsh.GetHash())
 
 	_, err = os.Stat(opts.ServiceTemplatePath)
 	if err == nil {
 		svc := corev1.Service{}
-		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(opts.NamespacedName), opts.ServiceTemplatePath)
+		err = objects.CreateK8sObject(&svc, opts.GVR, getCDCDeploymentNN(namespacedName), opts.ServiceTemplatePath)
 		if err != nil {
-			logError(opts.Log, "Error creating service", err)
+			log.Error(err, "creating service")
 			return "", err
 		}
 		err = kubecli.Get(ctx, opts.KubeClient, &svc)
 		if err != nil {
-			logError(opts.Log, "Error fetching service", err)
-			return "", err
+			if apierrors.IsNotFound(err) {
+				log.Debug("Service not found", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace)
+				svc = corev1.Service{}
+			} else {
+				log.Error(err, "fetching service")
+				return "", fmt.Errorf("error fetching service: %w", err)
+			}
 		}
 		err = hsh.SumHash(svc.ObjectMeta.Name, svc.ObjectMeta.Namespace, svc.Spec)
 		if err != nil {
 			return "", fmt.Errorf("error hashing service: %v", err)
 		}
-		opts.Log("Service successfully fetched", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
+		log.Debug("Service successfully fetched", "gvr", opts.GVR.String(), "name", svc.Name, "namespace", svc.Namespace, "digest", hsh.GetHash())
 	}
 
 	return hsh.GetHash(), nil

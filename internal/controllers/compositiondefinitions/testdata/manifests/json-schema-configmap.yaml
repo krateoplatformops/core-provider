@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .resource }}-{{ .apiVersion }}-jsonschema-configmap
+  namespace: {{ .namespace }}
+data:
+  "values.schema.json" : |-
+{{ .schema | indent 4 }}

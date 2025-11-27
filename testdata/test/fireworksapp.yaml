@@ -1,0 +1,11 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: fireworks-app-2 
+  annotations:
+    krateo.io/connector-verbose: "true"
+spec:
+  chart:
+    repo: fireworks-app
+    url: https://charts.krateo.io
+    version: 2.0.3

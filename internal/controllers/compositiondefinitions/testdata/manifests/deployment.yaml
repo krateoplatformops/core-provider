@@ -21,13 +21,13 @@ spec:
       labels:
         app.kubernetes.io/name: {{ .name }}
     spec:
-      serviceAccountName: {{ .resource }}-{{ .apiVersion }}
+      serviceAccountName: {{ .serviceAccountName}}
       securityContext:
         {}
       containers:
         - name: {{ .resource }}-{{ .apiVersion }}-controller
-          image: "ghcr.io/krateoplatformops/composition-dynamic-controller:0.15.4"
-          imagePullPolicy: Always
+          image: "ghcr.io/krateoplatformops/composition-dynamic-controller:latest"
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: {{ .resource }}-{{ .apiVersion }}-configmap

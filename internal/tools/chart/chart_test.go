@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/crdgen"
+	"github.com/krateoplatformops/plumbing/crdgen"
 	"github.com/krateoplatformops/plumbing/e2e"
 	xenv "github.com/krateoplatformops/plumbing/env"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -31,12 +31,8 @@ var (
 )
 
 const (
-	crdPath       = "../../../../crds"
-	testdataPath  = "../../../../testdata"
-	manifestsPath = "../../../../manifests"
-	scriptsPath   = "../../../../scripts"
-
-	testFileName = "compositiondefinition-common.yaml"
+	crdPath      = "../../../../crds"
+	testdataPath = "../../../../testdata"
 )
 
 func TestMain(m *testing.M) {
@@ -120,7 +116,7 @@ func TestJsonSchemaFromOCI(t *testing.T) {
 
 		t.Logf("root dir: %s\n", rootdir)
 
-		s, err := ChartJsonSchemaGetter(pkg, rootdir).Get()
+		s, err := ChartJsonSchema(pkg, rootdir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -149,16 +145,22 @@ func TestCRDGenFromOCI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res := crdgen.Generate(context.TODO(), crdgen.Options{
-		Managed:              true,
-		WorkDir:              dir,
-		GVK:                  gvk,
-		Categories:           []string{"compositions", "comps"},
-		SpecJsonSchemaGetter: ChartJsonSchemaGetter(pkg, dir),
-	})
-	if res.Err != nil {
-		t.Fatal(res.Err)
+	specSchema, err := ChartJsonSchema(pkg, dir)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	fmt.Println(string(res.Manifest))
+	res, err := crdgen.Generate(crdgen.Options{
+		Group:      gvk.Group,
+		Version:    gvk.Version,
+		Kind:       gvk.Kind,
+		Managed:    true,
+		Categories: []string{"compositions", "comps"},
+		SpecSchema: specSchema,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println(string(res))
 }
