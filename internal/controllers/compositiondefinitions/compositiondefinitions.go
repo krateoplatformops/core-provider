@@ -22,7 +22,6 @@ import (
 
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
-	"github.com/krateoplatformops/core-provider/internal/tools/objects"
 	pluralizerlib "github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
@@ -33,11 +32,9 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/reconciler"
 	"github.com/krateoplatformops/provider-runtime/pkg/resource"
 	"github.com/pkg/errors"
-	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -267,15 +264,6 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 
 	log.Debug("Searching for Dynamic Controller", "gvr", gvr)
-
-	obj := appsv1.Deployment{}
-	err = objects.CreateK8sObject(&obj, gvr, types.NamespacedName{
-		Namespace: cr.Namespace,
-		Name:      cr.Name,
-	}, CDCtemplateDeploymentPath)
-	if err != nil {
-		return reconciler.ExternalObservation{}, err
-	}
 
 	opts := deploy.DeployOptions{
 		RBACFolderPath:         CDCrbacConfigFolder,
