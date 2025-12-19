@@ -1,5 +1,6 @@
 ## Comprehensive Deployment Guide with Expected Outcomes
 
+- [Comprehensive Deployment Guide with Expected Outcomes](#comprehensive-deployment-guide-with-expected-outcomes)
 - [Introduction](#introduction)
 - [Prerequisites](#prerequisites)
   - [Initial Setup](#initial-setup)
@@ -9,7 +10,7 @@
   - [Advanced Operations](#advanced-operations)
     - [1. Deploying Multiple Versions](#1-deploying-multiple-versions)
     - [2. Upgrading Compositions (massive migration)](#2-upgrading-compositions-massive-migration)
-    - [3. Upgrading Compositions with changes in the `values.schema.json`](#3-upgrading-compositions-with-changes-in-the-valuesschemajson)
+    - [3. Upgrading Compositions with breaking changes in the `values.schema.json`](#3-upgrading-compositions-with-breaking-changes-in-the-valuesschemajson)
     - [4. Upgrading a single Composition or a subset of Compositions to a new version of a CompositionDefinition](#4-upgrading-a-single-composition-or-a-subset-of-compositions-to-a-new-version-of-a-compositiondefinition)
     - [5. Pausing Composition Reconciliation](#5-pausing-composition-reconciliation)
     - [6. Pausing Composition Gracefully](#6-pausing-composition-gracefully)
@@ -19,7 +20,8 @@
     - [1. CompositionDefinition Not Becoming Ready](#1-compositiondefinition-not-becoming-ready)
     - [2. Compositions Failing to Deploy](#2-compositions-failing-to-deploy)
     - [3. Upgrade/Rollback Failures](#3-upgraderollback-failures)
-    - [4. Certificate Issues: Mutating Webhook Configuration](#4-certificate-issues-mutating-webhook-configuration)
+    - [4a. Certificate Issues: Webhook Failure - Valid ONLY for versions of core-provider after \<0.24.2\>](#4a-certificate-issues-webhook-failure---valid-only-for-versions-of-core-provider-after-0242)
+    - [4b. Certificate Issues: Mutating Webhook Configuration - Valid ONLY for versions of core-provider before \<0.24.2\>](#4b-certificate-issues-mutating-webhook-configuration---valid-only-for-versions-of-core-provider-before-0242)
     - [4.1 Certificate Issues: Conversion Webhook Configuration](#41-certificate-issues-conversion-webhook-configuration)
     - [5. Error after creating CompositionDefinition](#5-error-after-creating-compositiondefinition)
   - [General Diagnostic Tools](#general-diagnostic-tools)
@@ -28,7 +30,7 @@
 
 ## Introduction
 
-The Krateo V2 Template Fireworks App provides a complete solution for deploying and managing fireworks applications on Kubernetes using Krateo's Composition system. This guide covers the entire lifecycle from initial deployment to advanced management scenarios.
+The Krateo V2 Template Fireworks App provides a complete solution for deploying and managing the GithubScaffoldingLifecycle Blueprint on Kubernetes using Krateo's Composition system. This guide covers the entire lifecycle from initial deployment to advanced management scenarios.
 
 ## Prerequisites
 
@@ -63,17 +65,29 @@ helm repo update krateo
 
 #### 3. Installing Krateo Platform
 ```bash
+helm upgrade installer-crd installer-crd \
+  --repo https://charts.krateo.io \
+  --namespace krateo-system \
+  --create-namespace \
+  --install \
+  --version 2.6.0 \
+  --wait
+
 helm upgrade installer installer \
   --repo https://charts.krateo.io \
   --namespace krateo-system \
   --create-namespace \
   --install \
-  --version 2.4.2 \
+  --version 2.6.0 \
   --wait
 ```
+
+
+```bash
+helm upgrade 
 **Expected Behavior:**
 - Helm will create the krateo-system namespace if it doesn't exist
-- The installer chart (version 2.4.2) will be deployed
+- The installer chart (version 2.6.0) will be deployed
 - The --wait flag ensures command completes only when resources are ready
 - Output shows deployment status and namespace information
 
@@ -88,18 +102,22 @@ kubectl wait krateoplatformops krateo --for condition=Ready=True --namespace kra
 
 
 #### 5. Install required providers:
-   ```bash
-   helm install github-provider krateo/github-provider --namespace krateo-system
-   helm install git-provider krateo/git-provider --namespace krateo-system
-   helm install argocd argo/argo-cd --namespace krateo-system --create-namespace --wait
-   ```
-These installations set up the necessary providers for GitHub and ArgoCD, enabling integration with your deployment process of the fireworks application.
+  ```bash
+  helm repo add marketplace https://marketplace.krateo.io
+  helm repo update marketplace
+  helm install github-provider-kog-repo marketplace/github-provider-kog-repo --namespace krateo-system --create-namespace --wait --version 1.0.0
+  helm install git-provider krateo/git-provider --namespace krateo-system --create-namespace --wait --version 0.10.1
+  helm repo add argo https://argoproj.github.io/argo-helm
+  helm repo update argo
+  helm install argocd argo/argo-cd --namespace krateo-system --create-namespace --wait --version 8.0.17
+  ```
+These installations set up the necessary providers for GitHub and ArgoCD, enabling integration with your deployment process of the applation.
 
 ### CompositionDefinition Deployment
 
 #### 1. Creating the Application Namespace
 ```bash
-kubectl create namespace fireworksapp-system
+kubectl create namespace cheatsheet-system
 ```
 **Expected Outcome:**
 - Creates a dedicated namespace for your Fireworks App resources
@@ -112,28 +130,28 @@ cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
 metadata:
-  name: fireworksapp-cd
-  namespace: fireworksapp-system
+  name: lifecycleapp-cd-v1
+  namespace: cheatsheet-system
 spec:
   chart:
-    repo: fireworks-app
-    url: https://charts.krateo.io
-    version: 1.1.13
+    repo: github-scaffolding-lifecycle
+    url: https://marketplace.krateo.io
+    version: 0.0.1
 EOF
 ```
 **What Happens Next:**
 - Krateo processes the definition and generates a Custom Resource Definition (CRD)
 - A dedicated controller pod is deployed to manage compositions
-- The system prepares to accept FireworksApp custom resources
+- The system prepares to accept GithubScaffoldingLifecycle custom resources
 
 #### 3. Verifying CompositionDefinition Status
 ```bash
-kubectl wait compositiondefinition fireworksapp-cd --for condition=Ready=True --namespace fireworksapp-system --timeout=600s
+kubectl wait compositiondefinition lifecycleapp-cd-v1 --for condition=Ready=True --namespace cheatsheet-system --timeout=600s
 ```
 **System Behavior:**
 - Command waits until the CompositionDefinition is fully processed
 - During this time, Krateo is setting up the necessary controllers
-- Success means you can now create FireworksApp instances
+- Success means you can now create GithubScaffoldingLifecycle instances
 
 ### Creating Compositions
 
@@ -149,79 +167,83 @@ kubectl create secret generic github-repo-creds \
 - The secret will be referenced by compositions for Git operations
 
 
-#### 3. Creating the FireworksApp Instance
-
+#### 3. Creating the GithubScaffoldingLifecycle Instance
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: composition.krateo.io/v1-1-13
-kind: FireworksApp
+apiVersion: composition.krateo.io/v0-0-1
+kind: GithubScaffoldingLifecycle
 metadata:
-  name: fireworksapp-composition-1
-  namespace: fireworksapp-system
+  name: lifecycle-composition-1
+  namespace: cheatsheet-system
 spec:
-  app:
-    service:
-      port: 31180
-      type: NodePort
   argocd:
+    namespace: krateo-system
     application:
-      destination:
-        namespace: fireworks-app
-        server: https://kubernetes.default.svc
       project: default
       source:
         path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: githubscaffolding-app
+      syncEnabled: false
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-    namespace: krateo-system
+  app:
+    service:
+      type: NodePort
+      port: 31180
   git:
-    fromRepo:
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      name: krateo-v2-template-fireworksapp
-      org: krateoplatformops
-      path: skeleton/
-      scmUrl: https://github.com
-    insecure: true
-    toRepo:
-      apiUrl: https://api.github.com
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      initialize: true
-      org: your-organization
-      name: fireworksapp-test-v2
-      path: /
-      private: false
-      scmUrl: https://github.com
     unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-test # Replace with your GitHub organization
+      name: lifecycleapp-test-1 # You can customize the repository name
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
 EOF
 ```
 
 **What Occurs:**
-- Krateo creates a new FireworksApp resource
+- Krateo creates a new GithubScaffoldingLifecycle resource
 - The controller begins provisioning the application
 - ArgoCD is configured to manage the deployment
 - A new GitHub repository is created (if specified)
 
 #### 4. Monitoring Composition Progress
 ```bash
-kubectl wait fireworksapp fireworksapp-composition-1 \
+kubectl wait githubscaffoldinglifecycles lifecycle-composition-1 \
   --for condition=Ready=True \
   --timeout=300s \
-  --namespace fireworksapp-system
+  --namespace cheatsheet-system
 ```
 **Expected Workflow:**
 - Command waits until all resources are provisioned
@@ -231,12 +253,12 @@ kubectl wait fireworksapp fireworksapp-composition-1 \
 
 #### 5. Check Helm Release Status
 ```bash
-helm list -n fireworksapp-system
+helm list -n cheatsheet-system
 ```
 
 **What to Expect:**
-- Helm lists all releases in the `fireworksapp-system` namespace
-- You should see the `fireworksapp-composition-1` release with version 1.1.13
+- Helm lists all releases in the `cheatsheet-system` namespace
+- You should see the `lifecycle-composition-1-<[:8]UUID>` release with version 0.0.1
 - This confirms that the Helm chart was successfully deployed
 
 
@@ -253,99 +275,104 @@ cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
 metadata:
-  name: fireworksapp-cd-v2
-  namespace: fireworksapp-system
+  name: lifecycleapp-cd-v2
+  namespace: cheatsheet-system
 spec:
   chart:
-    repo: fireworks-app
-    url: https://charts.krateo.io
-    version: 1.1.14
+    repo: github-scaffolding-lifecycle
+    url: https://marketplace.krateo.io
+    version: 0.0.2
 EOF
 ```
 **System Response:**
 - A second controller is deployed for the new version
 - Both versions can operate simultaneously
 - Each version maintains its own CRD and controller
-
-This will create a new `CompositionDefinition` named `fireworksapp-cd-v2` in the `fireworksapp-system` namespace, which will manage resources of version 1.1.14 of the fireworksapp chart.
-You can then deploy the new version of the chart by applying the `CompositionDefinition` manifest. The `core-provider` will add a new version to the existing CRD `fireworksapps.composition.krateo.io` and deploy a new instance of the `composition-dynamic-controller` to manage resources of version 1.1.14.
-The `core-provider` will leave the previous version of the chart (1.1.13) running along with its associated `composition-dynamic-controller` instance. This allows you to run multiple versions of the same application simultaneously, each managed by its own `composition-dynamic-controller`.
+  
+This will create a new `CompositionDefinition` named `lifecycleapp-cd-v2` in the `cheatsheet-system` namespace, which will manage resources of version 0.0.2 of the lifecycleapp chart.
+You can then deploy the new version of the chart by applying the `CompositionDefinition` manifest. The `core-provider` will add a new version to the existing CRD `githubscaffoldinglifecycles.composition.krateo.io` and deploy a new instance of the `composition-dynamic-controller` to manage resources of version 0.0.2.
+The `core-provider` will leave the previous version of the chart (0.0.1) running along with its associated `composition-dynamic-controller` instance. This allows you to run multiple versions of the same application simultaneously, each managed by its own `composition-dynamic-controller`.
 
 ##### Verifying CompositionDefinition Status
 ```bash
-kubectl wait compositiondefinition fireworksapp-cd-v2 --for condition=Ready=True --namespace fireworksapp-system --timeout=600s
+kubectl wait compositiondefinition lifecycleapp-cd-v2 --for condition=Ready=True --namespace cheatsheet-system --timeout=600s
 ```
 **System Behavior:**
 - Command waits until the CompositionDefinition is fully processed
 - During this time, Krateo is setting up the necessary controllers
-- Success means you can now create FireworksApp instances
+- Success means you can now create GithubScaffoldingLifecycle instances
 
-##### Create a New FireworksApp Instance
+##### Create a New GithubScaffoldingLifecycle Instance
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: composition.krateo.io/v1-1-14
-kind: FireworksApp
+apiVersion: composition.krateo.io/v0-0-2
+kind: GithubScaffoldingLifecycle
 metadata:
-  name: fireworksapp-composition-2
-  namespace: fireworksapp-system
+  name: lifecycle-composition-2
+  namespace: cheatsheet-system
 spec:
-  app:
-    service:
-      port: 31180
-      type: NodePort
   argocd:
+    namespace: krateo-system
     application:
-      destination:
-        namespace: fireworks-app
-        server: https://kubernetes.default.svc
       project: default
       source:
         path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: githubscaffolding-app
+      syncEnabled: false
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-    namespace: krateo-system
+  app:
+    service:
+      type: NodePort
+      port: 31180
   git:
-    fromRepo:
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      name: krateo-v2-template-fireworksapp
-      org: krateoplatformops
-      path: skeleton/
-      scmUrl: https://github.com
-    insecure: true
-    toRepo:
-      apiUrl: https://api.github.com
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      initialize: true
-      org: your-organization
-      name: fireworksapp-test-v2
-      path: /
-      private: false
-      scmUrl: https://github.com
     unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-test # Replace with your GitHub organization
+      name: lifecycleapp-test-2 # You can customize the repository name
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
 EOF
 ```
 
 ##### Check Helm Release Status
 ```bash
-helm list -n fireworksapp-system
+helm list -n cheatsheet-system
 ```
 
 **What to Expect:**
-- You should see both `fireworksapp-composition-1` and `fireworksapp-composition-2` listed
+- You should see both `lifecycle-composition-1` and `lifecycle-composition-2`
 - Each release corresponds to its respective version
 - This confirms that both versions are deployed and managed independently
 
@@ -353,13 +380,13 @@ helm list -n fireworksapp-system
 #### 2. Upgrading Compositions (massive migration)
 
 ##### Scenario:
-You need to upgrade the existing version of the application to a newer version (1.1.14). To be sure the new version can be deployed, the `values.schema.json` should not add any new required fields or remove any existing required fields. If you need to add new required fields, you should create a new `CompositionDefinition` with the new version of the chart. Refer to [the next section](#3-upgrading-compositions-with-changes-in-the-valuesschemajson) for more details. 
+You need to upgrade the existing version of the application to a newer version (0.0.2). To be sure the new version can be deployed, the `values.schema.json` should not add any new required fields or remove any existing required fields. If you need to add new required fields, you should create a new `CompositionDefinition` with the new version of the chart. Refer to [the next section](#3-upgrading-compositions-with-changes-in-the-valuesschemajson) for more details. 
 
 ```bash
-kubectl patch compositiondefinition fireworksapp-cd \
-  -n fireworksapp-system \
+kubectl patch compositiondefinition lifecycleapp-cd-v1 \
+  -n cheatsheet-system \
   --type=merge \
-  -p '{"spec":{"chart":{"version":"1.1.14"}}}'
+  -p '{"spec":{"chart":{"version":"0.0.2"}}}'
 ```
 **Upgrade Process:**
 - The controller gradually reconciles existing resources
@@ -375,136 +402,166 @@ Notice that the previously deployed instances (pods) of `composition-dynamic-con
 This is due to the automatic cleanup mechanism that removes older and unused deployments along with their associated RBAC resources from the cluster:
 
 ```bash
-kubectl get po -n fireworksapp-system
+kubectl get po -n cheatsheet-system
 ```
 
 This automatic cleanup helps maintain cluster cleaniness by removing outdated controller instances when they are no longer needed.
 
 ##### Check Helm Release Status
 ```bash
-helm list -n fireworksapp-system
+helm list -n cheatsheet-system
 ```
 
 **What to Expect:**
-- You should see both `fireworksapp-composition-1` and `fireworksapp-composition-2` listed
-- Each release corresponds to its respective version but now `fireworksapp-composition-1` will be updated to version 1.1.14
+- You should see both `lifecycle-composition-1` and `lifecycle-composition-2` listed
+- Each release corresponds to its respective version but now `lifecycle-composition-1` will be updated to version 0.0.2
 
 
-#### 3. Upgrading Compositions with changes in the `values.schema.json`
+#### 3. Upgrading Compositions with breaking changes in the `values.schema.json`
 ##### Scenario:
-This can be useful for upgrading a chart where you have changed the `values.schema.json` (in particular adding required fields or modifying existing fields) and you want to ensure that the new version can be deployed without issues.
+This can be useful for upgrading a chart where you have changed the `values.schema.json` and you want to ensure that the new version can be deployed without issues.
 
-Suppose you have installed composition `fireworksapp-cd` with version 1.1.13 and you want to upgrade it to version 1.1.14, but the new version has changes in the `values.schema.json` that require you to create a new `CompositionDefinition` with the new version of the chart.
+About breaking changes in a new version of a chart:
+- Adding new required fields in the `values.schema.json`
+- Removing existing required fields in the `values.schema.json`
+- Changing the type of existing fields in the `values.schema.json`
+- Modifying the structure of the `values.schema.json` in a way that is not backward compatible
+- Introducing new dependencies that are not compatible with the previous version
+- Altering validation rules that could reject previously valid configurations
+
+Suppose you have installed composition `lifecycleapp-cd-v1` with version 0.0.1 and you want to upgrade it to version 0.0.2, but the new version has changes in the `values.schema.json` that require you to create a new `CompositionDefinition` with the new version of the chart.
 
 The first step is to create a new `CompositionDefinition` with the new version of the chart. You can do this by applying the following manifest as done in [the previous section](#1-deploying-multiple-versions):
-
 ```bash
 cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
 metadata:
-  name: fireworksapp-cd-v2
-  namespace: fireworksapp-system
+  name: lifecycleapp-cd-v2
+  namespace: lifecycleapp-system
 spec:
   chart:
-    repo: fireworks-app
-    url: https://charts.krateo.io
-    version: 1.1.14
+    repo: github-scaffolding-lifecycle
+    url: https://marketplace.krateo.io
+    version: 0.0.2
 EOF
 ```
 
-At this point, you have two `CompositionDefinition` resources in the cluster: `fireworksapp-cd` with version 1.1.13 and `fireworksapp-cd-v2` with version 1.1.14.
+At this point, you have two `CompositionDefinition` resources in the cluster: `lifecycleapp-cd-v1` with version 0.0.1 and `lifecycleapp-cd-v2` with version 0.0.2.
 
 At this point, suppose you need to upgrade an existing release of a composition to the new version. You can do this by following the steps below:
 
 ##### Step 1: Pause the Composition with the Old Version
 ```bash
-kubectl annotate fireworksapp fireworksapp-composition-1 \
-  -n fireworksapp-system \
+kubectl annotate githubscaffoldinglifecycles lifecycle-composition-1 \
+  -n cheatsheet-system \
   "krateo.io/paused=true"
 ```
 
 This ensures that the old version of the composition is not reconciled while you are upgrading to the new version.
 
-##### Step 2: Create a New FireworksApp Instance with the New Version
+##### Step 2: Create a New Composition Instance with the New Version
 
-Create a new FireworksApp instance with the new version of the chart. Note that you need to add a label called `krateo.io/release-name` to the new FireworksApp instance. This label is used by the `composition-dynamic-controller` to identify the release name of the composition. The value of this label should be the same as the name of the old FireworksApp instance. In the following example, the value of the label is `fireworksapp-composition-1`, which is the name of the release installed at [step 1](#3-creating-the-fireworksapp-instance). Normally, this label is automatically added to the FireworksApp instance when it is created. However, in this case, you need to add it manually because you are creating a new FireworksApp instance with a different name.
+Create a new GithubScaffoldingLifecycle instance with the new version of the chart. Note that you need to add a label called `krateo.io/release-name` to the new GithubScaffoldingLifecycle instance. This label is used by the `composition-dynamic-controller` to identify the release name of the composition. The value of this label should be the same as the name of the old GithubScaffoldingLifecycle instance. In the following example, the value of the label is `lifecycle-composition-1`, which is the name of the release installed at [step 1](#3-creating-the-githubscaffoldinglifecycle-instance). Normally, this label is automatically added to the GithubScaffoldingLifecycle instance when it is created. However, in this case, you need to add it manually because you are creating a new GithubScaffoldingLifecycle instance with a different name.
 
-You can do that by applying the following manifest:
+The manifest below shows how to create a new GithubScaffoldingLifecycle instance with the new version of the chart, with the values that follows the new `values.schema.json` with breaking changes.
+You can do that by applying the following manifest: 
+
+As a first step, you need to get the release name of the old composition. You can do that by running the following command:
+```bash
+kubectl get githubscaffoldinglifecycles lifecycle-composition-1 \
+  -n cheatsheet-system \
+  -o jsonpath='{.metadata.labels.krateo\.io/release-name}'
+```
+
+Then, you can use the release name in the manifest below.
 
 ```bash
 cat <<EOF | kubectl apply -f -
-apiVersion: composition.krateo.io/v1-1-14
-kind: FireworksApp
+apiVersion: composition.krateo.io/v0-0-2
+kind: GithubScaffoldingLifecycle
 metadata:
-  name: fireworksapp-composition-2
-  namespace: fireworksapp-system
+  name: lifecycle-composition-2
+  namespace: cheatsheet-system
   labels:
-    krateo.io/release-name: fireworksapp-composition-1
+    krateo.io/release-name: <RELEASE_NAME_FROM_OLD_COMPOSITION>
 spec:
-  app:
-    service:
-      port: 31180
-      type: NodePort
   argocd:
+    namespace: krateo-system
     application:
-      destination:
-        namespace: fireworks-app
-        server: https://kubernetes.default.svc
       project: default
       source:
         path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: githubscaffolding-app
+      syncEnabled: false
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-    namespace: krateo-system
+  app:
+    service:
+      type: NodePort
+      port: 31180
   git:
-    fromRepo:
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      name: krateo-v2-template-fireworksapp
-      org: krateoplatformops
-      path: skeleton/
-      scmUrl: https://github.com
-    insecure: true
-    toRepo:
-      apiUrl: https://api.github.com
-      branch: main
-      credentials:
-        authMethod: generic
-        secretRef:
-          key: token
-          name: github-repo-creds
-          namespace: krateo-system
-      initialize: true
-      org: your-organization
-      name: fireworksapp-test-v2
-      path: /
-      private: false
-      scmUrl: https://github.com
     unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-test # Replace with your GitHub organization
+      name: lifecycleapp-test-2 # You can customize the repository name
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
 EOF
 ```
 
-At this point, the helm release `fireworksapp-composition-1`  will be upgraded to version 1.1.14. 
+At this point, the helm release `lifecycle-composition-1`  will be upgraded to version 0.0.2. 
 
-##### Step 3: Remove the old composition at version 1.1.13
+##### Step 3: Remove the old composition at version 0.0.1
 ```bash
-kubectl delete fireworksapp fireworksapp-composition-1 \
-  -n fireworksapp-system
+kubectl delete githubscaffoldinglifecycle lifecycle-composition-1 \
+  -n cheatsheet-system
+```
+
+You also need to append the annotation `krateo.io/management-policy=orphan` to the new composition to prevent the deletion of the helm release when the old composition is deleted. You can do this by applying the following command:
+
+```bash
+kubectl annotate githubscaffoldinglifecycle lifecycle-composition-1 \
+  -n cheatsheet-system \
+  krateo.io/management-policy=orphan
 ```
 
 You also need to remove the finalizer in the old composition because the annotation `krateo.io/paused=true` will prevent the old composition from being deleted. You can do this by applying the following command:
 
 ```bash
-kubectl patch fireworksapp fireworksapp-composition-1 \
-  -n fireworksapp-system \
+kubectl patch githubscaffoldinglifecycle lifecycle-composition-1 \
+  -n cheatsheet-system \
   --type=merge \
   -p '{"metadata":{"finalizers":null}}'
 ```
@@ -516,27 +573,11 @@ At this point, the old composition will be deleted and the new composition will 
 ##### Scenario:
 This can be useful when you want to upgrade only specific Compositions after a new version of a CompositionDefinition is released, while keeping other Compositions on the previous version. This allows for a gradual migration and testing of the new version without impacting all existing Compositions at once.
 
-Suppose you have installed the CompositionDefinition `github-scaffolding-lifecycle-v1` with version 0.0.1, you have already created some Compositions based on it, and now you want to upgrade only some of these Compositions to version 0.0.2 of the CompositionDefinition.
+Suppose you have installed the CompositionDefinition `lifecycleapp-cd-v1` with version 0.0.1 (from [the previous step](#2-deploying-the-compositiondefinition)), you have already created some Compositions based on it, and now you want to upgrade only some of these Compositions to version 0.0.2 of the CompositionDefinition.
 Note that the version 0.0.2 of the CompositionDefinition introduces an additional field `description` at path `git.toRepo.description`, with a default value.
 
 ##### Step 1: Setup Initial CompositionDefinition and Compositions
 
-Let's setup the initial CompositionDefinition with version 0.0.1:
-
-```sh
-cat <<EOF | kubectl apply -f -
-apiVersion: core.krateo.io/v1alpha1
-kind: CompositionDefinition
-metadata:
-  name: github-scaffolding-lifecycle-v1
-  namespace: default
-spec:
-  chart:
-    repo: github-scaffolding-lifecycle
-    url: https://marketplace.krateo.io
-    version: 0.0.1
-EOF
-```
 
 Now, let's create two Compositions based on this CompositionDefinition:
 
@@ -546,7 +587,7 @@ apiVersion: composition.krateo.io/v0-0-1
 kind: GithubScaffoldingLifecycle
 metadata:
   name: composition-1
-  namespace: default
+  namespace: cheatsheet-system
 spec:
   argocd:
     namespace: krateo-system
@@ -556,7 +597,7 @@ spec:
         path: chart/
       destination:
         server: https://kubernetes.default.svc
-        namespace: fireworks-app
+        namespace: githubscaffolding-app
       syncEnabled: false
       syncPolicy:
         automated:
@@ -609,7 +650,7 @@ apiVersion: composition.krateo.io/v0-0-1
 kind: GithubScaffoldingLifecycle
 metadata:
   name: composition-2
-  namespace: default
+  namespace: cheatsheet-system
 spec:
   argocd:
     namespace: krateo-system
@@ -619,7 +660,7 @@ spec:
         path: chart/
       destination:
         server: https://kubernetes.default.svc
-        namespace: fireworks-app
+        namespace: githubscaffolding-app
       syncEnabled: false
       syncPolicy:
         automated:
@@ -677,8 +718,8 @@ cat <<EOF | kubectl apply -f -
 apiVersion: core.krateo.io/v1alpha1
 kind: CompositionDefinition
 metadata:
-  name: github-scaffolding-lifecycle-v2
-  namespace: default
+  name: lifecycleapp-cd-v2
+  namespace: cheatsheet-system
 spec:
   chart:
     repo: github-scaffolding-lifecycle
@@ -726,8 +767,8 @@ Temporarily stop automatic reconciliation during maintenance or troubleshooting.
 
 ##### Step 1: Pause Composition
 ```bash
-kubectl annotate fireworksapp fireworksapp-composition-1 \
-  -n fireworksapp-system \
+kubectl annotate githubscaffoldinglifecycles lifecycle-composition-1 \
+  -n cheatsheet-system \
   "krateo.io/paused=true"
 ```
 
@@ -736,11 +777,11 @@ kubectl annotate fireworksapp fireworksapp-composition-1 \
 - Controller stops reconciling this instance
 - Verify with:
   ```bash
-  kubectl get fireworksapp fireworksapp-composition-1 -n fireworksapp-system -o jsonpath='{.metadata.annotations}'
+  kubectl get githubscaffoldinglifecycles lifecycle-composition-1 -n cheatsheet-system -o jsonpath='{.metadata.annotations}'
   ```
   You could also check events:
   ```bash
-  kubectl get events -n fireworksapp-system --sort-by='.metadata.creationTimestamp' | grep "fireworksapp-composition-1"
+  kubectl get events -n cheatsheet-system --sort-by='.metadata.creationTimestamp' | grep "lifecycle-composition-1"
   ```
 
 
@@ -752,8 +793,8 @@ During paused state, you can:
 
 ##### Step 3: Resume Reconciliation
 ```bash
-kubectl annotate fireworksapp fireworksapp-composition-1 \
-  -n fireworksapp-system \
+kubectl annotate githubscaffoldinglifecycles lifecycle-composition-1 \
+  -n cheatsheet-system \
   "krateo.io/paused-"
 ```
 
@@ -774,8 +815,8 @@ To support this feature, you need to follow the steps described in the [`composi
 You can safely delete all compositions and their associated resources using the following command:
 
 ```bash
-kubectl delete compositiondefinition fireworksapp-cd \
-  -n fireworksapp-system
+kubectl delete compositiondefinition lifecycleapp-cd-v1 \
+  -n cheatsheet-system
 ```
 **Expected Outcome:**
 - The `deletionTimestamp` is set in the generated CRD and in all the compositions related to this CRD.
@@ -799,7 +840,7 @@ Deleting the finalizer in the CRD can cause problems with Kubernetes etcd, so it
 **Diagnostic Steps:**
 ```bash
 # Check CompositionDefinition status details
-kubectl describe compositiondefinition <name> -n fireworksapp-system
+kubectl describe compositiondefinition <name> -n <namespace>
 
 # Examine core provider logs for processing errors
 kubectl logs -n krateo-system -l app=core-provider --tail=100
@@ -813,16 +854,16 @@ kubectl logs -n krateo-system -l app=core-provider --tail=100
 #### 2. Compositions Failing to Deploy
 
 **Symptoms:**
-- FireworksApp resource stuck in "Not Ready" state
+- GithubScaffoldingLifecycle resource stuck in "Not Ready" state
 
 
 **Diagnostic Steps:**
 ```bash
 # Get detailed status of the composition
-kubectl describe fireworksapp <name> -n fireworksapp-system
+kubectl describe githubscaffoldinglifecycles <name> -n cheatsheet-system
 
 # Check controller logs for reconciliation errors
-kubectl logs -n fireworksapp-system -l app.kubernetes.io/name=fireworksapps-controller
+kubectl logs -n cheatsheet-system -l app.kubernetes.io/name=githubscaffoldinglifecycles-controller
 
 # Verify ArgoCD application status
 kubectl get application -n krateo-system
@@ -843,13 +884,13 @@ kubectl get application -n krateo-system
 **Diagnostic Steps:**
 ```bash
 # Check rollout status of controller deployment
-kubectl rollout status deployment/fireworksapps-v1-1-14-controller -n fireworksapp-system
+kubectl rollout status deployment/githubscaffoldinglifecycles-v0-0-2-controller -n cheatsheet-system
 
 # Verify resource versions
-kubectl get all -n fireworks-app -l krateo.io/composition-version
+kubectl get all -n githubscaffolding-app -l krateo.io/composition-version
 
 # Compare desired vs actual state
-kubectl get fireworksapp -n fireworksapp-system -o yaml
+kubectl get githubscaffoldinglifecycles -n cheatsheet-system -o yaml
 ```
 
 **Investigation Areas:**
@@ -857,7 +898,25 @@ kubectl get fireworksapp -n fireworksapp-system -o yaml
 - Controller pod logs for reconciliation errors
 - Helm release history for the composition
 
-#### 4. Certificate Issues: Mutating Webhook Configuration - Valid ONLY for versions of core-provider before <0.24.2>
+#### 4a. Certificate Issues: Webhook Failure - Valid ONLY for versions of core-provider after <0.24.2>
+**Symptoms:**
+- You receive an error like `x509: certificate signed by unknown authority`
+- You cannot create/get/list/delete the related composition in the cluster
+  
+
+Something went wrong with the automatic rotation of the webhook certificates managed by the core-provider. To force the rotation of the certificates, you need to restart the core-provider pod.
+**Diagnostic Steps:**
+```bash
+# List core-provider pods
+kubectl get pods -n krateo-system -l app=core-provider
+```
+**Remediation Steps:**
+- Restart the core-provider pod to trigger certificate rotation
+```bash
+kubectl delete pod -n krateo-system -l app=core-provider
+```
+
+#### 4b. Certificate Issues: Mutating Webhook Configuration - Valid ONLY for versions of core-provider before <0.24.2>
 **Note:** This issue is only valid for versions of core-provider before <0.24.2. In versions after this, the management of certificates is automatically handled by the core-provider and you should not face this issue.
 
 **Symptoms:**
