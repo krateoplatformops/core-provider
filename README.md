@@ -212,8 +212,8 @@ For practical examples, common issues, and advanced usage patterns, please refer
 
 ## Environment Variables and Flags
 
-| Name                                   | Description                | Default Value | Notes         |
-|:---------------------------------------|:---------------------------|:--------------|:--------------|
+| Name                                   | Description                                | Default Value | Notes         |
+|:---------------------------------------|:-------------------------------------------|:--------------|:--------------|
 | `HELM_REGISTRY_CONFIG_PATH`           | Path to Helm registry configuration file | `/tmp` | Used for OCI registries |
 | `CORE_PROVIDER_DEBUG`                 | Enables debug logging      | `false`       | Use `--debug` flag |
 | `CORE_PROVIDER_SYNC`                  | Sync period for controller manager | `1h`          | Duration |
