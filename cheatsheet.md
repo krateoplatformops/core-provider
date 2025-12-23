@@ -35,7 +35,7 @@ The Krateo V2 Template Fireworks App provides a complete solution for deploying 
 ## Prerequisites
 
 Before beginning, ensure you have:
-- A Kubernetes cluster (v1.20+ recommended)
+- A Kubernetes cluster (v1.30+ recommended)
 - Helm installed (v3.0+)
 - kubectl configured to access your cluster
 - A GitHub account with repository creation permissions
@@ -70,7 +70,7 @@ helm upgrade installer-crd installer-crd \
   --namespace krateo-system \
   --create-namespace \
   --install \
-  --version 2.6.0 \
+  --version 2.7.0 \
   --wait
 
 helm upgrade installer installer \
@@ -78,16 +78,13 @@ helm upgrade installer installer \
   --namespace krateo-system \
   --create-namespace \
   --install \
-  --version 2.6.0 \
+  --version 2.7.0 \
   --wait
 ```
 
-
-```bash
-helm upgrade 
 **Expected Behavior:**
-- Helm will create the krateo-system namespace if it doesn't exist
-- The installer chart (version 2.6.0) will be deployed
+- Helm will create the `krateo-system` namespace if it doesn't exist
+- The installer chart (version 2.7.0) will be deployed
 - The --wait flag ensures command completes only when resources are ready
 - Output shows deployment status and namespace information
 
