@@ -8,11 +8,21 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
 - **Secure Credential Management**: Integrates with Kubernetes secrets for seamless authentication against private OCI and Helm repositories.
 - **Isolated RBAC Policies**: Generates and manages fine-grained RBAC policies for each composition, ensuring controllers have the minimum necessary permissions.
 - **Multi-Version Chart Support**: Manages multiple versions of a CompositionDefinition concurrently, allowing for smooth, controlled upgrades and rollbacks.
+
+## Security by Design
+
+The Core Provider is built with security as a primary focus:
+
+- **Schema-Driven Security**: By generating CRDs from values.schema.json, the provider ensures all inputs are validated by the Kubernetes API server, rejecting invalid configurations.
+- **Principle of Least Privilege**: Each deployed composition-dynamic-controller (CDC) is granted only the minimal RBAC permissions required to manage the resources defined within its specific Helm chart.
+- **Automatic Cleanup**: When a CompositionDefinition is deleted, the Core Provider automatically removes the associated CRD, CDC deployment, and all RBAC policies, leaving no orphaned resources.
+- **Secure Webhooks**: Implements mutating and conversion webhooks for advanced schema validation and safe, multi-version API management.
   
 ## Summary
 
 - [Krateo Core Provider](#krateo-core-provider)
   - [Key Features](#key-features)
+  - [Security by Design](#security-by-design)
   - [Summary](#summary)
   - [Glossary](#glossary)
   - [Architecture](#architecture)
@@ -28,12 +38,11 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
       - [OCI Registry](#oci-registry-1)
         - [GCP Artifact Registry](#gcp-artifact-registry)
       - [Helm Repository](#helm-repository-1)
-      - [CRD Specification](#crd-specification)
+  - [CRD Specification](#crd-specification)
   - [Requirements](#requirements)
   - [How to Install](#how-to-install)
   - [Examples and Troubleshooting](#examples-and-troubleshooting)
   - [Environment Variables and Flags](#environment-variables-and-flags)
-  - [Security by Design](#security-by-design)
   - [Best Practices](#best-practices)
 
 
@@ -255,15 +264,6 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_TLS_CERTIFICATE_DURATION` | The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval. | `24h`         | Duration |
 | `CORE_PROVIDER_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN` | The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.  | `16h`         | Duration |
 | `URL_PLURALS`                          | DEPRECATED [from version 0.24.2](#requirements) - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
-
-## Security by Design
-
-The Core Provider is built with security as a primary focus:
-
-- **Schema-Driven Security**: By generating CRDs from values.schema.json, the provider ensures all inputs are validated by the Kubernetes API server, rejecting invalid configurations.
-- **Principle of Least Privilege**: Each deployed composition-dynamic-controller (CDC) is granted only the minimal RBAC permissions required to manage the resources defined within its specific Helm chart.
-- **Automatic Cleanup**: When a CompositionDefinition is deleted, the Core Provider automatically removes the associated CRD, CDC deployment, and all RBAC policies, leaving no orphaned resources.
-- **Secure Webhooks**: Implements mutating and conversion webhooks for advanced schema validation and safe, multi-version API management.
 
 ## Best Practices
 
