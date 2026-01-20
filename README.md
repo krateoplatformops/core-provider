@@ -105,19 +105,21 @@ While generic online tools exist for JSON Schema generation, Krateo PlatformOps 
 
 You can specify a Helm repository URL along with the chart name and version.
 
-Here some examples:
+Here is an example:
 - [Helm Repository](testdata/examples/compositiondefinition-postgresql-repo.yaml): An example using the PostgreSQL Helm chart from the Bitnami Helm repository.
 
 #### OCI Registry
 
 You can specify an OCI registry URL along with the chart name and version.
 
-Here some examples:
+Here are some examples:
 - [OCI Registry (specifying repo field)](testdata/examples/compositiondefinition-postgresql-oci-repo.yaml): In this example, the `repo` field is specified to indicate the chart repository within the OCI registry.
 - [OCI Registry (no repo field specified)](testdata/examples/compositiondefinition-postgresql-oci-no-repo.yaml): In this example, the `repo` field is not specified, and the chart is directly referenced from the OCI registry URL.
 
 #### TGZ Archive
+You can provide a direct URL to a `.tgz` Helm chart archive.
 
+Here is an example:
 - [TGZ Archive](testdata/examples/compositiondefinition-postgresql-tgz.yaml): You can provide a direct URL to a `.tgz` Helm chart archive.
 
 ### Authentication
