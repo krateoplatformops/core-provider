@@ -9,10 +9,4 @@ spec:
   chart:
     url: oci://europe-west12-docker.pkg.dev/krateoregistry/krateotest/fireworks-app
     version: "0.0.1"
-    credentials:
-      username: _json_key
-      passwordRef: # reference to a secret
-        key: secret-access-credentials
-        name: gcp-sa-secret
-        namespace: demo
 

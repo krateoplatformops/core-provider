@@ -1,0 +1,13 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  annotations:
+     "krateo.io/connector-verbose": "true"
+  name: fireworks-private
+  namespace: krateo-system
+spec:
+  chart:
+    repo: fireworks-app
+    url: oci://europe-west12-docker.pkg.dev/krateoregistry/krateotest
+    version: "0.0.1"
+

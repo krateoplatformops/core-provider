@@ -1,6 +1,6 @@
 # Krateo Core Provider
 
-The Krateo Core Provider is the foundational component of Krateo Composable Operations (KCO), enabling the management of Helm charts as Kubernetes-native resources. It provides:
+The Krateo Core Provider is the foundational component of Krateo Composable Operations (KCO), enabling the management of Helm charts as Kubernetes-native resources.
 
 ## Key Features
 - **Dynamic CRD Generation**: Automatically creates and manages versioned CRDs from a chart's values.schema.json.
@@ -8,11 +8,21 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
 - **Secure Credential Management**: Integrates with Kubernetes secrets for seamless authentication against private OCI and Helm repositories.
 - **Isolated RBAC Policies**: Generates and manages fine-grained RBAC policies for each composition, ensuring controllers have the minimum necessary permissions.
 - **Multi-Version Chart Support**: Manages multiple versions of a CompositionDefinition concurrently, allowing for smooth, controlled upgrades and rollbacks.
+
+## Security by Design
+
+The Core Provider is built with security as a primary focus:
+
+- **Schema-Driven Security**: By generating CRDs from values.schema.json, the provider ensures all inputs are validated by the Kubernetes API server, rejecting invalid configurations.
+- **Principle of Least Privilege**: Each deployed composition-dynamic-controller (CDC) is granted only the minimal RBAC permissions required to manage the resources defined within its specific Helm chart.
+- **Automatic Cleanup**: When a CompositionDefinition is deleted, the Core Provider automatically removes the associated CRD, CDC deployment, and all RBAC policies, leaving no orphaned resources.
+- **Secure Webhooks**: Implements mutating and conversion webhooks for advanced schema validation and safe, multi-version API management.
   
 ## Summary
 
 - [Krateo Core Provider](#krateo-core-provider)
   - [Key Features](#key-features)
+  - [Security by Design](#security-by-design)
   - [Summary](#summary)
   - [Glossary](#glossary)
   - [Architecture](#architecture)
@@ -20,16 +30,19 @@ The Krateo Core Provider is the foundational component of Krateo Composable Oper
   - [CompositionDefinition specifications and examples](#compositiondefinition-specifications-and-examples)
     - [Defining an Helm Chart compliant with core-provider](#defining-an-helm-chart-compliant-with-core-provider)
       - [How to use `krateoctl` to generate values.schema.json](#how-to-use-krateoctl-to-generate-valuesschemajson)
-    - [Authentication](#authentication)
-      - [OCI Registry](#oci-registry)
-        - [GCP Artifact Registry](#gcp-artifact-registry)
+    - [Supported Chart Sources](#supported-chart-sources)
       - [Helm Repository](#helm-repository)
-      - [CRD Specification](#crd-specification)
+      - [OCI Registry](#oci-registry)
+      - [TGZ Archive](#tgz-archive)
+    - [Authentication](#authentication)
+      - [OCI Registry](#oci-registry-1)
+        - [GCP Artifact Registry](#gcp-artifact-registry)
+      - [Helm Repository](#helm-repository-1)
+  - [CRD Specification](#crd-specification)
   - [Requirements](#requirements)
   - [How to Install](#how-to-install)
   - [Examples and Troubleshooting](#examples-and-troubleshooting)
   - [Environment Variables and Flags](#environment-variables-and-flags)
-  - [Security by Design](#security-by-design)
   - [Best Practices](#best-practices)
 
 
@@ -94,6 +107,30 @@ While generic online tools exist for JSON Schema generation, Krateo PlatformOps 
    ```bash
    krateoctl gen-schema path/to/your/values.yaml -output path/to/output/values.schema.json
    ```
+
+### Supported Chart Sources
+
+#### Helm Repository
+
+You can specify a Helm repository URL along with the chart name and version.
+
+Here is an example:
+- [Helm Repository](testdata/examples/compositiondefinition-postgresql-repo.yaml): An example using the PostgreSQL Helm chart from the Bitnami Helm repository.
+
+#### OCI Registry
+
+You can specify an OCI registry URL along with the chart name and version.
+
+Here are some examples:
+- [OCI Registry (specifying repo field)](testdata/examples/compositiondefinition-postgresql-oci-repo.yaml): In this example, the `repo` field is specified to indicate the chart repository within the OCI registry.
+- [OCI Registry (no repo field specified)](testdata/examples/compositiondefinition-postgresql-oci-no-repo.yaml): In this example, the `repo` field is not specified, and the chart is directly referenced from the OCI registry URL.
+
+#### TGZ Archive
+You can provide a direct URL to a `.tgz` Helm chart archive.
+
+Here is an example:
+- [TGZ Archive](testdata/examples/compositiondefinition-postgresql-tgz.yaml): You can provide a direct URL to a `.tgz` Helm chart archive.
+
 ### Authentication
 
 The `core-provider` also handles authentication to private OCI registries and Helm repositories. Users can provide their credentials through Kubernetes secrets, and the `core-provider` will use them to download the necessary chart resources.
@@ -185,7 +222,7 @@ spec:
 ```
 
 
-#### CRD Specification
+## CRD Specification
 
 To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com/krateoplatformops/core-provider).
 
@@ -227,15 +264,6 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_TLS_CERTIFICATE_DURATION` | The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval. | `24h`         | Duration |
 | `CORE_PROVIDER_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN` | The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.  | `16h`         | Duration |
 | `URL_PLURALS`                          | DEPRECATED [from version 0.24.2](#requirements) - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
-
-## Security by Design
-
-The Core Provider is built with security as a primary focus:
-
-- **Schema-Driven Security**: By generating CRDs from values.schema.json, the provider ensures all inputs are validated by the Kubernetes API server, rejecting invalid configurations.
-- **Principle of Least Privilege**: Each deployed composition-dynamic-controller (CDC) is granted only the minimal RBAC permissions required to manage the resources defined within its specific Helm chart.
-- **Automatic Cleanup**: When a CompositionDefinition is deleted, the Core Provider automatically removes the associated CRD, CDC deployment, and all RBAC policies, leaving no orphaned resources.
-- **Secure Webhooks**: Implements mutating and conversion webhooks for advanced schema validation and safe, multi-version API management.
 
 ## Best Practices
 
