@@ -39,7 +39,10 @@ type ChartInfo struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxLength=20
 	Version string `json:"version,omitempty"`
-	// Repo: helm repo name (for helm repo urls only)
+	// Repo: Helm repo name
+	// Should be set only for helm repo urls
+	// If specified with OCI registries, it will be used as the repository name, instead the URL should contain the full path to the chart.
+	// This is ignored for tgz archives
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:validation:MaxLength=256
 	Repo string `json:"repo,omitempty"`
