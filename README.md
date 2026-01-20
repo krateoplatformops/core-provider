@@ -94,6 +94,29 @@ While generic online tools exist for JSON Schema generation, Krateo PlatformOps 
    ```bash
    krateoctl gen-schema path/to/your/values.yaml -output path/to/output/values.schema.json
    ```
+
+### Supported Chart Sources
+
+#### Helm Repository
+
+You can specify a Helm repository URL along with the chart name and version.
+
+Here some examples:
+- [Jenkins](testdata/examples/compositiondefinition-jenkins-repo.yaml): An example using the Jenkins Helm chart from the official Helm repository.
+- [PostgreSQL](testdata/examples/compositiondefinition-postgresql-repo.yaml): An example using the PostgreSQL Helm chart from the Bitnami Helm repository.
+
+#### OCI Registry
+
+You can specify an OCI registry URL along with the chart name and version.
+
+Here some examples:
+- [OCI Registry (specifying repo field)](testdata/examples/compositiondefinition-postgresql-oci-repo.yaml): In this example, the `repo` field is specified to indicate the chart repository within the OCI registry.
+- [OCI Registry (no repo field specified)](testdata/examples/compositiondefinition-postgresql-oci-no-repo.yaml): In this example, the `repo` field is not specified, and the chart is directly referenced from the OCI registry URL.
+
+#### TGZ Archive
+
+- [TGZ Archive](testdata/examples/compositiondefinition-postgresql-tgz.yaml): You can provide a direct URL to a `.tgz` Helm chart archive.
+
 ### Authentication
 
 The `core-provider` also handles authentication to private OCI registries and Helm repositories. Users can provide their credentials through Kubernetes secrets, and the `core-provider` will use them to download the necessary chart resources.
