@@ -213,7 +213,7 @@ spec:
 ```
 
 
-#### CRD Specification
+## CRD Specification
 
 To view the CRD configuration, visit [this link](https://doc.crds.dev/github.com/krateoplatformops/core-provider).
 
