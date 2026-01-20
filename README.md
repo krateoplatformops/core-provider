@@ -1,6 +1,6 @@
 # Krateo Core Provider
 
-The Krateo Core Provider is the foundational component of Krateo Composable Operations (KCO), enabling the management of Helm charts as Kubernetes-native resources. It provides:
+The Krateo Core Provider is the foundational component of Krateo Composable Operations (KCO), enabling the management of Helm charts as Kubernetes-native resources.
 
 ## Key Features
 - **Dynamic CRD Generation**: Automatically creates and manages versioned CRDs from a chart's values.schema.json.
