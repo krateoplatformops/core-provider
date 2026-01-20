@@ -106,8 +106,7 @@ While generic online tools exist for JSON Schema generation, Krateo PlatformOps 
 You can specify a Helm repository URL along with the chart name and version.
 
 Here some examples:
-- [Jenkins](testdata/examples/compositiondefinition-jenkins-repo.yaml): An example using the Jenkins Helm chart from the official Helm repository.
-- [PostgreSQL](testdata/examples/compositiondefinition-postgresql-repo.yaml): An example using the PostgreSQL Helm chart from the Bitnami Helm repository.
+- [Helm Repository](testdata/examples/compositiondefinition-postgresql-repo.yaml): An example using the PostgreSQL Helm chart from the Bitnami Helm repository.
 
 #### OCI Registry
 
