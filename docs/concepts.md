@@ -157,19 +157,6 @@ Once patched, the new CDC takes immediate ownership. For a period of time, both 
 
 See: [How to: Selective Migration](how-to/selective-migration.md)
 
----
-
-### Tracking Versions
-
-Every Composition carries a `krateo.io/composition-version` label, which is also exposed as an **Additional Printer Column** on the CRD:
-
-```bash
-kubectl get <kind> -A
-# NAME             VERSION   READY   ...
-# my-composition   v1-0-1    True
-```
-
-`krateoctl get compositions` reads this label to automatically resolve the correct API version, so you always interact with the right schema.
 
 ---
 

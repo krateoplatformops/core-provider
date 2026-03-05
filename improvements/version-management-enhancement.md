@@ -110,4 +110,17 @@ kubectl annotate githubscaffoldinglifecycles prod-comp-1 \
 Having multiple versions of the CRD deployed is a problem for the kubectl CLI, which only recognizes the latest version. K8s needs to specify a version in the API request, which can lead to confusion and errors when multiple versions are present. By limiting the number of active versions, we can mitigate this issue and ensure smoother operations.
 
 In particular we can include the version of the CR, stored in the label `krateo.io/composition-version`, in the an additional column to show when listing compositions with kubectl. This would allow users to easily identify which version of the CRD a composition is using, and avoid confusion when multiple versions are present.
-We can also include an utility on `krateoctl` to return the correct version of the CR automatically when running `krateoctl get compositions` , based on the version of the CRD that is currently active (the actual version will be taken from the label `krateo.io/composition-version`). This would further simplify the user experience and reduce the risk of errors when working with multiple versions of the CRD.
+
+To get the version of the CRD a composition is using, you first need to get the composition and then check the labels for the `krateo.io/composition-version` key. For example:
+
+```bash
+kubectl get githubscaffoldinglifecycles lifecycle-composition-1 \
+  -n cheatsheet-system \
+  -o jsonpath='{.metadata.labels.krateo\.io/composition-version}'
+```
+
+Then you can use this information to filter compositions by version or to display the version in the output when listing compositions. For example, to get the manifest of a composition along with its version, you can use:
+
+```bash
+kubectl get githubscaffoldinglifecycles.v0-0-1.composition.krateo.io -n cheatsheet-system lifecycle-composition-1 -o yaml
+```
