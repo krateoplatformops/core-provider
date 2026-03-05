@@ -1,0 +1,124 @@
+@startuml compositiondefinition-decision-tree-implicit-strategy
+skinparam defaultFontName Arial
+skinparam conditionEndStyle hline
+skinparam ActivityDiamondBackgroundColor #LightGray
+skinparam ActivityBackgroundColor #LightBlue
+skinparam ActivityBorderColor #Navy
+skinparam ArrowColor #Navy
+skinparam NoteBorderColor #Orange
+skinparam NoteBackgroundColor #FEFECE
+
+title CompositionDefinition: Implicit Upgrade Strategy
+
+legend right
+  |= Actor |= Responsibility |
+  | Platform Operator | Evaluates schema, chooses rollout strategy\nby patching or creating definitions |
+  | Application Owner | Migrates instances manually by updating\nComposition references/specs |
+  | Core Provider | Automated reconciliation, CRD and\nCDC deployment rotation |
+endlegend
+
+start
+
+:New chart version available;
+note right
+  Consider: breaking changes in schema,
+  migration strategy, risk tolerance.
+end note
+
+if (Does values.schema.json have\nbreaking changes?\n(required fields added or removed)) then (yes)
+
+  :CANNOT patch the existing CompositionDefinition\n//Existing Compositions would fail schema validation.//;
+  note right
+    Existing Composition instances would fail
+    validation against the new schema.
+    A new CompositionDefinition is mandatory.
+  end note
+
+  :[Platform Operator] Create NEW CompositionDefinition\nwith a different name and new chart version;
+  note right
+    metadata:
+      name: myapp-cd-v2
+    spec:
+      chart:
+        version: "2.0.0"
+  end note
+
+  :[Application Owner] Manually update each\nComposition to match the new schema;
+  note right
+    - Add new required fields
+    - Update apiVersion if changed
+    - Test and migrate incrementally
+  end note
+
+  stop
+
+else (no - non-breaking changes)
+
+  partition "Implicit Rollout Strategy Decision" {
+
+    if (What is the desired rollout approach?) then (Migrate ALL automatically)
+
+      :[Platform Operator] Patch EXISTING CompositionDefinition\nwith the new chart version;
+      note right
+        kubectl patch compositiondefinition <name> \
+          -n <namespace> \
+          --type=merge \
+          -p '{"spec":{"chart":{"version":"X.Y.Z"}}}'
+      end note
+
+      :[Core Provider] Detects version change\nand starts reconciliation;
+      :[Core Provider] Adds new version to existing CRD;
+      :[Core Provider] Deploys new CDC for the new version;
+      :[Core Provider] Migrates all Composition instances automatically;
+      :[Core Provider] Deletes old CDC deployment;
+      note right
+        Zero-downtime transition.
+        All Compositions are moved at once.
+        Old chart version is no longer accessible
+        after migration completes.
+      end note
+
+      stop
+
+    else (Selective / Canary Migration)
+
+      :[Platform Operator] Create NEW CompositionDefinition\nalongside the existing one;
+      note right
+        Since there is no explicit upgrade policy,
+        parallel runs require a distinct
+        CompositionDefinition.
+      end note
+
+      :[Core Provider] Deploys a new CDC\nfor the new CompositionDefinition;
+      note right
+        Existing Compositions stay on their
+        current version and CDC. Both versions
+        now run in parallel.
+      end note
+
+      :[Application Owner] Selectively migrates specific\nCompositions to the new version;
+      note right
+        Update target Compositions
+        to use the new apiVersion
+        and adjust spec fields as needed.
+      end note
+
+      if (All Compositions migrated?) then (yes)
+        :[Platform Operator] Delete old CompositionDefinition;
+        note right
+          Core Provider automatically removes
+          the old CDC deployment and its
+          associated RBAC resources.
+        end note
+      else (no)
+        :Keep both CompositionDefinitions\nand CDCs active;
+      endif
+
+      stop
+
+    endif
+  }
+
+endif
+
+@enduml
