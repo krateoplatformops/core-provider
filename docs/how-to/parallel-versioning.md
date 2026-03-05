@@ -118,112 +118,39 @@ EOF
 
 ---
 
-## 4. (Optional) Migrate existing Compositions with breaking schema changes
+## 4. (Optional) Migrate an existing Composition with breaking schema changes
 
-If you want to move an existing Composition to the new version (with manual schema adaptation):
-
-### Step 1: Pause the old Composition
+### Step 1: Export the current manifest
 
 ```bash
-kubectl annotate githubscaffoldinglifecycles lifecycle-composition-1 \
-  -n cheatsheet-system \
-  "krateo.io/paused=true"
+kubectl get githubscaffoldinglifecycles.v0-0-1.composition.krateo.io lifecycle-composition-1 \
+  -n cheatsheet-system -o yaml > composition.yaml
 ```
 
-### Step 2: Get the Helm release name of the old Composition
+### Step 2: Edit the manifest
+
+In `composition.yaml`, make three changes:
+
+1. Update `apiVersion` to the new version:
+   ```yaml
+   apiVersion: composition.krateo.io/v0-0-2   # was v0-0-1
+   ```
+
+2. Update the version label:
+   ```yaml
+   labels:
+     krateo.io/composition-version: v0-0-2     # was v0-0-1
+   ```
+
+3. Adapt `spec` for any breaking schema changes introduced in `0.0.2`.
+
+### Step 3: Apply
 
 ```bash
-kubectl get githubscaffoldinglifecycles lifecycle-composition-1 \
-  -n cheatsheet-system \
-  -o jsonpath='{.metadata.labels.krateo\.io/release-name}'
+kubectl apply -f composition.yaml
 ```
 
-### Step 3: Create a new Composition at the new version, reusing the release name
-
-Set `krateo.io/release-name` to the value retrieved above so the new Composition takes over the existing Helm release:
-
-```bash
-cat <<EOF | kubectl apply -f -
-apiVersion: composition.krateo.io/v0-0-2
-kind: GithubScaffoldingLifecycle
-metadata:
-  name: lifecycle-composition-1-v2
-  namespace: cheatsheet-system
-  labels:
-    krateo.io/release-name: <RELEASE_NAME_FROM_OLD_COMPOSITION>
-spec:
-  argocd:
-    namespace: krateo-system
-    application:
-      project: default
-      source:
-        path: chart/
-      destination:
-        server: https://kubernetes.default.svc
-        namespace: githubscaffolding-app
-      syncEnabled: false
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-  app:
-    service:
-      type: NodePort
-      port: 31180
-  git:
-    unsupportedCapabilities: true
-    insecure: true
-    fromRepo:
-      scmUrl: https://github.com
-      org: krateoplatformops-blueprints
-      name: github-scaffolding-lifecycle
-      branch: main
-      path: skeleton/
-      credentials:
-        authMethod: generic
-        secretRef:
-          namespace: krateo-system
-          name: github-repo-creds
-          key: token
-    toRepo:
-      scmUrl: https://github.com
-      org: your-github-org        # replace with your GitHub org
-      name: lifecycleapp-test-2   # customize the repository name
-      branch: main
-      path: /
-      credentials:
-        authMethod: generic
-        secretRef:
-          namespace: krateo-system
-          name: github-repo-creds
-          key: token
-      private: false
-      initialize: true
-      deletionPolicy: Delete
-      verbose: false
-      configurationRef:
-        name: repo-config
-        namespace: demo-system
-EOF
-```
-
-### Step 4: Orphan and delete the old Composition
-
-Prevent the old Composition's deletion from removing the Helm release:
-
-```bash
-kubectl annotate githubscaffoldinglifecycle lifecycle-composition-1 \
-  -n cheatsheet-system \
-  krateo.io/management-policy=orphan
-
-kubectl patch githubscaffoldinglifecycle lifecycle-composition-1 \
-  -n cheatsheet-system \
-  --type=merge \
-  -p '{"metadata":{"finalizers":null}}'
-
-kubectl delete githubscaffoldinglifecycle lifecycle-composition-1 \
-  -n cheatsheet-system
-```
+The new CDC (`githubscaffoldinglifecycles-v0-0-2-controller`) detects the updated label and takes ownership. The old CDC stops reconciling this Composition.
 
 ---
 
@@ -239,6 +166,6 @@ kubectl get githubscaffoldinglifecycles -A -l krateo.io/composition-version=v0-0
 kubectl delete compositiondefinition lifecycleapp-cd-v1 -n cheatsheet-system
 ```
 
-**Expected:** The `githubscaffoldinglifecycles-v0-0-1-controller` CDC and all its RBAC resources are automatically removed. The `v0-0-1` version entry is removed from the shared CRD.
+**Expected:** The `githubscaffoldinglifecycles-v0-0-1-controller` CDC and all its RBAC resources are automatically removed. 
 
 > **Note on CRD versions:** While both CompositionDefinitions are active, two CRD versions (`v0-0-1` and `v0-0-2`) are registered. `kubectl` will default to the first stored version when no version is specified. Retire the old CompositionDefinition as soon as possible. See [Multi-Version Constraints](../concepts.md#multi-version-constraints).
