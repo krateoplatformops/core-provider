@@ -61,7 +61,58 @@ metadata:
   name: lifecycle-composition-new
   namespace: cheatsheet-system
 spec:
-  # ... spec values conforming to the new schema ...
+  argocd:
+    namespace: krateo-system
+    application:
+      project: default
+      source:
+        path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: githubscaffolding-app
+      syncEnabled: false
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  app:
+    service:
+      type: NodePort
+      port: 31180
+  git:
+    unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: your-github-org        # replace with your GitHub org
+      name: lifecycleapp-test-1   # customize the repository name
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
 EOF
 ```
 
@@ -101,7 +152,58 @@ metadata:
   labels:
     krateo.io/release-name: <RELEASE_NAME_FROM_OLD_COMPOSITION>
 spec:
-  # ... spec values updated to match the new schema ...
+  argocd:
+    namespace: krateo-system
+    application:
+      project: default
+      source:
+        path: chart/
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: githubscaffolding-app
+      syncEnabled: false
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+  app:
+    service:
+      type: NodePort
+      port: 31180
+  git:
+    unsupportedCapabilities: true
+    insecure: true
+    fromRepo:
+      scmUrl: https://github.com
+      org: krateoplatformops-blueprints
+      name: github-scaffolding-lifecycle
+      branch: main
+      path: skeleton/
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+    toRepo:
+      scmUrl: https://github.com
+      org: your-github-org        # replace with your GitHub org
+      name: lifecycleapp-test-2   # customize the repository name
+      branch: main
+      path: /
+      credentials:
+        authMethod: generic
+        secretRef:
+          namespace: krateo-system
+          name: github-repo-creds
+          key: token
+      private: false
+      initialize: true
+      deletionPolicy: Delete
+      verbose: false
+      configurationRef:
+        name: repo-config
+        namespace: demo-system
 EOF
 ```
 
