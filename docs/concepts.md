@@ -162,7 +162,7 @@ See: [How to: Selective Migration](how-to/selective-migration.md)
 
 ### Multi-Version Constraints
 
-> **Important:** Kubernetes requires a specific API version in every request. When multiple CRD versions are registered simultaneously, `kubectl` defaults to the latest stored version. Addressing a resource at an older version requires explicitly specifying the `apiVersion` in the resource manifest or API call.
+> **Important:** Kubernetes requires a specific API version in every request. When multiple CRD versions are registered simultaneously, `kubectl` defaults to the first stored version. Addressing a resource at an older version requires explicitly specifying the `apiVersion` in the resource manifest or API call.
 >
 > To limit operational complexity, keep the number of concurrently active CompositionDefinitions for the same chart as low as possible. Retire old CompositionDefinitions promptly after migration is complete.
 

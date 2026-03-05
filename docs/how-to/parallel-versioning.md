@@ -139,4 +139,4 @@ kubectl delete compositiondefinition lifecycleapp-cd-v1 -n cheatsheet-system
 
 **Expected:** The `githubscaffoldinglifecycles-v0-0-1-controller` CDC and all its RBAC resources are automatically removed. The `v0-0-1` version entry is removed from the shared CRD.
 
-> **Note on CRD versions:** While both CompositionDefinitions are active, two CRD versions (`v0-0-1` and `v0-0-2`) are registered. `kubectl` will default to the latest stored version when no version is specified. Retire the old CompositionDefinition as soon as possible. See [Multi-Version Constraints](../concepts.md#multi-version-constraints).
+> **Note on CRD versions:** While both CompositionDefinitions are active, two CRD versions (`v0-0-1` and `v0-0-2`) are registered. `kubectl` will default to the first stored version when no version is specified. Retire the old CompositionDefinition as soon as possible. See [Multi-Version Constraints](../concepts.md#multi-version-constraints).
