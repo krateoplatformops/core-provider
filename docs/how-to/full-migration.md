@@ -46,10 +46,14 @@ kubectl rollout status deployment/githubscaffoldinglifecycles-v0-0-2-controller 
 ## 3. Verify all Compositions are on the new version
 
 ```bash
-kubectl get githubscaffoldinglifecycles -A
+kubectl get githubscaffoldinglifecycles -A \
+  -o custom-columns=\
+"NAME:.metadata.name,NAMESPACE:.metadata.namespace,VERSION:.metadata.labels.krateo\.io/composition-version"
 ```
 
-The `VERSION` column should show `v0-0-2` for all instances.
+All instances should show `v0-0-2` in the `VERSION` column.
+
+> **Note:** A dedicated `VERSION` column in `kubectl get` output is a planned feature and is not yet available.
 
 ---
 
