@@ -46,7 +46,7 @@ if (Does values.schema.json have\nbreaking changes?\n(required fields added or r
   :[Application Owner] Manually update each\nComposition to match the new schema;
   note right
     - Add new required fields
-    - Update apiVersion if changed
+    - Update apiVersion if changed alongside with the label `krateo.io/composition-version` to reflect the new version
     - Test and migrate incrementally
   end note
 
@@ -99,7 +99,7 @@ else (no - non-breaking changes)
       :[Application Owner] Selectively migrates specific\nCompositions to the new version;
       note right
         Update target Compositions
-        to use the new apiVersion
+        to use the new apiVersion and label `krateo.io/composition-version` to point to the new version,
         and adjust spec fields as needed.
       end note
 
