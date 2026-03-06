@@ -1,0 +1,9 @@
+components:
+  composable-operations:
+    stepConfig:
+      install-core-provider:
+        helmValues:
+          image:
+            repository: kind.local/core-provider
+            tag: latest
+            pullPolicy: IfNotPresent
