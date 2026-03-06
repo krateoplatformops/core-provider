@@ -13,7 +13,6 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
-	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/plumbing/env"
 	"github.com/krateoplatformops/plumbing/ptr"
@@ -49,7 +48,6 @@ func main() {
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
 	webhookServiceName := flag.String("webhook-service-name", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAME", envVarPrefix), "core-provider-webhook-service"), "The name of the webhook service.")
 	webhookServiceNamespace := flag.String("webhook-service-namespace", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAMESPACE", envVarPrefix), "demo-system"), "The namespace of the webhook service.")
-	helmRegistryConfigPath := flag.String("helm-registry-config-path", env.String(helmRegistryConfigPathEnvVar, chartfs.HelmRegistryConfigPathDefault), "The path to the helm registry config file.")
 	tlsCertificateDuration := flag.Duration("tls-certificate-duration", env.Duration(fmt.Sprintf("%s_TLS_CERTIFICATE_DURATION", envVarPrefix), 24*time.Hour), "The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval.")
 	tlsCertificateLeaseExpirationMargin := flag.Duration(
 		"tls-certificate-lease-expiration-margin",
@@ -110,16 +108,13 @@ func main() {
 		"webhook-service-name", *webhookServiceName,
 		"webhook-service-namespace", *webhookServiceNamespace,
 		"tls-certificate-duration", tlsCertificateDuration.String(),
-		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String(),
-		"helm-registry-config-path", *helmRegistryConfigPath)
+		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String())
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
 		log.Info("Cannot get API server rest config", "error", err)
 		os.Exit(1)
 	}
-
-	chartfs.HelmRegistryConfigPath = *helmRegistryConfigPath
 
 	certOpts := certs.GenerateClientCertAndKeyOpts{
 		Duration:              *tlsCertificateDuration,
