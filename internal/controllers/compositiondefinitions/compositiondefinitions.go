@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/krateoplatformops/plumbing/kubeutil/event"
+	"github.com/krateoplatformops/plumbing/kubeutil/eventrecorder"
+
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/helpers/getters"
@@ -25,7 +28,7 @@ import (
 	pluralizerlib "github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
-	"github.com/krateoplatformops/provider-runtime/pkg/event"
+
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	"github.com/krateoplatformops/provider-runtime/pkg/meta"
 	"github.com/krateoplatformops/provider-runtime/pkg/ratelimiter"
@@ -38,7 +41,7 @@ import (
 	"k8s.io/client-go/discovery/cached/memory"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
+	record "k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -67,13 +70,15 @@ type Options struct {
 }
 
 func Setup(mgr ctrl.Manager, o Options) error {
-	// _ = apiextensionsscheme.AddToScheme(clientsetscheme.Scheme)
-
 	name := reconciler.ControllerName(compositiondefinitionsv1alpha1.CompositionDefinitionGroupKind)
 
 	l := o.ControllerOptions.Logger.WithValues("controller", name)
 
-	recorder := mgr.GetEventRecorderFor(name)
+	recorder, err := eventrecorder.CreateWithThrottle(context.Background(), mgr.GetConfig(), name, nil)
+	if err != nil {
+		return fmt.Errorf("error creating event recorder: %w", err)
+	}
+
 	cli := mgr.GetClient()
 
 	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(cli))
@@ -93,11 +98,12 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithPollInterval(o.ControllerOptions.PollInterval),
 		reconciler.WithLogger(l),
-		reconciler.WithRecorder(event.NewAPIRecorder(recorder)))
+		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
+	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	err := o.CertManager.UpdateExistingResources(ctx)
+	err = o.CertManager.UpdateExistingResources(ctx)
 	if err != nil {
 		return fmt.Errorf("error updating existing resources with CA bundle: %w", err)
 	}
