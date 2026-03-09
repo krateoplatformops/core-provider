@@ -10,10 +10,10 @@ import (
 
 	"github.com/gobuffalo/flect"
 	"github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
-	"github.com/krateoplatformops/core-provider/internal/tools/helm/getter"
 	"github.com/krateoplatformops/core-provider/internal/tools/resolvers"
 	"github.com/krateoplatformops/core-provider/internal/tools/strutil"
 	"github.com/krateoplatformops/core-provider/internal/tools/tgzfs"
+	"github.com/krateoplatformops/plumbing/helm/getter"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/yaml"
@@ -27,29 +27,28 @@ func ChartInfoFromSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.Ch
 	if nfo == nil {
 		return nil, "", fmt.Errorf("chart infos cannot be nil")
 	}
-
-	opts := getter.GetOptions{
-		URI:                   nfo.Url,
-		Version:               nfo.Version,
-		Repo:                  nfo.Repo,
-		InsecureSkipVerifyTLS: nfo.InsecureSkipVerifyTLS,
+	opts := []getter.Option{
+		getter.WithRepo(nfo.Repo),
+		getter.WithVersion(nfo.Version),
+		getter.WithInsecureSkipVerifyTLS(nfo.InsecureSkipVerifyTLS),
 	}
 	if nfo.Credentials != nil {
 		secret, err := resolvers.GetSecret(ctx, kube, nfo.Credentials.PasswordRef)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed to get secret: %w", err)
 		}
-		opts.Username = nfo.Credentials.Username
-		opts.Password = secret
-		opts.PassCredentialsAll = true
+		opts = append(opts, getter.WithCredentials(nfo.Credentials.Username, secret))
 	}
+	dat, _, err := getter.Get(ctx, nfo.Url,
+		opts...,
+	)
 
-	dat, _, err := getter.Get(opts)
+	bData, err := io.ReadAll(dat)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return ChartInfoFromBytes(ctx, dat)
+	return ChartInfoFromBytes(ctx, bData)
 }
 
 func ChartInfoFromBytes(ctx context.Context, bin []byte) (pkg fs.FS, rootDir string, err error) {

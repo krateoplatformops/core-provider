@@ -251,7 +251,6 @@ For practical examples, common issues, and advanced usage patterns, please refer
 
 | Name                                   | Description                | Default Value | Notes         |
 |:---------------------------------------|:---------------------------|:--------------|:--------------|
-| `HELM_REGISTRY_CONFIG_PATH`           | Path to Helm registry configuration file | `/tmp` | Used for OCI registries |
 | `CORE_PROVIDER_DEBUG`                 | Enables debug logging      | `false`       | Use `--debug` flag |
 | `CORE_PROVIDER_SYNC`                  | Sync period for controller manager | `1h`          | Duration |
 | `CORE_PROVIDER_POLL_INTERVAL`         | Poll interval for resource drift checks | `5m`          | Duration |
@@ -264,6 +263,7 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_TLS_CERTIFICATE_DURATION` | The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval. | `24h`         | Duration |
 | `CORE_PROVIDER_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN` | The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.  | `16h`         | Duration |
 | `URL_PLURALS`                          | DEPRECATED [from version 0.24.2](#requirements) - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
+| `HELM_REGISTRY_CONFIG_PATH`           | DEPRECATED No more used from version 1.0.0 - Path to Helm registry configuration file | `/tmp` | Used for OCI registries |
 
 ## Best Practices
 
