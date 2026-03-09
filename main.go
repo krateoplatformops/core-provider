@@ -32,8 +32,7 @@ import (
 )
 
 const (
-	providerName                 = "Core"
-	helmRegistryConfigPathEnvVar = "HELM_REGISTRY_CONFIG_PATH"
+	providerName = "Core"
 )
 
 func main() {
