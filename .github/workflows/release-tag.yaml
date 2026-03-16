@@ -2,7 +2,7 @@ name: release-tag
 
 on:
   push:
-    tags: [ '[0-9]+.[0-9]+.[0-9]+' ]
+    tags: [ '[0-9]+.[0-9]+.[0-9]+', '[0-9]+.[0-9]+.[0-9]+-*' ] 
 
 env:
   GHCR_REPO: ghcr.io/${{ github.repository }}
