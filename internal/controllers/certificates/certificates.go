@@ -1,12 +1,15 @@
 package certificates
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"time"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crdclient "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -142,21 +145,19 @@ func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVe
 		m.log("Certificate has been updated, queuing CA bundle propagation")
 		shouldPropagate = true
 		cabundle = cabundleData
-	} else {
-		// Certificate is still valid, just get current CA bundle for propagation
-		m.caBundleMu.RLock()
-		cabundle = m.caBundle
-		m.caBundleMu.RUnlock()
-		shouldPropagate = true
 	}
 	m.certGenMu.Unlock()
 
-	// Perform propagation outside the lock to avoid blocking other certificate operations
-	// K8s API calls can be slow (100ms-1s per call), so we don't want to hold the lock
+	// Perform propagation only when certificate was actually regenerated
+	// This avoids unnecessary K8s API calls every 5 minutes when cert hasn't changed
 	if shouldPropagate {
-		err = m.propagateCABundle(ctx, cabundle, gvr)
+		// Validate CA bundle format before attempting propagation
+		if err := validateCABundleFormat(cabundle); err != nil {
+			return fmt.Errorf("invalid CA bundle format: %w", err)
+		}
+		err = m.propagateCABundleWithRetry(ctx, cabundle, gvr)
 		if err != nil {
-			return fmt.Errorf("error updating CA bundle: %w", err)
+			return fmt.Errorf("error updating CA bundle after retries: %w", err)
 		}
 	}
 	return nil
@@ -180,9 +181,11 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 			m.caBundleMu.RLock()
 			cabundle := m.caBundle
 			m.caBundleMu.RUnlock()
-			err = m.propagateCABundle(ctx, cabundle, gvr)
+
+			// Use retry logic to handle transient failures in CA bundle propagation
+			err = m.propagateCABundleWithRetry(ctx, cabundle, gvr)
 			if err != nil {
-				return fmt.Errorf("error updating CA bundle: %w", err)
+				return fmt.Errorf("error updating CA bundle for GVR %s: %w", gvr.String(), err)
 			}
 			m.log("Updated CA bundle for CRD and MutatingWebhookConfiguration", "GVR", gvr.String())
 		}
@@ -238,6 +241,128 @@ func getCABundle(certsPath string) ([]byte, error) {
 	}
 
 	return fb, nil
+}
+
+// propagateCABundleWithRetry attempts to propagate the CA bundle with exponential backoff retry logic
+// This handles transient failures like K8s API timeouts or conflicts
+func (m *CertManager) propagateCABundleWithRetry(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
+	// Validate CA bundle format upfront to fail fast
+	if err := validateCABundleFormat(cabundle); err != nil {
+		return fmt.Errorf("invalid CA bundle format, aborting propagation: %w", err)
+	}
+
+	const maxRetries = 3
+	const initialBackoff = 100 * time.Millisecond
+
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Check if context is cancelled before attempting
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context cancelled: %w", err)
+		}
+
+		m.log("Propagating CA bundle", "gvr", gvr.String(), "attempt", attempt+1, "maxAttempts", maxRetries)
+
+		err := m.propagateCABundle(ctx, cabundle, gvr)
+		if err == nil {
+			m.log("Successfully propagated CA bundle", "gvr", gvr.String(), "attempt", attempt+1)
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if this is a transient error worth retrying
+		if !isTransientError(err) {
+			m.log("Non-transient error, not retrying", "gvr", gvr.String(), "error", err)
+			return err
+		}
+
+		if attempt < maxRetries-1 {
+			m.log("CA bundle propagation failed, retrying after backoff",
+				"gvr", gvr.String(),
+				"attempt", attempt+1,
+				"nextBackoff", backoff.String(),
+				"error", err)
+
+			// Wait with context cancellation support
+			select {
+			case <-time.After(backoff):
+				// Continue to next attempt
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled during retry backoff: %w", ctx.Err())
+			}
+
+			// Exponential backoff: double the wait time
+			backoff = backoff * 2
+		}
+	}
+
+	return fmt.Errorf("failed to propagate CA bundle after %d attempts: %w", maxRetries, lastErr)
+}
+
+// isTransientError determines if an error is transient and worth retrying
+// Returns true for errors like timeouts and conflicts that might succeed on retry
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// K8s API transient errors
+	transientPatterns := []string{
+		"timeout",           // Connection timeout
+		"deadline exceeded", // Context deadline exceeded
+		"connection reset",  // Connection reset by peer
+		"connection refused",// Connection refused
+		"i/o timeout",       // I/O timeout
+		"409",               // K8s Conflict - resource was modified
+		"503",               // Service Unavailable
+		"504",               // Gateway Timeout
+	}
+
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	// Check for specific K8s error types
+	// Note: This is a simple string-based check; in production you might want
+	// to use k8s.io/apimachinery/pkg/api/errors for more robust checking
+	if strings.Contains(errStr, "conflict") || strings.Contains(errStr, "Conflict") {
+		return true
+	}
+
+	return false
+}
+
+// validateCABundleFormat validates that the CA bundle is in valid PEM format and not empty
+func validateCABundleFormat(cabundle []byte) error {
+	if len(cabundle) == 0 {
+		return fmt.Errorf("CA bundle is empty")
+	}
+
+	// Check for PEM markers (basic validation)
+	if !bytes.Contains(cabundle, []byte("-----BEGIN")) {
+		return fmt.Errorf("CA bundle missing BEGIN marker - invalid PEM format")
+	}
+
+	if !bytes.Contains(cabundle, []byte("-----END")) {
+		return fmt.Errorf("CA bundle missing END marker - invalid PEM format")
+	}
+
+	// Verify PEM structure makes sense (BEGIN before END)
+	beginIdx := bytes.Index(cabundle, []byte("-----BEGIN"))
+	endIdx := bytes.Index(cabundle, []byte("-----END"))
+
+	if beginIdx >= endIdx {
+		return fmt.Errorf("CA bundle has invalid PEM structure (END before BEGIN)")
+	}
+
+	return nil
 }
 
 func (m *CertManager) propagateCABundle(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
