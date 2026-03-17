@@ -284,9 +284,10 @@ func TestController(t *testing.T) {
 		// }
 
 		if err := Setup(mgr, Options{
-			ControllerOptions: o,
-			CertManager:       certMgr,
-			Pluralizer:        pluralizer,
+			ControllerOptions:       o,
+			CertManager:             certMgr,
+			Pluralizer:              pluralizer,
+			CertificateSyncInterval: 500 * time.Millisecond, // Short interval for faster testing
 		}); err != nil {
 			log.Info("Cannot setup controllers", "error", err)
 			os.Exit(1)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crdclient "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -25,6 +26,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// CertManagerInterface abstracts certificate lifecycle management for testability.
+type CertManagerInterface interface {
+	ManageCertificates(ctx context.Context, gvr schema.GroupVersionResource) error
+	GetCABundle() []byte
+	GetServiceName() string
+	GetServiceNamespace() string
+	UpdateExistingResources(ctx context.Context) error
+}
+
 type CertManager struct {
 	kube                        client.Client
 	client                      kubernetes.Interface
@@ -33,8 +43,10 @@ type CertManager struct {
 	pluralizer                  pluralizer.PluralizerInterface
 	mutatingWebhookTemplatePath string
 	certPath                    string
+	caBundleMu                  sync.RWMutex
 	caBundle                    []byte
 	webhookServiceMeta          types.NamespacedName
+	certGenMu                   sync.Mutex // Serializes certificate generation to prevent file system races
 }
 
 type Opts struct {
@@ -93,13 +105,22 @@ func NewCertManager(o Opts, optsFuncs ...FuncOption) (*CertManager, error) {
 		}
 		return nil, fmt.Errorf("error reading CA bundle: %w", err)
 	}
+	mgr.caBundleMu.Lock()
 	mgr.caBundle = cabundle
+	mgr.caBundleMu.Unlock()
 	return mgr, nil
 }
 
 func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVersionResource) error {
+	// Hold the lock only for certificate generation and file operations
+	// Release it before making K8s API calls to avoid blocking the system
+	var shouldPropagate bool
+	var cabundle []byte
+
+	m.certGenMu.Lock()
 	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(m.client, m.log, m.certOpts)
 	if err != nil {
+		m.certGenMu.Unlock()
 		return err
 	}
 
@@ -107,19 +128,36 @@ func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVe
 		m.log("Certificate has been regenerated, updating certificates for webhook server")
 		err = certs.UpdateCerts(cert, key, m.certPath)
 		if err != nil {
+			m.certGenMu.Unlock()
 			return err
 		}
-		m.caBundle, err = getCABundle(m.certPath)
+		cabundleData, err := getCABundle(m.certPath)
 		if err != nil {
+			m.certGenMu.Unlock()
 			return fmt.Errorf("error getting CA bundle: %w", err)
 		}
-		m.log("Updating certficates for CRDs and Mutating Webhook Configurations")
+		m.caBundleMu.Lock()
+		m.caBundle = cabundleData
+		m.caBundleMu.Unlock()
+		m.log("Certificate has been updated, queuing CA bundle propagation")
+		shouldPropagate = true
+		cabundle = cabundleData
+	} else {
+		// Certificate is still valid, just get current CA bundle for propagation
+		m.caBundleMu.RLock()
+		cabundle = m.caBundle
+		m.caBundleMu.RUnlock()
+		shouldPropagate = true
 	}
-	err = m.propagateCABundle(ctx,
-		m.caBundle,
-		gvr)
-	if err != nil {
-		return fmt.Errorf("error updating CA bundle: %w", err)
+	m.certGenMu.Unlock()
+
+	// Perform propagation outside the lock to avoid blocking other certificate operations
+	// K8s API calls can be slow (100ms-1s per call), so we don't want to hold the lock
+	if shouldPropagate {
+		err = m.propagateCABundle(ctx, cabundle, gvr)
+		if err != nil {
+			return fmt.Errorf("error updating CA bundle: %w", err)
+		}
 	}
 	return nil
 }
@@ -139,7 +177,10 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 			}
 
-			err = m.propagateCABundle(ctx, m.caBundle, gvr)
+			m.caBundleMu.RLock()
+			cabundle := m.caBundle
+			m.caBundleMu.RUnlock()
+			err = m.propagateCABundle(ctx, cabundle, gvr)
 			if err != nil {
 				return fmt.Errorf("error updating CA bundle: %w", err)
 			}
@@ -150,6 +191,10 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 }
 
 func (m *CertManager) RefreshCertificates() error {
+	// Serialize certificate generation to prevent concurrent file system writes
+	m.certGenMu.Lock()
+	defer m.certGenMu.Unlock()
+
 	cert, key, err := certs.GenerateClientCertAndKey(m.client, m.log, m.certOpts)
 	if err != nil {
 		return fmt.Errorf("error generating client certificate and key: %w", err)
@@ -158,10 +203,13 @@ func (m *CertManager) RefreshCertificates() error {
 	if err != nil {
 		return fmt.Errorf("error updating certificates: %w", err)
 	}
-	m.caBundle, err = getCABundle(m.certPath)
+	cabundle, err := getCABundle(m.certPath)
 	if err != nil {
 		return fmt.Errorf("error getting CA bundle: %w", err)
 	}
+	m.caBundleMu.Lock()
+	m.caBundle = cabundle
+	m.caBundleMu.Unlock()
 	return nil
 }
 
@@ -170,6 +218,8 @@ func (m *CertManager) GetCertsPath() string {
 }
 
 func (m *CertManager) GetCABundle() []byte {
+	m.caBundleMu.RLock()
+	defer m.caBundleMu.RUnlock()
 	return m.caBundle
 }
 

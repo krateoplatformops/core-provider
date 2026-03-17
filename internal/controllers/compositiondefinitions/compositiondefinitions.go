@@ -65,9 +65,10 @@ var (
 )
 
 type Options struct {
-	ControllerOptions controller.Options
-	CertManager       *certificates.CertManager
-	Pluralizer        pluralizerlib.PluralizerInterface
+	ControllerOptions       controller.Options
+	CertManager             certificates.CertManagerInterface
+	Pluralizer              pluralizerlib.PluralizerInterface
+	CertificateSyncInterval time.Duration
 }
 
 func Setup(mgr ctrl.Manager, o Options) error {
@@ -102,11 +103,15 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
 	)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	err = o.CertManager.UpdateExistingResources(ctx)
-	if err != nil {
-		return fmt.Errorf("error updating existing resources with CA bundle: %w", err)
+	// Setup certificate reconciler as a separate runnable
+	certReconciler := certificates.NewCertificateReconciler(
+		o.CertManager,
+		o.Pluralizer,
+		l,
+		o.CertificateSyncInterval,
+	)
+	if err := mgr.Add(certReconciler); err != nil {
+		return fmt.Errorf("error adding certificate reconciler to manager: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -123,7 +128,7 @@ type connector struct {
 	log         logging.Logger
 	recorder    record.EventRecorder
 	pluralizer  pluralizerlib.PluralizerInterface
-	certManager *certificates.CertManager
+	certManager certificates.CertManagerInterface
 }
 
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
@@ -152,7 +157,7 @@ type external struct {
 	log         logging.Logger
 	rec         record.EventRecorder
 	pluralizer  pluralizerlib.PluralizerInterface
-	certManager *certificates.CertManager
+	certManager certificates.CertManagerInterface
 }
 
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
@@ -250,10 +255,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	err = e.certManager.ManageCertificates(ctx, gvr)
-	if err != nil {
-		return reconciler.ExternalObservation{}, fmt.Errorf("error managing certificates: %w", err)
-	}
+	// Certificate management is now handled by a separate CertificateReconciler
+	// that runs independently on a periodic schedule.
 
 	ul, err := getters.GetCompositions(ctx, e.dynamic, gvr)
 	if err != nil {

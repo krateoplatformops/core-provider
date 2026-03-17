@@ -171,24 +171,51 @@ func UpdateCerts(crt string, key string, certsPath string) error {
 	if err != nil {
 		return fmt.Errorf("cannot create directory for certificate and key: %v", err)
 	}
-	// Write the certificate and key to a files
-	f, err := os.Create(filepath.Join(certsPath, "tls.crt"))
+
+	certPath := filepath.Join(certsPath, "tls.crt")
+	keyPath := filepath.Join(certsPath, "tls.key")
+	certTmpPath := filepath.Join(certsPath, "tls.crt.tmp")
+	keyTmpPath := filepath.Join(certsPath, "tls.key.tmp")
+
+	// Write certificate to temporary file first
+	f, err := os.Create(certTmpPath)
 	if err != nil {
-		return fmt.Errorf("cannot create certificate file: %v", err)
+		return fmt.Errorf("cannot create temporary certificate file: %v", err)
 	}
-	defer f.Close()
 	_, err = f.Write(decCert)
+	f.Close()
 	if err != nil {
+		os.Remove(certTmpPath)
 		return fmt.Errorf("cannot write certificate file: %v", err)
 	}
-	f, err = os.Create(filepath.Join(certsPath, "tls.key"))
+
+	// Write key to temporary file
+	f, err = os.Create(keyTmpPath)
 	if err != nil {
-		return fmt.Errorf("cannot create key file: %v", err)
+		os.Remove(certTmpPath)
+		return fmt.Errorf("cannot create temporary key file: %v", err)
 	}
-	defer f.Close()
 	_, err = f.Write(decKey)
+	f.Close()
 	if err != nil {
+		os.Remove(certTmpPath)
+		os.Remove(keyTmpPath)
 		return fmt.Errorf("cannot write key file: %v", err)
 	}
+
+	// Atomically rename files to final names (atomic on Unix filesystems)
+	err = os.Rename(certTmpPath, certPath)
+	if err != nil {
+		os.Remove(certTmpPath)
+		os.Remove(keyTmpPath)
+		return fmt.Errorf("cannot rename certificate file: %v", err)
+	}
+
+	err = os.Rename(keyTmpPath, keyPath)
+	if err != nil {
+		os.Remove(keyTmpPath)
+		return fmt.Errorf("cannot rename key file: %v", err)
+	}
+
 	return nil
 }

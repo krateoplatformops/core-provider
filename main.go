@@ -53,6 +53,7 @@ func main() {
 		env.Duration(fmt.Sprintf("%s_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN", envVarPrefix),
 			16*time.Hour),
 		"The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.")
+	certificateSyncInterval := flag.Duration("certificate-sync-interval", env.Duration(fmt.Sprintf("%s_CERTIFICATE_SYNC_INTERVAL", envVarPrefix), 5*time.Minute), "The interval at which the certificate reconciler syncs certificates and updates resources.")
 	flag.Parse()
 
 	log.Default().SetOutput(os.Stderr)
@@ -107,7 +108,8 @@ func main() {
 		"webhook-service-name", *webhookServiceName,
 		"webhook-service-namespace", *webhookServiceNamespace,
 		"tls-certificate-duration", tlsCertificateDuration.String(),
-		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String())
+		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String(),
+		"certificate-sync-interval", certificateSyncInterval.String())
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
@@ -175,9 +177,10 @@ func main() {
 		os.Exit(1)
 	}
 	if err := compositiondefinitions.Setup(mgr, compositiondefinitions.Options{
-		ControllerOptions: o,
-		CertManager:       certMgr,
-		Pluralizer:        pluralizer.New(false),
+		ControllerOptions:       o,
+		CertManager:             certMgr,
+		Pluralizer:              pluralizer.New(false),
+		CertificateSyncInterval: *certificateSyncInterval,
 	}); err != nil {
 		log.Info("Cannot setup controllers", "error", err)
 		os.Exit(1)
