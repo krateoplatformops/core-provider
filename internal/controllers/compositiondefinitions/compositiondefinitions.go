@@ -2,6 +2,7 @@ package compositiondefinitions
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/ratelimiter"
 	"github.com/krateoplatformops/provider-runtime/pkg/reconciler"
 	"github.com/krateoplatformops/provider-runtime/pkg/resource"
-	"github.com/pkg/errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -128,7 +129,7 @@ type connector struct {
 func (c *connector) Connect(ctx context.Context, mg resource.Managed) (reconciler.ExternalClient, error) {
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
-		return nil, errors.New(errNotCR)
+		return nil, fmt.Errorf(errNotCR)
 	}
 
 	log := c.log.WithValues("name", cr.Name, "namespace", cr.Namespace)
@@ -157,7 +158,7 @@ type external struct {
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler.ExternalObservation, error) {
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
-		return reconciler.ExternalObservation{}, errors.New(errNotCR)
+		return reconciler.ExternalObservation{}, fmt.Errorf(errNotCR)
 	}
 	log := e.log.WithValues("operation", "observe")
 	ctx = contexttools.CtxWithLogger(ctx, log)
@@ -330,7 +331,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
-		return errors.New(errNotCR)
+		return fmt.Errorf(errNotCR)
 	}
 
 	log := e.log.WithValues("operation", "create")
@@ -413,7 +414,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
-		return errors.New(errNotCR)
+		return fmt.Errorf(errNotCR)
 	}
 
 	log := e.log.WithValues("operation", "update")
@@ -541,7 +542,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	cr, ok := mg.(*compositiondefinitionsv1alpha1.CompositionDefinition)
 	if !ok {
-		return errors.New(errNotCR)
+		return fmt.Errorf(errNotCR)
 	}
 	log := e.log.WithValues("operation", "delete")
 	ctx = contexttools.CtxWithLogger(ctx, log)
