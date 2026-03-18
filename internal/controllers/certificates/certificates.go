@@ -1,11 +1,15 @@
 package certificates
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	crdclient "github.com/krateoplatformops/core-provider/internal/tools/crd"
@@ -25,6 +29,15 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+// CertManagerInterface abstracts certificate lifecycle management for testability.
+type CertManagerInterface interface {
+	ManageCertificates(ctx context.Context, gvr schema.GroupVersionResource) error
+	GetCABundle() []byte
+	GetServiceName() string
+	GetServiceNamespace() string
+	UpdateExistingResources(ctx context.Context) error
+}
+
 type CertManager struct {
 	kube                        client.Client
 	client                      kubernetes.Interface
@@ -33,8 +46,10 @@ type CertManager struct {
 	pluralizer                  pluralizer.PluralizerInterface
 	mutatingWebhookTemplatePath string
 	certPath                    string
+	caBundleMu                  sync.RWMutex
 	caBundle                    []byte
 	webhookServiceMeta          types.NamespacedName
+	certGenMu                   sync.Mutex // Serializes certificate generation to prevent file system races
 }
 
 type Opts struct {
@@ -93,13 +108,22 @@ func NewCertManager(o Opts, optsFuncs ...FuncOption) (*CertManager, error) {
 		}
 		return nil, fmt.Errorf("error reading CA bundle: %w", err)
 	}
+	mgr.caBundleMu.Lock()
 	mgr.caBundle = cabundle
+	mgr.caBundleMu.Unlock()
 	return mgr, nil
 }
 
 func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVersionResource) error {
+	// Hold the lock only for certificate generation and file operations
+	// Release it before making K8s API calls to avoid blocking the system
+	var shouldPropagate bool
+	var cabundle []byte
+
+	m.certGenMu.Lock()
 	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(m.client, m.log, m.certOpts)
 	if err != nil {
+		m.certGenMu.Unlock()
 		return err
 	}
 
@@ -107,19 +131,34 @@ func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVe
 		m.log("Certificate has been regenerated, updating certificates for webhook server")
 		err = certs.UpdateCerts(cert, key, m.certPath)
 		if err != nil {
+			m.certGenMu.Unlock()
 			return err
 		}
-		m.caBundle, err = getCABundle(m.certPath)
+		cabundleData, err := getCABundle(m.certPath)
 		if err != nil {
+			m.certGenMu.Unlock()
 			return fmt.Errorf("error getting CA bundle: %w", err)
 		}
-		m.log("Updating certficates for CRDs and Mutating Webhook Configurations")
+		m.caBundleMu.Lock()
+		m.caBundle = cabundleData
+		m.caBundleMu.Unlock()
+		m.log("Certificate has been updated, queuing CA bundle propagation")
+		shouldPropagate = true
+		cabundle = cabundleData
 	}
-	err = m.propagateCABundle(ctx,
-		m.caBundle,
-		gvr)
-	if err != nil {
-		return fmt.Errorf("error updating CA bundle: %w", err)
+	m.certGenMu.Unlock()
+
+	// Perform propagation only when certificate was actually regenerated
+	// This avoids unnecessary K8s API calls every 5 minutes when cert hasn't changed
+	if shouldPropagate {
+		// Validate CA bundle format before attempting propagation
+		if err := validateCABundleFormat(cabundle); err != nil {
+			return fmt.Errorf("invalid CA bundle format: %w", err)
+		}
+		err = m.propagateCABundleWithRetry(ctx, cabundle, gvr)
+		if err != nil {
+			return fmt.Errorf("error updating CA bundle after retries: %w", err)
+		}
 	}
 	return nil
 }
@@ -139,9 +178,14 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 			}
 
-			err = m.propagateCABundle(ctx, m.caBundle, gvr)
+			m.caBundleMu.RLock()
+			cabundle := m.caBundle
+			m.caBundleMu.RUnlock()
+
+			// Use retry logic to handle transient failures in CA bundle propagation
+			err = m.propagateCABundleWithRetry(ctx, cabundle, gvr)
 			if err != nil {
-				return fmt.Errorf("error updating CA bundle: %w", err)
+				return fmt.Errorf("error updating CA bundle for GVR %s: %w", gvr.String(), err)
 			}
 			m.log("Updated CA bundle for CRD and MutatingWebhookConfiguration", "GVR", gvr.String())
 		}
@@ -150,6 +194,10 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 }
 
 func (m *CertManager) RefreshCertificates() error {
+	// Serialize certificate generation to prevent concurrent file system writes
+	m.certGenMu.Lock()
+	defer m.certGenMu.Unlock()
+
 	cert, key, err := certs.GenerateClientCertAndKey(m.client, m.log, m.certOpts)
 	if err != nil {
 		return fmt.Errorf("error generating client certificate and key: %w", err)
@@ -158,10 +206,13 @@ func (m *CertManager) RefreshCertificates() error {
 	if err != nil {
 		return fmt.Errorf("error updating certificates: %w", err)
 	}
-	m.caBundle, err = getCABundle(m.certPath)
+	cabundle, err := getCABundle(m.certPath)
 	if err != nil {
 		return fmt.Errorf("error getting CA bundle: %w", err)
 	}
+	m.caBundleMu.Lock()
+	m.caBundle = cabundle
+	m.caBundleMu.Unlock()
 	return nil
 }
 
@@ -170,6 +221,8 @@ func (m *CertManager) GetCertsPath() string {
 }
 
 func (m *CertManager) GetCABundle() []byte {
+	m.caBundleMu.RLock()
+	defer m.caBundleMu.RUnlock()
 	return m.caBundle
 }
 
@@ -188,6 +241,128 @@ func getCABundle(certsPath string) ([]byte, error) {
 	}
 
 	return fb, nil
+}
+
+// propagateCABundleWithRetry attempts to propagate the CA bundle with exponential backoff retry logic
+// This handles transient failures like K8s API timeouts or conflicts
+func (m *CertManager) propagateCABundleWithRetry(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
+	// Validate CA bundle format upfront to fail fast
+	if err := validateCABundleFormat(cabundle); err != nil {
+		return fmt.Errorf("invalid CA bundle format, aborting propagation: %w", err)
+	}
+
+	const maxRetries = 3
+	const initialBackoff = 100 * time.Millisecond
+
+	var lastErr error
+	backoff := initialBackoff
+
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Check if context is cancelled before attempting
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("context cancelled: %w", err)
+		}
+
+		m.log("Propagating CA bundle", "gvr", gvr.String(), "attempt", attempt+1, "maxAttempts", maxRetries)
+
+		err := m.propagateCABundle(ctx, cabundle, gvr)
+		if err == nil {
+			m.log("Successfully propagated CA bundle", "gvr", gvr.String(), "attempt", attempt+1)
+			return nil
+		}
+
+		lastErr = err
+
+		// Check if this is a transient error worth retrying
+		if !isTransientError(err) {
+			m.log("Non-transient error, not retrying", "gvr", gvr.String(), "error", err)
+			return err
+		}
+
+		if attempt < maxRetries-1 {
+			m.log("CA bundle propagation failed, retrying after backoff",
+				"gvr", gvr.String(),
+				"attempt", attempt+1,
+				"nextBackoff", backoff.String(),
+				"error", err)
+
+			// Wait with context cancellation support
+			select {
+			case <-time.After(backoff):
+				// Continue to next attempt
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled during retry backoff: %w", ctx.Err())
+			}
+
+			// Exponential backoff: double the wait time
+			backoff = backoff * 2
+		}
+	}
+
+	return fmt.Errorf("failed to propagate CA bundle after %d attempts: %w", maxRetries, lastErr)
+}
+
+// isTransientError determines if an error is transient and worth retrying
+// Returns true for errors like timeouts and conflicts that might succeed on retry
+func isTransientError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	errStr := err.Error()
+
+	// K8s API transient errors
+	transientPatterns := []string{
+		"timeout",           // Connection timeout
+		"deadline exceeded", // Context deadline exceeded
+		"connection reset",  // Connection reset by peer
+		"connection refused",// Connection refused
+		"i/o timeout",       // I/O timeout
+		"409",               // K8s Conflict - resource was modified
+		"503",               // Service Unavailable
+		"504",               // Gateway Timeout
+	}
+
+	for _, pattern := range transientPatterns {
+		if strings.Contains(errStr, pattern) {
+			return true
+		}
+	}
+
+	// Check for specific K8s error types
+	// Note: This is a simple string-based check; in production you might want
+	// to use k8s.io/apimachinery/pkg/api/errors for more robust checking
+	if strings.Contains(errStr, "conflict") || strings.Contains(errStr, "Conflict") {
+		return true
+	}
+
+	return false
+}
+
+// validateCABundleFormat validates that the CA bundle is in valid PEM format and not empty
+func validateCABundleFormat(cabundle []byte) error {
+	if len(cabundle) == 0 {
+		return fmt.Errorf("CA bundle is empty")
+	}
+
+	// Check for PEM markers (basic validation)
+	if !bytes.Contains(cabundle, []byte("-----BEGIN")) {
+		return fmt.Errorf("CA bundle missing BEGIN marker - invalid PEM format")
+	}
+
+	if !bytes.Contains(cabundle, []byte("-----END")) {
+		return fmt.Errorf("CA bundle missing END marker - invalid PEM format")
+	}
+
+	// Verify PEM structure makes sense (BEGIN before END)
+	beginIdx := bytes.Index(cabundle, []byte("-----BEGIN"))
+	endIdx := bytes.Index(cabundle, []byte("-----END"))
+
+	if beginIdx >= endIdx {
+		return fmt.Errorf("CA bundle has invalid PEM structure (END before BEGIN)")
+	}
+
+	return nil
 }
 
 func (m *CertManager) propagateCABundle(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
