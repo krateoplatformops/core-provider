@@ -49,8 +49,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
-	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/kubernetes"
+	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -290,7 +290,7 @@ func TestController(t *testing.T) {
 			ControllerOptions:       o,
 			CertManager:             certMgr,
 			Pluralizer:              pluralizer,
-			CertificateSyncInterval: 500 * time.Millisecond, // Short interval for faster testing
+			CertificateSyncInterval: 60 * time.Second, // Short interval for faster testing
 		}); err != nil {
 			log.Info("Cannot setup controllers", "error", err)
 			os.Exit(1)
@@ -356,7 +356,7 @@ func TestController(t *testing.T) {
 			ctx = context.WithValue(ctx, stopKey{}, stop)
 			return ctx
 		}).
-	Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+		Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			// r, err := resources.New(cfg.Client().RESTConfig())
 			// if err != nil {
 			// 	t.Fail()
