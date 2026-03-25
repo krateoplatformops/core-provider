@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -43,11 +44,13 @@ import (
 	"github.com/krateoplatformops/plumbing/e2e"
 	xenv "github.com/krateoplatformops/plumbing/env"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -353,7 +356,7 @@ func TestController(t *testing.T) {
 			ctx = context.WithValue(ctx, stopKey{}, stop)
 			return ctx
 		}).
-		Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
+	Assess("Test Create", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 			// r, err := resources.New(cfg.Client().RESTConfig())
 			// if err != nil {
 			// 	t.Fail()
@@ -396,6 +399,8 @@ func TestController(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+
+			assertNoControllerPanics(t, cfg)
 			return ctx
 		}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 		toUpgrade := []struct {
@@ -518,6 +523,8 @@ func TestController(t *testing.T) {
 			}) {
 				t.Fatalf("Expected version vacuum, got %v", crd.Spec.Versions)
 			}
+
+			assertNoControllerPanics(t, cfg)
 		}
 
 		return ctx
@@ -550,6 +557,7 @@ func TestController(t *testing.T) {
 			}
 		}
 
+		assertNoControllerPanics(t, cfg)
 		return ctx
 	}).Feature()
 
@@ -725,4 +733,47 @@ func normalizeVersion(ver string, replaceChar rune) string {
 	}
 
 	return ver
+}
+
+func assertNoControllerPanics(t *testing.T, cfg *envconf.Config) {
+	t.Helper()
+
+	clientset := kubernetes.NewForConfigOrDie(cfg.Client().RESTConfig())
+
+	pods, err := clientset.CoreV1().Pods(namespace).List(context.Background(), metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/name=core-provider",
+	})
+	if err != nil {
+		t.Fatalf("failed to list core-provider pods: %v", err)
+	}
+
+	var podName string
+	for _, pod := range pods.Items {
+		if pod.Status.Phase == corev1.PodRunning {
+			podName = pod.Name
+			break
+		}
+	}
+	if podName == "" {
+		t.Fatalf("no running core-provider pod found")
+	}
+
+	seconds := int64(600)
+	rc, err := clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
+		SinceSeconds: &seconds,
+	}).Stream(context.Background())
+	if err != nil {
+		t.Fatalf("failed to stream core-provider logs: %v", err)
+	}
+	defer rc.Close()
+
+	logBytes, err := io.ReadAll(rc)
+	if err != nil {
+		t.Fatalf("failed to read core-provider logs: %v", err)
+	}
+
+	logs := string(logBytes)
+	if strings.Contains(logs, "Observed a panic") || strings.Contains(logs, "Reconciler error") {
+		t.Fatalf("controller panic detected in core-provider logs:\n%s", logs)
+	}
 }
