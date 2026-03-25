@@ -115,11 +115,6 @@ func NewCertManager(o Opts, optsFuncs ...FuncOption) (*CertManager, error) {
 }
 
 func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVersionResource) error {
-	// Hold the lock only for certificate generation and file operations
-	// Release it before making K8s API calls to avoid blocking the system
-	var shouldPropagate bool
-	var cabundle []byte
-
 	m.certGenMu.Lock()
 	ok, cert, key, err := certs.CheckOrRegenerateClientCertAndKey(m.client, m.log, m.certOpts)
 	if err != nil {
@@ -142,23 +137,17 @@ func (m *CertManager) ManageCertificates(ctx context.Context, gvr schema.GroupVe
 		m.caBundleMu.Lock()
 		m.caBundle = cabundleData
 		m.caBundleMu.Unlock()
-		m.log("Certificate has been updated, queuing CA bundle propagation")
-		shouldPropagate = true
-		cabundle = cabundleData
+		m.log("Certificate has been updated")
 	}
 	m.certGenMu.Unlock()
 
-	// Perform propagation only when certificate was actually regenerated
-	// This avoids unnecessary K8s API calls every 5 minutes when cert hasn't changed
-	if shouldPropagate {
-		// Validate CA bundle format before attempting propagation
-		if err := validateCABundleFormat(cabundle); err != nil {
-			return fmt.Errorf("invalid CA bundle format: %w", err)
-		}
-		err = m.propagateCABundleWithRetry(ctx, cabundle, gvr)
-		if err != nil {
-			return fmt.Errorf("error updating CA bundle after retries: %w", err)
-		}
+	cabundle := m.GetCABundle()
+	if err := validateCABundleFormat(cabundle); err != nil {
+		return fmt.Errorf("invalid CA bundle format: %w", err)
+	}
+
+	if err := m.propagateCABundleWithRetry(ctx, cabundle, gvr); err != nil {
+		return fmt.Errorf("error updating CA bundle after retries: %w", err)
 	}
 	return nil
 }

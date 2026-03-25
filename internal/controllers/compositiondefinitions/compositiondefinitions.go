@@ -82,8 +82,9 @@ func Setup(mgr ctrl.Manager, o Options) error {
 	}
 
 	cli := mgr.GetClient()
+	apiReader := mgr.GetAPIReader()
 
-	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(cli))
+	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 
 	r := reconciler.NewReconciler(mgr,
@@ -103,6 +104,15 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
 	)
 
+	// Perform an eager CA bundle propagation before the manager starts.
+	// This keeps webhook configuration in sync during startup and avoids
+	// a readiness window where admission can hit stale or missing CA data.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := o.CertManager.UpdateExistingResources(ctx); err != nil {
+		return fmt.Errorf("error updating existing resources with CA bundle during setup: %w", err)
+	}
+
 	// Setup certificate reconciler as a separate runnable
 	certReconciler := certificates.NewCertificateReconciler(
 		o.CertManager,
@@ -112,6 +122,15 @@ func Setup(mgr ctrl.Manager, o Options) error {
 	)
 	if err := mgr.Add(certReconciler); err != nil {
 		return fmt.Errorf("error adding certificate reconciler to manager: %w", err)
+	}
+
+	if err := (&certificateTriggerReconciler{
+		client:      cli,
+		log:         l,
+		pluralizer:  o.Pluralizer,
+		certManager: o.CertManager,
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("error adding certificate trigger controller: %w", err)
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
@@ -378,6 +397,9 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	if err != nil {
 		return fmt.Errorf("error applying or updating CRD: %w", err)
 	}
+	if err := e.certManager.ManageCertificates(ctx, gvr); err != nil {
+		return fmt.Errorf("error managing certificates after CRD apply: %w", err)
+	}
 
 	opts := deploy.DeployOptions{
 		RBACFolderPath:         CDCrbacConfigFolder,
@@ -465,6 +487,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 	})
 	if err != nil {
 		return fmt.Errorf("error applying or updating CRD: %w", err)
+	}
+	if err := e.certManager.ManageCertificates(ctx, gvr); err != nil {
+		return fmt.Errorf("error managing certificates after CRD update: %w", err)
 	}
 
 	opts := deploy.DeployOptions{
