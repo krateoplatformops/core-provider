@@ -23,6 +23,8 @@ const (
 	defaultGroup = "composition.krateo.io"
 )
 
+var chartGetter = getter.Get
+
 func ChartInfoFromSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.ChartInfo) (pkg fs.FS, rootDir string, err error) {
 	if nfo == nil {
 		return nil, "", fmt.Errorf("chart infos cannot be nil")
@@ -39,13 +41,19 @@ func ChartInfoFromSpec(ctx context.Context, kube client.Client, nfo *v1alpha1.Ch
 		}
 		opts = append(opts, getter.WithCredentials(nfo.Credentials.Username, secret))
 	}
-	dat, _, err := getter.Get(ctx, nfo.Url,
+	dat, _, err := chartGetter(ctx, nfo.Url,
 		opts...,
 	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to get chart: %w", err)
+	}
+	if dat == nil {
+		return nil, "", fmt.Errorf("failed to get chart: empty response reader")
+	}
 
 	bData, err := io.ReadAll(dat)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("failed to read chart: %w", err)
 	}
 
 	return ChartInfoFromBytes(ctx, bData)

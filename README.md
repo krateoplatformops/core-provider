@@ -257,7 +257,7 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_MAX_RECONCILE_RATE`    | Maximum reconcile rate per second | `5`           | Integer |
 | `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
 | `CORE_PROVIDER_WEBHOOK_SERVICE_NAME` | Name of the webhook service | `core-provider-webhook-service` | String |
-| `CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE`  | Namespace of the webhook service | `demo-system` | String |
+| `CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE`  | Namespace of the webhook service | `krateo-system` | String |
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
 | `CORE_PROVIDER_MIN_ERROR_RETRY_INTERVAL` | Minimum retry interval on errors | `1s`          | Duration |
 | `CORE_PROVIDER_TLS_CERTIFICATE_DURATION` | The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval. | `24h`         | Duration |

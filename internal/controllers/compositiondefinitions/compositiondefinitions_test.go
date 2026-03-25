@@ -4,10 +4,12 @@
 package compositiondefinitions
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -214,6 +216,13 @@ type stopKey struct{} // key for storing stop func in ctx
 
 func TestController(t *testing.T) {
 	os.Setenv("DEBUG", "1")
+	restoreStderr := captureStderr(t)
+	defer func() {
+		logs := restoreStderr()
+		if strings.Contains(logs, "Observed a panic") {
+			t.Fatalf("controller panic detected in test logs:\n%s", logs)
+		}
+	}()
 
 	setupController := func(ctx context.Context, cfg *envconf.Config) (context.Context, error) {
 		lh := prettylog.New(&slog.HandlerOptions{
@@ -287,7 +296,7 @@ func TestController(t *testing.T) {
 			ControllerOptions:       o,
 			CertManager:             certMgr,
 			Pluralizer:              pluralizer,
-			CertificateSyncInterval: 500 * time.Millisecond, // Short interval for faster testing
+			CertificateSyncInterval: 60 * time.Second, // Short interval for faster testing
 		}); err != nil {
 			log.Info("Cannot setup controllers", "error", err)
 			os.Exit(1)
@@ -396,6 +405,7 @@ func TestController(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+
 			return ctx
 		}).Assess("Test Change Version", func(ctx context.Context, t *testing.T, cfg *envconf.Config) context.Context {
 		toUpgrade := []struct {
@@ -518,6 +528,7 @@ func TestController(t *testing.T) {
 			}) {
 				t.Fatalf("Expected version vacuum, got %v", crd.Spec.Versions)
 			}
+
 		}
 
 		return ctx
@@ -725,4 +736,31 @@ func normalizeVersion(ver string, replaceChar rune) string {
 	}
 
 	return ver
+}
+
+func captureStderr(t *testing.T) func() string {
+	t.Helper()
+
+	originalStderr := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stderr pipe: %v", err)
+	}
+
+	os.Stderr = w
+
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(io.MultiWriter(originalStderr, &buf), r)
+		close(done)
+	}()
+
+	return func() string {
+		_ = w.Close()
+		<-done
+		os.Stderr = originalStderr
+		_ = r.Close()
+		return buf.String()
+	}
 }

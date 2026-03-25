@@ -46,7 +46,7 @@ func main() {
 	maxErrorRetryInterval := flag.Duration("max-error-retry-interval", env.Duration(fmt.Sprintf("%s_MAX_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Minute), "The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.")
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
 	webhookServiceName := flag.String("webhook-service-name", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAME", envVarPrefix), "core-provider-webhook-service"), "The name of the webhook service.")
-	webhookServiceNamespace := flag.String("webhook-service-namespace", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAMESPACE", envVarPrefix), "demo-system"), "The namespace of the webhook service.")
+	webhookServiceNamespace := flag.String("webhook-service-namespace", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAMESPACE", envVarPrefix), "krateo-system"), "The namespace of the webhook service.")
 	tlsCertificateDuration := flag.Duration("tls-certificate-duration", env.Duration(fmt.Sprintf("%s_TLS_CERTIFICATE_DURATION", envVarPrefix), 24*time.Hour), "The duration of the TLS certificate. It should be at least 10 minutes and a minimum of 3 times the poll interval.")
 	tlsCertificateLeaseExpirationMargin := flag.Duration(
 		"tls-certificate-lease-expiration-margin",

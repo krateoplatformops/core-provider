@@ -128,6 +128,15 @@ func TestCertManagerE2E(t *testing.T) {
 				t.Fatalf("ManageCertificates failed: %v", err)
 			}
 
+			missingGVR := schema.GroupVersionResource{
+				Group:    "core.krateo.io",
+				Version:  "v1alpha1",
+				Resource: "missing-compositiondefinitions",
+			}
+			if err := cm.ManageCertificates(context.Background(), missingGVR); err == nil {
+				t.Fatalf("expected ManageCertificates to return an error for a missing CRD")
+			}
+
 			mwc := &admissionregistrationv1.MutatingWebhookConfiguration{}
 			if err := cli.Get(context.Background(), client.ObjectKey{Name: "test-mutating-webhook-service"}, mwc); err != nil {
 				t.Fatalf("expected mutating webhook configuration to be created: %v", err)

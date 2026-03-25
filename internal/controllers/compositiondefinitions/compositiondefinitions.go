@@ -124,15 +124,6 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		return fmt.Errorf("error adding certificate reconciler to manager: %w", err)
 	}
 
-	if err := (&certificateTriggerReconciler{
-		client:      cli,
-		log:         l,
-		pluralizer:  o.Pluralizer,
-		certManager: o.CertManager,
-	}).SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("error adding certificate trigger controller: %w", err)
-	}
-
 	return ctrl.NewControllerManagedBy(mgr).
 		Named(name).
 		WithOptions(o.ControllerOptions.ForControllerRuntime()).
