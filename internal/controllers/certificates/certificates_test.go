@@ -14,6 +14,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/plumbing/e2e"
 	xenv "github.com/krateoplatformops/plumbing/env"
+	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/e2e-framework/klient/decoder"
 	"sigs.k8s.io/e2e-framework/klient/k8s/resources"
@@ -125,6 +126,17 @@ func TestCertManagerE2E(t *testing.T) {
 			}
 			if err := cm.ManageCertificates(context.Background(), gvr); err != nil {
 				t.Fatalf("ManageCertificates failed: %v", err)
+			}
+
+			mwc := &admissionregistrationv1.MutatingWebhookConfiguration{}
+			if err := cli.Get(context.Background(), client.ObjectKey{Name: "test-mutating-webhook-service"}, mwc); err != nil {
+				t.Fatalf("expected mutating webhook configuration to be created: %v", err)
+			}
+			if len(mwc.Webhooks) == 0 {
+				t.Fatalf("expected mutating webhook configuration to contain at least one webhook")
+			}
+			if len(mwc.Webhooks[0].ClientConfig.CABundle) == 0 {
+				t.Fatalf("expected mutating webhook configuration to include a CA bundle")
 			}
 
 			// UpdateExistingResources should not error (it will list compositiondefinitions in the cluster)

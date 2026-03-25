@@ -65,7 +65,7 @@ func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource)
 	)
 }
 
-func Get(ctx context.Context, kube client.Client, gr schema.GroupResource) (*apiextensionsv1.CustomResourceDefinition, error) {
+func Get(ctx context.Context, kube client.Reader, gr schema.GroupResource) (*apiextensionsv1.CustomResourceDefinition, error) {
 	if err := registerEventually(); err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func Get(ctx context.Context, kube client.Client, gr schema.GroupResource) (*api
 	return &res, nil
 }
 
-func Lookup(ctx context.Context, kube client.Client, gvr schema.GroupVersionResource) (bool, error) {
+func Lookup(ctx context.Context, kube client.Reader, gvr schema.GroupVersionResource) (bool, error) {
 	if err := registerEventually(); err != nil {
 		return false, err
 	}

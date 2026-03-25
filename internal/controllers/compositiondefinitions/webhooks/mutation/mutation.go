@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-func NewWebhookHandler(cli client.Client) *webhook.Admission {
+func NewWebhookHandler(cli client.Reader) *webhook.Admission {
 	return &webhook.Admission{
 		Handler: admission.HandlerFunc(func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
 			unstructuredObj := &unstructured.Unstructured{}
