@@ -773,7 +773,7 @@ func assertNoControllerPanics(t *testing.T, cfg *envconf.Config) {
 	}
 
 	logs := string(logBytes)
-	if strings.Contains(logs, "Observed a panic") || strings.Contains(logs, "Reconciler error") {
+	if strings.Contains(logs, "Observed a panic") {
 		t.Fatalf("controller panic detected in core-provider logs:\n%s", logs)
 	}
 }

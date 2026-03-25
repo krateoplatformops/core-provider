@@ -22,6 +22,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
 	"github.com/krateoplatformops/core-provider/internal/tools/objects"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -298,6 +299,10 @@ func isTransientError(err error) bool {
 		return false
 	}
 
+	if apierrors.IsNotFound(err) {
+		return true
+	}
+
 	errStr := err.Error()
 
 	// K8s API transient errors
@@ -358,6 +363,9 @@ func (m *CertManager) propagateCABundle(ctx context.Context, cabundle []byte, gv
 	crd, err := crdclient.Get(ctx, m.kube, gvr.GroupResource())
 	if err != nil {
 		return fmt.Errorf("error getting CRD: %w", err)
+	}
+	if crd == nil {
+		return apierrors.NewNotFound(gvr.GroupResource(), gvr.Resource)
 	}
 
 	crd.SetGroupVersionKind(schema.GroupVersionKind{
