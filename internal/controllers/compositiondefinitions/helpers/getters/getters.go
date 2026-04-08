@@ -2,13 +2,19 @@ package getters
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"time"
 
 	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
+	"github.com/krateoplatformops/core-provider/internal/tools/retry"
 
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/deploy"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,6 +23,14 @@ import (
 	"k8s.io/client-go/dynamic"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+const (
+	compositionRetryAttempts     = 5
+	compositionRetryInitialDelay = 250 * time.Millisecond
+	compositionRetryMaximumDelay = 2 * time.Second
+)
+
+var retryWait = retry.Wait
 
 func GetCompositions(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource) (*unstructured.UnstructuredList, error) {
 	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
@@ -45,7 +59,7 @@ func GetCompositions(ctx context.Context, dyn dynamic.Interface, gvr schema.Grou
 func UpdateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, newVersion string) error {
 	log := contexttools.LoggerFromCtx(ctx, logging.NewNopLogger())
 
-	ul, err := GetCompositions(ctx, dyn, gvr)
+	ul, err := getCompositionsWithRetry(ctx, dyn, gvr, log)
 	if err != nil {
 		return fmt.Errorf("error getting compositions: %w", err)
 	}
@@ -56,27 +70,133 @@ func UpdateCompositionsVersion(ctx context.Context, dyn dynamic.Interface, gvr s
 	}
 
 	for _, u := range ul.Items {
-		labelmap, ok, err := unstructured.NestedStringMap(u.Object, "metadata", "labels")
-		if err != nil {
-			return fmt.Errorf("error getting labels from composition: %s", err)
-		}
-		if !ok {
-			labelmap = make(map[string]string)
-		}
-
-		labelmap[deploy.CompositionVersionLabel] = newVersion
-		err = unstructured.SetNestedStringMap(u.Object, labelmap, "metadata", "labels")
-		if err != nil {
+		if err := updateCompositionWithRetry(ctx, dyn, gvr, u.GetNamespace(), u.GetName(), newVersion, log); err != nil {
 			return err
-		}
-
-		_, err = dyn.Resource(gvr).Namespace(u.GetNamespace()).Update(ctx, &u, metav1.UpdateOptions{})
-		if err != nil {
-			return fmt.Errorf("error updating compositions: %s", err)
 		}
 	}
 
 	return nil
+}
+
+func getCompositionsWithRetry(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, log logging.Logger) (*unstructured.UnstructuredList, error) {
+	ul, err := retry.Do[*unstructured.UnstructuredList](ctx, retry.Config[*unstructured.UnstructuredList]{
+		Attempts:     compositionRetryAttempts,
+		InitialDelay: compositionRetryInitialDelay,
+		MaximumDelay: compositionRetryMaximumDelay,
+		Wait:         retryWait,
+		Retryable:    isRetryableCompositionError,
+		OnRetry: func(attempt int, nextDelay time.Duration, err error) {
+			log.Warn("Retrying composition list", "gvr", gvr.String(), "attempt", attempt, "next_delay", nextDelay, "error", err)
+		},
+	}, func(context.Context) (*unstructured.UnstructuredList, error) {
+		return GetCompositions(ctx, dyn, gvr)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error listing compositions after %d attempts: %w", compositionRetryAttempts, err)
+	}
+
+	return ul, nil
+}
+
+func updateCompositionWithRetry(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, namespace, name, newVersion string, log logging.Logger) error {
+	compositionName := compositionKey(namespace, name)
+	_, err := retry.Do[struct{}](ctx, retry.Config[struct{}]{
+		Attempts:     compositionRetryAttempts,
+		InitialDelay: compositionRetryInitialDelay,
+		MaximumDelay: compositionRetryMaximumDelay,
+		Wait:         retryWait,
+		Retryable:    isRetryableCompositionError,
+		OnRetry: func(attempt int, nextDelay time.Duration, err error) {
+			log.Warn("Retrying composition update", "composition", compositionName, "gvr", gvr.String(), "attempt", attempt, "next_delay", nextDelay, "error", err)
+		},
+	}, func(context.Context) (struct{}, error) {
+		u, err := dyn.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			log.Debug("Composition disappeared before version update, skipping", "composition", compositionName, "gvr", gvr.String())
+			return struct{}{}, nil
+		}
+		if err != nil {
+			return struct{}{}, fmt.Errorf("error getting composition %s: %w", compositionName, err)
+		}
+
+		labelmap, ok, err := unstructured.NestedStringMap(u.Object, "metadata", "labels")
+		if err != nil {
+			return struct{}{}, fmt.Errorf("error getting labels from composition %s: %w", compositionName, err)
+		}
+		if !ok {
+			labelmap = make(map[string]string)
+		}
+		if labelmap[deploy.CompositionVersionLabel] == newVersion {
+			return struct{}{}, nil
+		}
+
+		labelmap[deploy.CompositionVersionLabel] = newVersion
+		if err := unstructured.SetNestedStringMap(u.Object, labelmap, "metadata", "labels"); err != nil {
+			return struct{}{}, fmt.Errorf("error setting labels on composition %s: %w", compositionName, err)
+		}
+
+		if _, err := dyn.Resource(gvr).Namespace(namespace).Update(ctx, u, metav1.UpdateOptions{}); err != nil {
+			if apierrors.IsNotFound(err) {
+				log.Debug("Composition disappeared during version update, skipping", "composition", compositionName, "gvr", gvr.String())
+				return struct{}{}, nil
+			}
+			return struct{}{}, err
+		}
+
+		return struct{}{}, nil
+	})
+	if err != nil {
+		return fmt.Errorf("composition %s update failed after %d attempts: %w", compositionName, compositionRetryAttempts, err)
+	}
+
+	return nil
+}
+
+func compositionKey(namespace, name string) string {
+	if namespace == "" {
+		return name
+	}
+
+	return namespace + "/" + name
+}
+
+func isRetryableCompositionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+
+	if isNonRetryableCompositionError(err) {
+		return false
+	}
+
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+
+	return true
+}
+
+func isNonRetryableCompositionError(err error) bool {
+	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) || apierrors.IsNotFound(err) || apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+		return true
+	}
+	if statusErr, ok := err.(*apierrors.StatusError); ok {
+		switch statusErr.ErrStatus.Code {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound, http.StatusUnprocessableEntity, http.StatusBadRequest:
+			return true
+		}
+	}
+
+	return false
 }
 
 func GetCompositionDefinitions(ctx context.Context, cli client.Client, gk schema.GroupKind) ([]compositiondefinitionsv1alpha1.CompositionDefinition, error) {
