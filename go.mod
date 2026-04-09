@@ -4,7 +4,6 @@ go 1.25.6
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/go-logr/logr v1.4.3
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0

@@ -2,6 +2,7 @@ package crd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,11 +10,11 @@ import (
 	apiextensionsscheme "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme"
 	clientsetscheme "k8s.io/client-go/kubernetes/scheme"
 
-	"github.com/avast/retry-go"
 	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
 	"github.com/krateoplatformops/core-provider/internal/tools/crd/generation"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube"
 	"github.com/krateoplatformops/core-provider/internal/tools/kube/watcher"
+	"github.com/krateoplatformops/core-provider/internal/tools/retry"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -22,6 +23,12 @@ import (
 	"k8s.io/gengo/namer"
 	"k8s.io/gengo/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+const (
+	crdRetryAttempts     = 10
+	crdRetryInitialDelay = 100 * time.Millisecond
+	crdRetryMaximumDelay = 100 * time.Millisecond
 )
 
 func InferGroupResource(gk schema.GroupKind) schema.GroupResource {
@@ -39,30 +46,34 @@ func Uninstall(ctx context.Context, kube client.Client, gr schema.GroupResource)
 		return err
 	}
 
-	return retry.Do(
-		func() error {
-			obj := apiextensionsv1.CustomResourceDefinition{}
-			err := kube.Get(ctx, client.ObjectKey{Name: gr.String()}, &obj, &client.GetOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil
-				}
-
-				return err
+	_, err := retry.Do[struct{}](ctx, retry.Config[struct{}]{
+		Attempts:     crdRetryAttempts,
+		InitialDelay: crdRetryInitialDelay,
+		MaximumDelay: crdRetryMaximumDelay,
+		Retryable:    isRetryableCRDError,
+	}, func(context.Context) (struct{}, error) {
+		obj := apiextensionsv1.CustomResourceDefinition{}
+		err := kube.Get(ctx, client.ObjectKey{Name: gr.String()}, &obj, &client.GetOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return struct{}{}, nil
 			}
 
-			err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil
-				}
+			return struct{}{}, err
+		}
 
-				return err
+		err = kube.Delete(ctx, &obj, &client.DeleteOptions{})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return struct{}{}, nil
 			}
 
-			return nil
-		},
-	)
+			return struct{}{}, err
+		}
+
+		return struct{}{}, nil
+	})
+	return err
 }
 
 func Get(ctx context.Context, kube client.Reader, gr schema.GroupResource) (*apiextensionsv1.CustomResourceDefinition, error) {
@@ -105,6 +116,18 @@ func Lookup(ctx context.Context, kube client.Reader, gvr schema.GroupVersionReso
 	}
 
 	return false, nil
+}
+
+func isRetryableCRDError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	return true
 }
 
 type ApplyOpts struct {
