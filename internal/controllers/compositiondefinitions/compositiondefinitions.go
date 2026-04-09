@@ -76,7 +76,12 @@ func Setup(mgr ctrl.Manager, o Options) error {
 
 	l := o.ControllerOptions.Logger.WithValues("controller", name)
 
-	recorder, err := eventrecorder.CreateWithThrottle(context.Background(), mgr.GetConfig(), name, nil)
+	throttledRecorder, err := eventrecorder.CreateWithThrottle(context.Background(), mgr.GetConfig(), name, nil)
+	if err != nil {
+		return fmt.Errorf("error creating event recorder: %w", err)
+	}
+
+	recorder, err := eventrecorder.Create(context.Background(), mgr.GetConfig(), name, nil)
 	if err != nil {
 		return fmt.Errorf("error creating event recorder: %w", err)
 	}
@@ -102,6 +107,7 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithPollInterval(o.ControllerOptions.PollInterval),
 		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
+		reconciler.WithThrottledRecorder(event.NewAPIRecorder(throttledRecorder)),
 	)
 
 	// Perform an eager CA bundle propagation before the manager starts.
