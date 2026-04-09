@@ -4,20 +4,19 @@ go 1.25.6
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
-	github.com/avast/retry-go v3.0.0+incompatible
 	github.com/go-logr/logr v1.4.3
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
-	github.com/krateoplatformops/plumbing v1.6.1
-	github.com/krateoplatformops/provider-runtime v1.0.0
+	github.com/krateoplatformops/plumbing v1.7.1
+	github.com/krateoplatformops/provider-runtime v1.1.0
 	github.com/stoewer/go-strcase v1.3.1
 	github.com/stretchr/testify v1.11.1
 	gomodules.xyz/jsonpatch/v2 v2.5.0
 	gopkg.in/yaml.v2 v2.4.0
-	k8s.io/api v0.35.2
+	k8s.io/api v0.35.3
 	k8s.io/apiextensions-apiserver v0.35.2
-	k8s.io/apimachinery v0.35.2
-	k8s.io/client-go v0.35.2
+	k8s.io/apimachinery v0.35.3
+	k8s.io/client-go v0.35.3
 	k8s.io/gengo v0.0.0-20251215205346-5ee0d033ba5b
 	sigs.k8s.io/controller-runtime v0.23.3
 	sigs.k8s.io/controller-tools v0.20.1

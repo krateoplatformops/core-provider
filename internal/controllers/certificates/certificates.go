@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	crdutils "github.com/krateoplatformops/core-provider/internal/tools/crd/generation"
 
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
+	"github.com/krateoplatformops/core-provider/internal/tools/retry"
 	admissionregistrationv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -52,6 +55,14 @@ type CertManager struct {
 	webhookServiceMeta          types.NamespacedName
 	certGenMu                   sync.Mutex // Serializes certificate generation to prevent file system races
 }
+
+const (
+	caBundleRetryAttempts     = 5
+	caBundleRetryInitialDelay = 250 * time.Millisecond
+	caBundleRetryMaximumDelay = 2 * time.Second
+)
+
+var caBundleRetryWait = retry.Wait
 
 type Opts struct {
 	WebhookServiceName          string
@@ -236,98 +247,78 @@ func getCABundle(certsPath string) ([]byte, error) {
 // propagateCABundleWithRetry attempts to propagate the CA bundle with exponential backoff retry logic
 // This handles transient failures like K8s API timeouts or conflicts
 func (m *CertManager) propagateCABundleWithRetry(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource) error {
+	return m.propagateCABundleWithRetryOperation(ctx, cabundle, gvr, m.propagateCABundle)
+}
+
+func (m *CertManager) propagateCABundleWithRetryOperation(ctx context.Context, cabundle []byte, gvr schema.GroupVersionResource, operation func(context.Context, []byte, schema.GroupVersionResource) error) error {
 	// Validate CA bundle format upfront to fail fast
 	if err := validateCABundleFormat(cabundle); err != nil {
 		return fmt.Errorf("invalid CA bundle format, aborting propagation: %w", err)
 	}
 
-	const maxRetries = 3
-	const initialBackoff = 100 * time.Millisecond
-
-	var lastErr error
-	backoff := initialBackoff
-
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		// Check if context is cancelled before attempting
-		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("context cancelled: %w", err)
-		}
-
-		m.log("Propagating CA bundle", "gvr", gvr.String(), "attempt", attempt+1, "maxAttempts", maxRetries)
-
-		err := m.propagateCABundle(ctx, cabundle, gvr)
-		if err == nil {
-			m.log("Successfully propagated CA bundle", "gvr", gvr.String(), "attempt", attempt+1)
-			return nil
-		}
-
-		lastErr = err
-
-		// Check if this is a transient error worth retrying
-		if !isTransientError(err) {
-			m.log("Non-transient error, not retrying", "gvr", gvr.String(), "error", err)
-			return err
-		}
-
-		if attempt < maxRetries-1 {
+	_, err := retry.Do[struct{}](ctx, retry.Config[struct{}]{
+		Attempts:     caBundleRetryAttempts,
+		InitialDelay: caBundleRetryInitialDelay,
+		MaximumDelay: caBundleRetryMaximumDelay,
+		Wait:         caBundleRetryWait,
+		Retryable:    isRetryableCABundleError,
+		OnRetry: func(attempt int, nextDelay time.Duration, err error) {
 			m.log("CA bundle propagation failed, retrying after backoff",
 				"gvr", gvr.String(),
-				"attempt", attempt+1,
-				"nextBackoff", backoff.String(),
+				"attempt", attempt,
+				"nextBackoff", nextDelay.String(),
 				"error", err)
-
-			// Wait with context cancellation support
-			select {
-			case <-time.After(backoff):
-				// Continue to next attempt
-			case <-ctx.Done():
-				return fmt.Errorf("context cancelled during retry backoff: %w", ctx.Err())
-			}
-
-			// Exponential backoff: double the wait time
-			backoff = backoff * 2
+		},
+	}, func(context.Context) (struct{}, error) {
+		m.log("Propagating CA bundle", "gvr", gvr.String())
+		if err := operation(ctx, cabundle, gvr); err != nil {
+			return struct{}{}, err
 		}
+		m.log("Successfully propagated CA bundle", "gvr", gvr.String())
+		return struct{}{}, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to propagate CA bundle after %d attempts: %w", caBundleRetryAttempts, err)
 	}
 
-	return fmt.Errorf("failed to propagate CA bundle after %d attempts: %w", maxRetries, lastErr)
+	return nil
 }
 
-// isTransientError determines if an error is transient and worth retrying
-// Returns true for errors like timeouts and conflicts that might succeed on retry
-func isTransientError(err error) bool {
+func isRetryableCABundleError(err error) bool {
 	if err == nil {
 		return false
 	}
 
-	if apierrors.IsNotFound(err) {
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+
+	if errors.Is(err, context.DeadlineExceeded) {
 		return true
 	}
 
-	errStr := err.Error()
-
-	// K8s API transient errors
-	transientPatterns := []string{
-		"timeout",           // Connection timeout
-		"deadline exceeded", // Context deadline exceeded
-		"connection reset",  // Connection reset by peer
-		"connection refused",// Connection refused
-		"i/o timeout",       // I/O timeout
-		"409",               // K8s Conflict - resource was modified
-		"503",               // Service Unavailable
-		"504",               // Gateway Timeout
+	if isNonRetryableCABundleError(err) {
+		return false
 	}
 
-	for _, pattern := range transientPatterns {
-		if strings.Contains(errStr, pattern) {
+	var netErr net.Error
+	if errors.As(err, &netErr) && (netErr.Timeout() || netErr.Temporary()) {
+		return true
+	}
+
+	return true
+}
+
+func isNonRetryableCABundleError(err error) bool {
+	if apierrors.IsForbidden(err) || apierrors.IsUnauthorized(err) || apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+		return true
+	}
+
+	if statusErr, ok := err.(*apierrors.StatusError); ok {
+		switch statusErr.ErrStatus.Code {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusUnprocessableEntity, http.StatusBadRequest:
 			return true
 		}
-	}
-
-	// Check for specific K8s error types
-	// Note: This is a simple string-based check; in production you might want
-	// to use k8s.io/apimachinery/pkg/api/errors for more robust checking
-	if strings.Contains(errStr, "conflict") || strings.Contains(errStr, "Conflict") {
-		return true
 	}
 
 	return false

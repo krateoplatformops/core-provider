@@ -76,7 +76,12 @@ func Setup(mgr ctrl.Manager, o Options) error {
 
 	l := o.ControllerOptions.Logger.WithValues("controller", name)
 
-	recorder, err := eventrecorder.CreateWithThrottle(context.Background(), mgr.GetConfig(), name, nil)
+	throttledRecorder, err := eventrecorder.CreateWithThrottle(context.Background(), mgr.GetConfig(), name, nil)
+	if err != nil {
+		return fmt.Errorf("error creating event recorder: %w", err)
+	}
+
+	recorder, err := eventrecorder.Create(context.Background(), mgr.GetConfig(), name, nil)
 	if err != nil {
 		return fmt.Errorf("error creating event recorder: %w", err)
 	}
@@ -102,6 +107,7 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithPollInterval(o.ControllerOptions.PollInterval),
 		reconciler.WithLogger(l),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
+		reconciler.WithThrottledRecorder(event.NewAPIRecorder(throttledRecorder)),
 	)
 
 	// Perform an eager CA bundle propagation before the manager starts.
@@ -275,8 +281,13 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	if len(ul.Items) > 0 {
 		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
 			log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
-			meta.AddFinalizer(cr, compositionStillExistFinalizer)
-			err = e.kube.Update(ctx, cr)
+			err = e.updateCompositionDefinitionWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
+				if meta.FinalizerExists(current, compositionStillExistFinalizer) {
+					return false
+				}
+				meta.AddFinalizer(current, compositionStillExistFinalizer)
+				return true
+			})
 			if err != nil {
 				return reconciler.ExternalObservation{}, err
 			}
@@ -352,8 +363,9 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 
 	log.Info("Creating CompositionDefinition")
 
-	cr.SetConditions(rtv1.Creating())
-	err := e.kube.Status().Update(ctx, cr)
+	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.SetConditions(rtv1.Creating())
+	})
 	if err != nil {
 		return fmt.Errorf("error updating status: %w", err)
 	}
@@ -417,9 +429,9 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		"namespace", cr.Namespace,
 	)
 
-	cr.Status.Digest = dig
-
-	err = e.kube.Status().Update(ctx, cr)
+	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.Status.Digest = dig
+	})
 	if err != nil {
 		return err
 	}
@@ -438,13 +450,14 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	log.Info("Updating CompositionDefinition")
 
-	cr.SetConditions(rtv1.Condition{
-		Type:               rtv1.TypeReady,
-		Status:             metav1.ConditionFalse,
-		LastTransitionTime: metav1.Now(),
-		Reason:             "Updating",
+	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.SetConditions(rtv1.Condition{
+			Type:               rtv1.TypeReady,
+			Status:             metav1.ConditionFalse,
+			LastTransitionTime: metav1.Now(),
+			Reason:             "Updating",
+		})
 	})
-	err := e.kube.Status().Update(ctx, cr)
 	if err != nil {
 		return fmt.Errorf("error updating status: %w", err)
 	}
@@ -503,8 +516,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return fmt.Errorf("error deploying dynamic controller: %w", err)
 	}
 
-	cr.Status.Digest = dig
-	err = e.kube.Status().Update(ctx, cr)
+	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.Status.Digest = dig
+	})
 	if err != nil {
 		return err
 	}
@@ -548,9 +562,10 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		}
 		log.Debug("Updated compositions version", "gvr", oldGVR.String())
 	}
-	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
-	cr.Status.Resource = gvr.Resource
-	err = e.kube.Status().Update(ctx, cr)
+	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.Status.ApiVersion, current.Status.Kind = gvk.ToAPIVersionAndKind()
+		current.Status.Resource = gvr.Resource
+	})
 	if err != nil {
 		return err
 	}
@@ -566,8 +581,9 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	log := e.log.WithValues("operation", "delete")
 	ctx = contexttools.CtxWithLogger(ctx, log)
 
-	cr.SetConditions(rtv1.Deleting())
-	err := e.kube.Status().Update(ctx, cr)
+	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
+		current.SetConditions(rtv1.Deleting())
+	})
 	if err != nil {
 		return fmt.Errorf("error updating status: %w", err)
 	}
@@ -670,6 +686,11 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		log.Debug("CRD not found, deletion has already been completed", "gvk", gvk.String())
 	}
 
-	meta.RemoveFinalizer(cr, compositionStillExistFinalizer)
-	return e.kube.Update(ctx, cr)
+	return e.updateCompositionDefinitionWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
+		if !meta.FinalizerExists(current, compositionStillExistFinalizer) {
+			return false
+		}
+		meta.RemoveFinalizer(current, compositionStillExistFinalizer)
+		return true
+	})
 }
