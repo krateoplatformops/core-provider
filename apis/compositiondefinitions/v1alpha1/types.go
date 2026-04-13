@@ -142,6 +142,7 @@ type CompositionDefinitionStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:resource:scope=Namespaced,categories={krateo,defs,core}
 //+kubebuilder:printcolumn:name="READY",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+//+kubebuilder:printcolumn:name="SYNCED",type="string",JSONPath=".status.conditions[?(@.type=='Synced')].status"
 //+kubebuilder:printcolumn:name="AGE",type="date",JSONPath=".metadata.creationTimestamp"
 //+kubebuilder:printcolumn:name="API VERSION",type="string",JSONPath=".status.apiVersion",priority=10
 //+kubebuilder:printcolumn:name="KIND",type="string",JSONPath=".status.kind",priority=10
