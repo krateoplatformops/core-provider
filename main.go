@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -27,12 +28,14 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/controller"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 	"github.com/krateoplatformops/provider-runtime/pkg/ratelimiter"
+	"github.com/krateoplatformops/provider-runtime/pkg/telemetry"
 
 	"github.com/stoewer/go-strcase"
 )
 
 const (
-	providerName = "Core"
+	providerName              = "Core"
+	defaultOtelExportInterval = 30 * time.Second
 )
 
 func main() {
@@ -43,6 +46,9 @@ func main() {
 	pollInterval := flag.Duration("poll", env.Duration(fmt.Sprintf("%s_POLL_INTERVAL", envVarPrefix), time.Minute*3), "Poll interval controls how often an individual resource should be checked for drift.")
 	maxReconcileRate := flag.Int("max-reconcile-rate", env.Int(fmt.Sprintf("%s_MAX_RECONCILE_RATE", envVarPrefix), 5), "The global maximum rate per second at which resources may checked for drift from the desired state.")
 	leaderElection := flag.Bool("leader-election", env.Bool(fmt.Sprintf("%s_LEADER_ELECTION", envVarPrefix), false), "Use leader election for the controller manager.")
+	metricsEnabled := flag.Bool("otel-enabled", env.Bool("OTEL_ENABLED", false), "Enable OTLP metrics export for provider-runtime telemetry.")
+	metricsServiceName := flag.String("otel-service-name", fmt.Sprintf("%s-provider", strcase.KebabCase(providerName)), "The service name attached to exported OTLP metrics.")
+	metricsExportInterval := flag.Duration("otel-export-interval", env.Duration("OTEL_EXPORT_INTERVAL", defaultOtelExportInterval), "The interval used to export OTLP metrics.")
 	maxErrorRetryInterval := flag.Duration("max-error-retry-interval", env.Duration(fmt.Sprintf("%s_MAX_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Minute), "The maximum interval between retries when an error occurs. This should be less than the half of the poll interval.")
 	minErrorRetryInterval := flag.Duration("min-error-retry-interval", env.Duration(fmt.Sprintf("%s_MIN_ERROR_RETRY_INTERVAL", envVarPrefix), 1*time.Second), "The minimum interval between retries when an error occurs. This should be less than max-error-retry-interval.")
 	webhookServiceName := flag.String("webhook-service-name", env.String(fmt.Sprintf("%s_WEBHOOK_SERVICE_NAME", envVarPrefix), "core-provider-webhook-service"), "The name of the webhook service.")
@@ -54,6 +60,7 @@ func main() {
 			16*time.Hour),
 		"The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.")
 	certificateSyncInterval := flag.Duration("certificate-sync-interval", env.Duration(fmt.Sprintf("%s_CERTIFICATE_SYNC_INTERVAL", envVarPrefix), 5*time.Minute), "The interval at which the certificate reconciler syncs certificates and updates resources.")
+
 	flag.Parse()
 
 	log.Default().SetOutput(os.Stderr)
@@ -109,11 +116,32 @@ func main() {
 		"webhook-service-namespace", *webhookServiceNamespace,
 		"tls-certificate-duration", tlsCertificateDuration.String(),
 		"tls-certificate-lease-expiration-margin", tlsCertificateLeaseExpirationMargin.String(),
-		"certificate-sync-interval", certificateSyncInterval.String())
+		"certificate-sync-interval", certificateSyncInterval.String(),
+		"otel-enabled", *metricsEnabled,
+		"otel-service-name", *metricsServiceName,
+		"otel-export-interval", metricsExportInterval.String())
+
+	telemetryEnabled := *metricsEnabled
+	telemetryExportInterval := *metricsExportInterval
+
+	telemetryMetrics, telemetryShutdown, err := telemetry.Setup(context.Background(), log, telemetry.Config{
+		Enabled:        telemetryEnabled,
+		ServiceName:    *metricsServiceName,
+		ExportInterval: telemetryExportInterval,
+	})
+	if err != nil {
+		log.Error(err, "Cannot initialize OpenTelemetry metrics")
+		os.Exit(1)
+	}
+	defer func() {
+		if err := telemetryShutdown(context.Background()); err != nil {
+			log.Error(err, "Cannot shutdown OpenTelemetry metrics")
+		}
+	}()
 
 	cfg, err := ctrl.GetConfig()
 	if err != nil {
-		log.Info("Cannot get API server rest config", "error", err)
+		log.Error(err, "Cannot get API server rest config")
 		os.Exit(1)
 	}
 
@@ -131,13 +159,13 @@ func main() {
 		RestConfig:                  cfg,
 	})
 	if err != nil {
-		log.Info("Cannot create certificate manager", "error", err)
+		log.Error(err, "Cannot create certificate manager")
 		os.Exit(1)
 	}
 
 	err = certMgr.RefreshCertificates()
 	if err != nil {
-		log.Info("Cannot refresh certificates", "error", err)
+		log.Error(err, "Certificate details", "commonName", certOpts.Username, "duration", certOpts.Duration.String(), "leaseExpirationMargin", certOpts.LeaseExpirationMargin.String())
 		os.Exit(1)
 	}
 
@@ -161,7 +189,7 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Info("Cannot create controller manager", "error", err)
+		log.Error(err, "Cannot create controller manager")
 		os.Exit(1)
 	}
 
@@ -170,23 +198,26 @@ func main() {
 		MaxConcurrentReconciles: *maxReconcileRate,
 		PollInterval:            *pollInterval,
 		GlobalRateLimiter:       ratelimiter.NewGlobalExponential(*minErrorRetryInterval, *maxErrorRetryInterval),
+		UsePriorityQueue:        ptr.To(true),
+		QueueWaitRecorder:       telemetryMetrics,
 	}
 
 	if err := apis.AddToScheme(mgr.GetScheme()); err != nil {
-		log.Info("Cannot add APIs to scheme", "error", err)
+		log.Error(err, "Cannot add APIs to scheme")
 		os.Exit(1)
 	}
 	if err := compositiondefinitions.Setup(mgr, compositiondefinitions.Options{
 		ControllerOptions:       o,
+		Metrics:                 telemetryMetrics,
 		CertManager:             certMgr,
 		Pluralizer:              pluralizer.New(false),
 		CertificateSyncInterval: *certificateSyncInterval,
 	}); err != nil {
-		log.Info("Cannot setup controllers", "error", err)
+		log.Error(err, "Cannot setup controllers")
 		os.Exit(1)
 	}
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		log.Info("Cannot start controller manager", "error", err)
+		log.Error(err, "Cannot start controller manager")
 		os.Exit(1)
 	}
 }

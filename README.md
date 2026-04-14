@@ -256,6 +256,8 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_POLL_INTERVAL`         | Poll interval for resource drift checks | `5m`          | Duration |
 | `CORE_PROVIDER_MAX_RECONCILE_RATE`    | Maximum reconcile rate per second | `5`           | Integer |
 | `CORE_PROVIDER_LEADER_ELECTION`       | Enables leader election for controller manager | `false`      | Use `--leader-election` flag |
+| `OTEL_ENABLED`                        | Enables OTLP metrics export for provider-runtime telemetry | `false`      | Use `--metrics-enabled` flag |
+| `OTEL_EXPORT_INTERVAL`                | Interval used to export OTLP metrics | `30s`        | Duration |
 | `CORE_PROVIDER_WEBHOOK_SERVICE_NAME` | Name of the webhook service | `core-provider-webhook-service` | String |
 | `CORE_PROVIDER_WEBHOOK_SERVICE_NAMESPACE`  | Namespace of the webhook service | `krateo-system` | String |
 | `CORE_PROVIDER_MAX_ERROR_RETRY_INTERVAL` | Maximum retry interval on errors | `1m`          | Duration |
@@ -264,6 +266,8 @@ For practical examples, common issues, and advanced usage patterns, please refer
 | `CORE_PROVIDER_TLS_CERTIFICATE_LEASE_EXPIRATION_MARGIN` | The duration of the TLS certificate lease expiration margin. It represents the time before the certificate expires when the lease should be renewed. It must be less than the TLS certificate duration. Consider values of 2/3 or less of the TLS certificate duration.  | `16h`         | Duration |
 | `URL_PLURALS`                          | DEPRECATED [from version 0.24.2](#requirements) - URL to krateo pluraliser service | `http://snowplow.krateo-system.svc.cluster.local:8081/api-info/names` | String |
 | `HELM_REGISTRY_CONFIG_PATH`           | DEPRECATED No more used from version 1.0.0 - Path to Helm registry configuration file | `/tmp` | Used for OCI registries |
+
+The controller-runtime metrics endpoint remains available on `:8080/metrics` and continues to expose workqueue and controller health metrics. The OTLP telemetry pipeline is optional and uses the standard `OTEL_EXPORTER_OTLP_*` variables for endpoint configuration.
 
 ## Best Practices
 

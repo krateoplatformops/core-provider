@@ -65,7 +65,9 @@ var (
 )
 
 type Options struct {
-	ControllerOptions       controller.Options
+	ControllerOptions controller.Options
+	// Metrics records reconcile telemetry for the CompositionDefinition controller.
+	Metrics                 reconciler.MetricsRecorder
 	CertManager             certificates.CertManagerInterface
 	Pluralizer              pluralizerlib.PluralizerInterface
 	CertificateSyncInterval time.Duration
@@ -106,6 +108,7 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithPollInterval(o.ControllerOptions.PollInterval),
 		reconciler.WithLogger(l),
+		reconciler.WithMetrics(o.Metrics),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
 		reconciler.WithThrottledRecorder(event.NewAPIRecorder(throttledRecorder)),
 	)
