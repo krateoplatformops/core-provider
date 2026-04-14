@@ -17,6 +17,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/helpers/status"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
+	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
@@ -54,7 +55,6 @@ const (
 )
 
 var (
-	compositionConversionWebhook    = conversion.NewWebhookHandler(runtime.NewScheme())
 	CDCtemplateDeploymentPath       = filepath.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath        = filepath.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
 	CDCrbacConfigFolder             = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
@@ -68,6 +68,7 @@ type Options struct {
 	ControllerOptions controller.Options
 	// Metrics records reconcile telemetry for the CompositionDefinition controller.
 	Metrics                 reconciler.MetricsRecorder
+	WebhookMetrics          *webhooktelemetry.Metrics
 	CertManager             certificates.CertManagerInterface
 	Pluralizer              pluralizerlib.PluralizerInterface
 	CertificateSyncInterval time.Duration
@@ -91,7 +92,8 @@ func Setup(mgr ctrl.Manager, o Options) error {
 	cli := mgr.GetClient()
 	apiReader := mgr.GetAPIReader()
 
-	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader))
+	compositionConversionWebhook := conversion.NewWebhookHandler(runtime.NewScheme(), o.WebhookMetrics)
+	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader, o.WebhookMetrics))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 
 	r := reconciler.NewReconciler(mgr,

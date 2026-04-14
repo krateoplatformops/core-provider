@@ -13,6 +13,7 @@ import (
 
 	"github.com/krateoplatformops/core-provider/internal/controllers/certificates"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
+	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/plumbing/env"
@@ -133,6 +134,11 @@ func main() {
 		log.Error(err, "Cannot initialize OpenTelemetry metrics")
 		os.Exit(1)
 	}
+	webhookMetrics, err := webhooktelemetry.NewMetrics()
+	if err != nil {
+		log.Error(err, "Cannot initialize webhook metrics")
+		os.Exit(1)
+	}
 	defer func() {
 		if err := telemetryShutdown(context.Background()); err != nil {
 			log.Error(err, "Cannot shutdown OpenTelemetry metrics")
@@ -209,6 +215,7 @@ func main() {
 	if err := compositiondefinitions.Setup(mgr, compositiondefinitions.Options{
 		ControllerOptions:       o,
 		Metrics:                 telemetryMetrics,
+		WebhookMetrics:          webhookMetrics,
 		CertManager:             certMgr,
 		Pluralizer:              pluralizer.New(false),
 		CertificateSyncInterval: *certificateSyncInterval,

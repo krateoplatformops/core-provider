@@ -42,6 +42,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.monitoring.svc.cluster.local
 - Finalizer add latency (p95)
 - Requeue totals by reason
 - Reconcile success/failure rate
+- Webhook request latency and request rate, split by mutating and conversion webhook
 
 ## Metric Naming Notes
 
@@ -52,6 +53,16 @@ Depending on your OTel -> Prometheus conversion rules:
 
 The dashboard uses Prometheus-style queries for the normalized metric names.
 If your environment differs, edit the panel queries accordingly.
+
+The webhook panels use `core_provider_webhook_request_duration_seconds` and `core_provider_webhook_request_total`, filtered by `webhook="mutating"` and `webhook="conversion"`.
+
+Webhook panels stay empty until all of the following are true:
+
+- `OTEL_ENABLED` is set to `true`.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` points to a reachable Collector.
+- The webhook server receives real mutating or conversion admission requests.
+
+If you only restart the controller or reconcile resources, those panels will still remain blank because webhook metrics are only emitted during admission traffic.
 
 ## Collector Example
 
