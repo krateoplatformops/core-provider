@@ -1,0 +1,164 @@
+{
+  "uid": "core-provider-full",
+  "title": "Core Provider Full Overview",
+  "tags": ["core-provider", "otel", "provider-runtime"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 8,
+  "refresh": "1m",
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [{
+      "name": "datasource",
+      "type": "datasource",
+      "query": "prometheus",
+      "label": "Prometheus",
+      "refresh": 1,
+      "hide": 0,
+      "includeAll": false,
+      "multi": false,
+      "current": {}
+    }]
+  },
+  "panels": [
+    {
+      "id": 100,
+      "type": "stat",
+      "title": "Controller Saturation",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "max(provider_runtime_reconcile_in_flight) or vector(0)", "legendFormat": "In Flight" },
+        { "refId": "B", "expr": "max(provider_runtime_reconcile_queue_depth) or vector(0)", "legendFormat": "Queue Depth" }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "id": 101,
+      "type": "stat",
+      "title": "Success Rate (15m)",
+      "datasource": "$datasource",
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 0 },
+      "targets": [
+        { 
+          "refId": "A", 
+          "expr": "sum(rate(provider_runtime_reconcile_success_total[15m])) / (sum(rate(provider_runtime_reconcile_success_total[15m])) + (sum(rate(provider_runtime_reconcile_failure_total[15m])) or vector(0)))",
+          "legendFormat": "Availability" 
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 0.95 }]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] } }
+    },
+    {
+      "id": 102,
+      "type": "bargauge",
+      "title": "Requeue Reasons (15m)",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (reason) (increase(provider_runtime_reconcile_queue_requeues_total[15m]))", "legendFormat": "{{reason}}" }
+      ],
+      "options": { "displayMode": "lcd", "orientation": "horizontal" }
+    },
+    {
+      "id": 300,
+      "type": "timeseries",
+      "title": "Mutating Webhook Avg Latency",
+      "description": "Average duration computed from core_provider_webhook_request_duration_seconds sum/count, filtered to webhook=mutating.",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (operation) (rate(core_provider_webhook_request_duration_seconds_sum{webhook=\"mutating\"}[15m])) / sum by (operation) (rate(core_provider_webhook_request_duration_seconds_count{webhook=\"mutating\"}[15m]))", "legendFormat": "{{operation}}" }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "drawStyle": "steps", "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.2 }] } }
+      }
+    },
+    {
+      "id": 301,
+      "type": "timeseries",
+      "title": "Mutating Webhook Traffic & Errors",
+      "description": "Request rate from core_provider_webhook_request_total, filtered to webhook=mutating and grouped by operation and outcome.",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (operation, outcome) (rate(core_provider_webhook_request_total{webhook=\"mutating\"}[15m]))", "legendFormat": "{{operation}} / {{outcome}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops/s" } }
+    },
+    {
+      "id": 302,
+      "type": "timeseries",
+      "title": "Conversion Webhook Avg Latency",
+      "description": "Average duration computed from core_provider_webhook_request_duration_seconds sum/count, filtered to webhook=conversion.",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(core_provider_webhook_request_duration_seconds_sum{webhook=\"conversion\"}[15m])) / sum(rate(core_provider_webhook_request_duration_seconds_count{webhook=\"conversion\"}[15m]))", "legendFormat": "conversion" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "steps", "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.2 }] } } }
+    },
+    {
+      "id": 303,
+      "type": "timeseries",
+      "title": "Conversion Webhook Traffic & Errors",
+      "description": "Request rate from core_provider_webhook_request_total, filtered to webhook=conversion and grouped by outcome.",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
+      "targets": [
+        { "refId": "A", "expr": "sum by (outcome) (rate(core_provider_webhook_request_total{webhook=\"conversion\"}[15m]))", "legendFormat": "{{outcome}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops/s" } }
+    },
+    {
+      "id": 200,
+      "type": "timeseries",
+      "title": "External Avg Latency",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "sum(rate(provider_runtime_external_connect_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_connect_duration_seconds_count[15m]))", "legendFormat": "Connect" },
+        { "refId": "B", "expr": "sum(rate(provider_runtime_external_observe_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_observe_duration_seconds_count[15m]))", "legendFormat": "Observe" },
+        { "refId": "C", "expr": "sum(rate(provider_runtime_external_create_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_create_duration_seconds_count[15m]))", "legendFormat": "Create" },
+        { "refId": "D", "expr": "sum(rate(provider_runtime_external_update_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_update_duration_seconds_count[15m]))", "legendFormat": "Update" },
+        { "refId": "E", "expr": "sum(rate(provider_runtime_external_delete_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_delete_duration_seconds_count[15m]))", "legendFormat": "Delete" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 201,
+      "type": "stat",
+      "title": "Ext. Failures (15m)",
+      "datasource": "$datasource",
+      "interval": "5m",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 21 },
+      "targets": [
+        { "refId": "A", "expr": "(sum(increase(provider_runtime_external_connect_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_observe_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_create_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_update_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_delete_failure_total[15m])) or vector(0))", "legendFormat": "Total Failures" }
+      ],
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["sum"] } }
+    }
+  ]
+}

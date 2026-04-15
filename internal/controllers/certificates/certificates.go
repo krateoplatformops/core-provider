@@ -176,6 +176,10 @@ func (m *CertManager) UpdateExistingResources(ctx context.Context) error {
 			gvk := schema.FromAPIVersionAndKind(cd.Status.ApiVersion, cd.Status.Kind)
 			gvr, err := m.pluralizer.GVKtoGVR(gvk)
 			if err != nil {
+				if apierrors.IsNotFound(err) {
+					m.log("GVK not found during CA bundle propagation, skipping", "GVK", gvk.String())
+					continue
+				}
 				return fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, gvk.String())
 			}
 

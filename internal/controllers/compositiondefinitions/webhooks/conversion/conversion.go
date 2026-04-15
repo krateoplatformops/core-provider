@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/convertible"
+	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 
@@ -18,7 +20,12 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
-func NewWebhookHandler(scheme *runtime.Scheme) http.Handler {
+func NewWebhookHandler(scheme *runtime.Scheme, metrics ...*webhooktelemetry.Metrics) http.Handler {
+	var recorder *webhooktelemetry.Metrics
+	if len(metrics) > 0 {
+		recorder = metrics[0]
+	}
+
 	lh := prettylog.New(&slog.HandlerOptions{
 		Level:     slog.LevelError,
 		AddSource: false,
@@ -31,13 +38,14 @@ func NewWebhookHandler(scheme *runtime.Scheme) http.Handler {
 	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
 	log := logging.NewLogrLogger(logrlog)
 
-	return &webhook{scheme: scheme, log: log.WithName("core-provider-conversion-webhook")}
+	return &webhook{scheme: scheme, log: log.WithName("core-provider-conversion-webhook"), metrics: recorder}
 }
 
 // webhook implements a CRD conversion webhook HTTP handler.
 type webhook struct {
-	scheme *runtime.Scheme
-	log    logging.Logger
+	scheme  *runtime.Scheme
+	log     logging.Logger
+	metrics *webhooktelemetry.Metrics
 }
 
 // ensure Webhook implements http.Handler
@@ -45,6 +53,14 @@ var _ http.Handler = &webhook{}
 
 func (wh *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log := wh.log
+	started := time.Now()
+	success := false
+	defer func() {
+		if wh.metrics != nil {
+			wh.metrics.RecordRequest(r.Context(), "conversion", "convert", time.Since(started), success)
+		}
+	}()
+
 	convertReview := &apix.ConversionReview{}
 	err := json.NewDecoder(r.Body).Decode(convertReview)
 	if err != nil {
@@ -74,6 +90,8 @@ func (wh *webhook) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Error(err, "failed to write response")
 		return
 	}
+
+	success = convertReview.Response != nil && convertReview.Response.Result.Status == metav1.StatusSuccess
 }
 
 // handles a version conversion request.

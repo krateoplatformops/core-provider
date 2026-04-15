@@ -9,7 +9,6 @@ import (
 	compositiondefinitionsv1alpha1 "github.com/krateoplatformops/core-provider/apis/compositiondefinitions/v1alpha1"
 	"github.com/krateoplatformops/core-provider/internal/tools/retry"
 	rtv1 "github.com/krateoplatformops/provider-runtime/apis/common/v1"
-	"github.com/krateoplatformops/provider-runtime/pkg/meta"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -91,89 +90,6 @@ func TestUpdateCompositionDefinitionStatusWithRetryAvoidsDuplicateWriteAfterAmbi
 	}
 	if stored.Status.Digest != "digest-1" {
 		t.Fatalf("expected digest-1, got %q", stored.Status.Digest)
-	}
-}
-
-func TestUpdateCompositionDefinitionWithRetryRetriesConflicts(t *testing.T) {
-	disableCompositionDefinitionRetryWait(t)
-
-	fake, raw := newRetryTestClient(t, newTestCompositionDefinition())
-	updateAttempts := 0
-	fake.onUpdate = func(ctx context.Context, obj client.Object, next func() error, _ ...client.UpdateOption) error {
-		updateAttempts++
-		if updateAttempts == 1 {
-			return apierrors.NewConflict(schema.GroupResource{Group: compositiondefinitionsv1alpha1.Group, Resource: "compositiondefinitions"}, obj.GetName(), errors.New("conflict"))
-		}
-		return next()
-	}
-
-	ext := &external{kube: fake}
-	err := ext.updateCompositionDefinitionWithRetry(context.Background(), "default", "test", func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
-		if meta.FinalizerExists(current, compositionStillExistFinalizer) {
-			return false
-		}
-		meta.AddFinalizer(current, compositionStillExistFinalizer)
-		return true
-	})
-	if err != nil {
-		t.Fatalf("expected success, got error: %v", err)
-	}
-	if updateAttempts != 2 {
-		t.Fatalf("expected 2 update attempts, got %d", updateAttempts)
-	}
-	if fake.getCalls < 2 {
-		t.Fatalf("expected at least 2 get calls, got %d", fake.getCalls)
-	}
-
-	stored := &compositiondefinitionsv1alpha1.CompositionDefinition{}
-	if err := raw.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "test"}, stored); err != nil {
-		t.Fatalf("failed to get CompositionDefinition: %v", err)
-	}
-	if !meta.FinalizerExists(stored, compositionStillExistFinalizer) {
-		t.Fatal("expected finalizer to be present")
-	}
-}
-
-func TestUpdateCompositionDefinitionWithRetryAvoidsDuplicateWriteAfterAmbiguousSuccess(t *testing.T) {
-	disableCompositionDefinitionRetryWait(t)
-
-	fake, raw := newRetryTestClient(t, newTestCompositionDefinition())
-	updateAttempts := 0
-	fake.onUpdate = func(ctx context.Context, obj client.Object, next func() error, _ ...client.UpdateOption) error {
-		updateAttempts++
-		if updateAttempts == 1 {
-			if err := next(); err != nil {
-				return err
-			}
-			return errors.New("boom")
-		}
-		return next()
-	}
-
-	ext := &external{kube: fake}
-	err := ext.updateCompositionDefinitionWithRetry(context.Background(), "default", "test", func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
-		if meta.FinalizerExists(current, compositionStillExistFinalizer) {
-			return false
-		}
-		meta.AddFinalizer(current, compositionStillExistFinalizer)
-		return true
-	})
-	if err != nil {
-		t.Fatalf("expected success, got error: %v", err)
-	}
-	if updateAttempts != 1 {
-		t.Fatalf("expected 1 update attempt, got %d", updateAttempts)
-	}
-	if fake.getCalls < 2 {
-		t.Fatalf("expected at least 2 get calls, got %d", fake.getCalls)
-	}
-
-	stored := &compositiondefinitionsv1alpha1.CompositionDefinition{}
-	if err := raw.Get(context.Background(), client.ObjectKey{Namespace: "default", Name: "test"}, stored); err != nil {
-		t.Fatalf("failed to get CompositionDefinition: %v", err)
-	}
-	if !meta.FinalizerExists(stored, compositionStillExistFinalizer) {
-		t.Fatal("expected finalizer to be present")
 	}
 }
 

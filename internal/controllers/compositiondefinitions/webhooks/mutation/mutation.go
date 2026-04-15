@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/defaults"
+	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	crdtools "github.com/krateoplatformops/core-provider/internal/tools/crd"
 	"gomodules.xyz/jsonpatch/v2"
 	v1 "k8s.io/api/admission/v1"
@@ -17,9 +19,26 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
 
-func NewWebhookHandler(cli client.Reader) *webhook.Admission {
+func NewWebhookHandler(cli client.Reader, metrics ...*webhooktelemetry.Metrics) *webhook.Admission {
+	var recorder *webhooktelemetry.Metrics
+	if len(metrics) > 0 {
+		recorder = metrics[0]
+	}
+
 	return &webhook.Admission{
 		Handler: admission.HandlerFunc(func(ctx context.Context, req webhook.AdmissionRequest) webhook.AdmissionResponse {
+			started := time.Now()
+			operation := string(req.Operation)
+			if operation == "" {
+				operation = "unknown"
+			}
+			success := false
+			defer func() {
+				if recorder != nil {
+					recorder.RecordRequest(ctx, "mutating", operation, time.Since(started), success)
+				}
+			}()
+
 			unstructuredObj := &unstructured.Unstructured{}
 			if err := json.Unmarshal(req.Object.Raw, unstructuredObj); err != nil {
 				return webhook.Errored(http.StatusBadRequest, err)
@@ -68,6 +87,7 @@ func NewWebhookHandler(cli client.Reader) *webhook.Admission {
 						webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 					)
 
+					success = true
 					return webhook.Patched("mutating webhook called",
 						patch...,
 					)
@@ -77,6 +97,7 @@ func NewWebhookHandler(cli client.Reader) *webhook.Admission {
 					webhook.JSONPatchOp{Operation: "add", Path: "/metadata/labels/krateo.io~1composition-version", Value: req.Kind.Version},
 				)
 			}
+			success = true
 			return webhook.Patched("mutating webhook called",
 				patch...,
 			)

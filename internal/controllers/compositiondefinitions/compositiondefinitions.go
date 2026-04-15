@@ -17,6 +17,7 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/helpers/status"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/conversion"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/mutation"
+	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart"
 	"github.com/krateoplatformops/core-provider/internal/tools/chart/chartfs"
 	contexttools "github.com/krateoplatformops/core-provider/internal/tools/context"
@@ -36,7 +37,6 @@ import (
 	"github.com/krateoplatformops/provider-runtime/pkg/reconciler"
 	"github.com/krateoplatformops/provider-runtime/pkg/resource"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery/cached/memory"
@@ -48,13 +48,11 @@ import (
 )
 
 const (
-	errNotCR                       = "managed resource is not a Definition custom resource"
-	reconcileTimeout               = 4 * time.Minute
-	compositionStillExistFinalizer = "composition.krateo.io/still-exist-compositions-finalizer"
+	errNotCR         = "managed resource is not a Definition custom resource"
+	reconcileTimeout = 4 * time.Minute
 )
 
 var (
-	compositionConversionWebhook    = conversion.NewWebhookHandler(runtime.NewScheme())
 	CDCtemplateDeploymentPath       = filepath.Join(os.TempDir(), "assets/cdc-deployment/deployment.yaml")
 	CDCtemplateConfigmapPath        = filepath.Join(os.TempDir(), "assets/cdc-configmap/configmap.yaml")
 	CDCrbacConfigFolder             = filepath.Join(os.TempDir(), "assets/cdc-rbac/")
@@ -65,7 +63,10 @@ var (
 )
 
 type Options struct {
-	ControllerOptions       controller.Options
+	ControllerOptions controller.Options
+	// Metrics records reconcile telemetry for the CompositionDefinition controller.
+	Metrics                 reconciler.MetricsRecorder
+	WebhookMetrics          *webhooktelemetry.Metrics
 	CertManager             certificates.CertManagerInterface
 	Pluralizer              pluralizerlib.PluralizerInterface
 	CertificateSyncInterval time.Duration
@@ -89,7 +90,8 @@ func Setup(mgr ctrl.Manager, o Options) error {
 	cli := mgr.GetClient()
 	apiReader := mgr.GetAPIReader()
 
-	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader))
+	compositionConversionWebhook := conversion.NewWebhookHandler(runtime.NewScheme(), o.WebhookMetrics)
+	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader, o.WebhookMetrics))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
 
 	r := reconciler.NewReconciler(mgr,
@@ -106,6 +108,7 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		reconciler.WithTimeout(reconcileTimeout),
 		reconciler.WithPollInterval(o.ControllerOptions.PollInterval),
 		reconciler.WithLogger(l),
+		reconciler.WithMetrics(o.Metrics),
 		reconciler.WithRecorder(event.NewAPIRecorder(recorder)),
 		reconciler.WithThrottledRecorder(event.NewAPIRecorder(throttledRecorder)),
 	)
@@ -183,14 +186,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 	}
 	log := e.log.WithValues("operation", "observe")
 	ctx = contexttools.CtxWithLogger(ctx, log)
-
-	if meta.WasDeleted(cr) {
-		log.Debug("CompositionDefinition was deleted, skipping observation")
-		return reconciler.ExternalObservation{
-			ResourceExists:   false,
-			ResourceUpToDate: true,
-		}, e.Delete(ctx, cr)
-	}
+	deleted := meta.WasDeleted(cr)
 
 	log.Info("Observing CompositionDefinition")
 
@@ -215,6 +211,18 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 
 	gvr, err := e.pluralizer.GVKtoGVR(chartGVK)
 	if err != nil {
+		if deleted {
+			if apierrors.IsNotFound(err) {
+				log.Debug("Plural not found, CRD not found, external resource no longer exists", "gvk", chartGVK.String())
+			} else {
+				log.Debug("Unable to resolve GVR for deleted CompositionDefinition, treating external resource as gone", "gvk", chartGVK.String(), "err", err)
+			}
+			return reconciler.ExternalObservation{
+				ResourceExists:   false,
+				ResourceUpToDate: false,
+			}, nil
+		}
+
 		if apierrors.IsNotFound(err) {
 			gvr, err = crdutils.GetGVRFromGeneratedCRD(specSchemaBytes, chartGVK)
 			if err != nil {
@@ -223,6 +231,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		} else {
 			return reconciler.ExternalObservation{}, fmt.Errorf("error converting GVK to GVR: %w - GVK: %s", err, chartGVK.String())
 		}
+	} else if deleted {
+		log.Debug("CompositionDefinition was deleted, CRD still resolves; continuing observation", "gvr", gvr.String())
 	}
 
 	crd, err := crdclient.Get(ctx, e.kube, gvr.GroupResource())
@@ -279,19 +289,7 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		return reconciler.ExternalObservation{}, fmt.Errorf("error getting compositions: %w", err)
 	}
 	if len(ul.Items) > 0 {
-		if !meta.FinalizerExists(cr, compositionStillExistFinalizer) {
-			log.Debug("Adding finalizer to CompositionDefinition", "name", cr.Name)
-			err = e.updateCompositionDefinitionWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
-				if meta.FinalizerExists(current, compositionStillExistFinalizer) {
-					return false
-				}
-				meta.AddFinalizer(current, compositionStillExistFinalizer)
-				return true
-			})
-			if err != nil {
-				return reconciler.ExternalObservation{}, err
-			}
-		}
+		log.Debug("Compositions exist for this definition", "count", len(ul.Items))
 	}
 
 	log.Debug("Searching for Dynamic Controller", "gvr", gvr)
@@ -336,13 +334,9 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (reconciler
 		}, nil
 	}
 
-	// Sets the status of the CompositionDefinition
-	status.UpdateVersionInfo(cr, crd, gvr)
-	cr.Status.Managed.Group = crd.Spec.Group
-	cr.Status.Managed.Kind = crd.Spec.Names.Kind
-	cr.Status.ApiVersion, cr.Status.Kind = chartGVK.ToAPIVersionAndKind()
-	cr.Status.Resource = gvr.Resource
-	cr.Status.PackageURL = pkg.PackageURL()
+	if err := status.RefreshCompositionDefinitionStatus(cr, crd, gvr, chartGVK, pkg.PackageURL()); err != nil {
+		return reconciler.ExternalObservation{}, fmt.Errorf("error refreshing CompositionDefinition status: %w", err)
+	}
 
 	cr.SetConditions(rtv1.Available())
 
@@ -362,13 +356,6 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 	ctx = contexttools.CtxWithLogger(ctx, log)
 
 	log.Info("Creating CompositionDefinition")
-
-	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.SetConditions(rtv1.Creating())
-	})
-	if err != nil {
-		return fmt.Errorf("error updating status: %w", err)
-	}
 
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
@@ -429,12 +416,7 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) error {
 		"namespace", cr.Namespace,
 	)
 
-	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.Status.Digest = dig
-	})
-	if err != nil {
-		return err
-	}
+	cr.Status.Digest = dig
 
 	return nil
 }
@@ -450,21 +432,13 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 
 	log.Info("Updating CompositionDefinition")
 
-	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.SetConditions(rtv1.Condition{
-			Type:               rtv1.TypeReady,
-			Status:             metav1.ConditionFalse,
-			LastTransitionTime: metav1.Now(),
-			Reason:             "Updating",
-		})
-	})
-	if err != nil {
-		return fmt.Errorf("error updating status: %w", err)
-	}
-
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
 		return fmt.Errorf("error getting chart info: %w", err)
+	}
+	pkgFS, err := chartfs.ForSpec(ctx, e.kube, cr.Spec.Chart)
+	if err != nil {
+		return err
 	}
 
 	gvk, err := chart.ChartGroupVersionKind(pkg, dir)
@@ -516,12 +490,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		return fmt.Errorf("error deploying dynamic controller: %w", err)
 	}
 
-	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.Status.Digest = dig
-	})
-	if err != nil {
-		return err
-	}
+	cr.Status.Digest = dig
 
 	log.Debug("Dynamic Controller successfully updated",
 		"gvr", gvr.String(),
@@ -562,12 +531,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) error {
 		}
 		log.Debug("Updated compositions version", "gvr", oldGVR.String())
 	}
-	err = e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.Status.ApiVersion, current.Status.Kind = gvk.ToAPIVersionAndKind()
-		current.Status.Resource = gvr.Resource
-	})
-	if err != nil {
-		return err
+
+	if err := status.RefreshCompositionDefinitionStatus(cr, crd, gvr, gvk, pkgFS.PackageURL()); err != nil {
+		return fmt.Errorf("error refreshing CompositionDefinition status: %w", err)
 	}
 
 	return nil
@@ -581,12 +547,7 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 	log := e.log.WithValues("operation", "delete")
 	ctx = contexttools.CtxWithLogger(ctx, log)
 
-	err := e.updateCompositionDefinitionStatusWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) {
-		current.SetConditions(rtv1.Deleting())
-	})
-	if err != nil {
-		return fmt.Errorf("error updating status: %w", err)
-	}
+	cr.SetConditions(rtv1.Deleting())
 
 	pkg, dir, err := chart.ChartInfoFromSpec(ctx, e.kube, cr.Spec.Chart)
 	if err != nil {
@@ -686,11 +647,5 @@ func (e *external) Delete(ctx context.Context, mg resource.Managed) error {
 		log.Debug("CRD not found, deletion has already been completed", "gvk", gvk.String())
 	}
 
-	return e.updateCompositionDefinitionWithRetry(ctx, cr.Namespace, cr.Name, func(current *compositiondefinitionsv1alpha1.CompositionDefinition) bool {
-		if !meta.FinalizerExists(current, compositionStillExistFinalizer) {
-			return false
-		}
-		meta.RemoveFinalizer(current, compositionStillExistFinalizer)
-		return true
-	})
+	return nil
 }

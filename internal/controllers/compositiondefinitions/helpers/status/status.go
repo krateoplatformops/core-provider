@@ -46,3 +46,20 @@ func UpdateVersionInfo(cr *compositiondefinitionsv1alpha1.CompositionDefinition,
 		cr.Status.Managed.VersionInfo[i].Stored = v.Storage
 	}
 }
+
+func RefreshCompositionDefinitionStatus(
+	cr *compositiondefinitionsv1alpha1.CompositionDefinition,
+	crd *apiextensionsv1.CustomResourceDefinition,
+	gvr schema.GroupVersionResource,
+	gvk schema.GroupVersionKind,
+	packageURL string,
+) error {
+	UpdateVersionInfo(cr, crd, gvr)
+	cr.Status.Managed.Group = crd.Spec.Group
+	cr.Status.Managed.Kind = crd.Spec.Names.Kind
+	cr.Status.ApiVersion, cr.Status.Kind = gvk.ToAPIVersionAndKind()
+	cr.Status.Resource = gvr.Resource
+	cr.Status.PackageURL = packageURL
+
+	return nil
+}
