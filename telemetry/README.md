@@ -54,7 +54,7 @@ Depending on your OTel -> Prometheus conversion rules:
 The dashboard uses Prometheus-style queries for the normalized metric names.
 If your environment differs, edit the panel queries accordingly.
 
-The webhook panels use `core_provider_webhook_request_duration_seconds` and `core_provider_webhook_request_total`, filtered by `webhook="mutating"` and `webhook="conversion"`.
+The webhook latency panels use the histogram `_sum` and `_count` series to show average duration, while the traffic panels use `core_provider_webhook_request_total` filtered by `webhook="mutating"` and `webhook="conversion"`.
 
 Webhook panels stay empty until all of the following are true:
 

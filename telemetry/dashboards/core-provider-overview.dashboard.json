@@ -28,6 +28,7 @@
       "type": "stat",
       "title": "Controller Saturation",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 5, "w": 8, "x": 0, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "max(provider_runtime_reconcile_in_flight) or vector(0)", "legendFormat": "In Flight" },
@@ -50,7 +51,7 @@
       "targets": [
         { 
           "refId": "A", 
-          "expr": "sum(rate(provider_runtime_reconcile_success_total[15m])) / (sum(rate(provider_runtime_reconcile_success_total[15m])) + sum(rate(provider_runtime_reconcile_failure_total[15m])))",
+          "expr": "sum(rate(provider_runtime_reconcile_success_total[15m])) / (sum(rate(provider_runtime_reconcile_success_total[15m])) + (sum(rate(provider_runtime_reconcile_failure_total[15m])) or vector(0)))",
           "legendFormat": "Availability" 
         }
       ],
@@ -70,6 +71,7 @@
       "type": "bargauge",
       "title": "Requeue Reasons (15m)",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
       "targets": [
         { "refId": "A", "expr": "sum by (reason) (increase(provider_runtime_reconcile_queue_requeues_total[15m]))", "legendFormat": "{{reason}}" }
@@ -79,12 +81,13 @@
     {
       "id": 300,
       "type": "timeseries",
-      "title": "Mutating Webhook Latency p95",
-      "description": "Derived from the core_provider_webhook_request_duration_seconds histogram buckets, filtered to webhook=mutating.",
+      "title": "Mutating Webhook Avg Latency",
+      "description": "Average duration computed from core_provider_webhook_request_duration_seconds sum/count, filtered to webhook=mutating.",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(core_provider_webhook_request_duration_seconds_bucket{webhook=\"mutating\"}[15m])))", "legendFormat": "{{operation}}" }
+        { "refId": "A", "expr": "sum by (operation) (rate(core_provider_webhook_request_duration_seconds_sum{webhook=\"mutating\"}[15m])) / sum by (operation) (rate(core_provider_webhook_request_duration_seconds_count{webhook=\"mutating\"}[15m]))", "legendFormat": "{{operation}}" }
       ],
       "fieldConfig": {
         "defaults": { "unit": "s", "custom": { "drawStyle": "steps", "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.2 }] } }
@@ -96,6 +99,7 @@
       "title": "Mutating Webhook Traffic & Errors",
       "description": "Request rate from core_provider_webhook_request_total, filtered to webhook=mutating and grouped by operation and outcome.",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
       "targets": [
         { "refId": "A", "expr": "sum by (operation, outcome) (rate(core_provider_webhook_request_total{webhook=\"mutating\"}[15m]))", "legendFormat": "{{operation}} / {{outcome}}" }
@@ -105,12 +109,13 @@
     {
       "id": 302,
       "type": "timeseries",
-      "title": "Conversion Webhook Latency p95",
-      "description": "Derived from the core_provider_webhook_request_duration_seconds histogram buckets, filtered to webhook=conversion.",
+      "title": "Conversion Webhook Avg Latency",
+      "description": "Average duration computed from core_provider_webhook_request_duration_seconds sum/count, filtered to webhook=conversion.",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 13 },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(core_provider_webhook_request_duration_seconds_bucket{webhook=\"conversion\"}[15m])))", "legendFormat": "conversion" }
+        { "refId": "A", "expr": "sum(rate(core_provider_webhook_request_duration_seconds_sum{webhook=\"conversion\"}[15m])) / sum(rate(core_provider_webhook_request_duration_seconds_count{webhook=\"conversion\"}[15m]))", "legendFormat": "conversion" }
       ],
       "fieldConfig": { "defaults": { "unit": "s", "custom": { "drawStyle": "steps", "fillOpacity": 10 }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.2 }] } } }
     },
@@ -120,6 +125,7 @@
       "title": "Conversion Webhook Traffic & Errors",
       "description": "Request rate from core_provider_webhook_request_total, filtered to webhook=conversion and grouped by outcome.",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 13 },
       "targets": [
         { "refId": "A", "expr": "sum by (outcome) (rate(core_provider_webhook_request_total{webhook=\"conversion\"}[15m]))", "legendFormat": "{{outcome}}" }
@@ -129,15 +135,16 @@
     {
       "id": 200,
       "type": "timeseries",
-      "title": "External Latency p95",
+      "title": "External Avg Latency",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 16, "x": 0, "y": 21 },
       "targets": [
-        { "refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_connect_duration_seconds_bucket[15m])))", "legendFormat": "Connect" },
-        { "refId": "B", "expr": "histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_observe_duration_seconds_bucket[15m])))", "legendFormat": "Observe" },
-        { "refId": "C", "expr": "histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_create_duration_seconds_bucket[15m])))", "legendFormat": "Create" },
-        { "refId": "D", "expr": "histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_update_duration_seconds_bucket[15m])))", "legendFormat": "Update" },
-        { "refId": "E", "expr": "histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_delete_duration_seconds_bucket[15m])))", "legendFormat": "Delete" }
+        { "refId": "A", "expr": "sum(rate(provider_runtime_external_connect_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_connect_duration_seconds_count[15m]))", "legendFormat": "Connect" },
+        { "refId": "B", "expr": "sum(rate(provider_runtime_external_observe_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_observe_duration_seconds_count[15m]))", "legendFormat": "Observe" },
+        { "refId": "C", "expr": "sum(rate(provider_runtime_external_create_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_create_duration_seconds_count[15m]))", "legendFormat": "Create" },
+        { "refId": "D", "expr": "sum(rate(provider_runtime_external_update_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_update_duration_seconds_count[15m]))", "legendFormat": "Update" },
+        { "refId": "E", "expr": "sum(rate(provider_runtime_external_delete_duration_seconds_sum[15m])) / sum(rate(provider_runtime_external_delete_duration_seconds_count[15m]))", "legendFormat": "Delete" }
       ],
       "fieldConfig": { "defaults": { "unit": "s" } }
     },
@@ -146,9 +153,10 @@
       "type": "stat",
       "title": "Ext. Failures (15m)",
       "datasource": "$datasource",
+      "interval": "5m",
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 21 },
       "targets": [
-        { "refId": "A", "expr": "sum(increase(provider_runtime_external_connect_failure_total[15m])) + sum(increase(provider_runtime_external_observe_failure_total[15m])) + sum(increase(provider_runtime_external_create_failure_total[15m])) + sum(increase(provider_runtime_external_update_failure_total[15m])) + sum(increase(provider_runtime_external_delete_failure_total[15m]))", "legendFormat": "Total Failures" }
+        { "refId": "A", "expr": "(sum(increase(provider_runtime_external_connect_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_observe_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_create_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_update_failure_total[15m])) or vector(0)) + (sum(increase(provider_runtime_external_delete_failure_total[15m])) or vector(0))", "legendFormat": "Total Failures" }
       ],
       "options": { "colorMode": "value", "reduceOptions": { "calcs": ["sum"] } }
     }

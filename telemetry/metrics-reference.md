@@ -6,6 +6,7 @@ This document describes the OpenTelemetry metrics emitted by `core-provider` and
 
 Metric names in code use dots. Prometheus usually normalizes them with underscores, and counters may appear with a `_total` suffix.
 Histogram queries use the generated `_bucket` series, which is a cumulative count time series.
+For average duration, use the generated `_sum` and `_count` series instead of `_bucket`.
 
 ## Metrics
 
@@ -19,10 +20,10 @@ Histogram queries use the generated `_bucket` series, which is a cumulative coun
 | `provider_runtime.reconcile.queue.oldest_item_age_seconds` | Histogram | seconds | Age of the oldest queued item observed at enqueue/dequeue time. | `provider-runtime/pkg/controller/queue_wait.go` | `histogram_quantile(0.95, sum by (le) (rate(provider_runtime_reconcile_queue_oldest_item_age_seconds_bucket[5m])))` |
 | `provider_runtime.reconcile.queue.work.duration_seconds` | Histogram | seconds | Time spent processing a dequeued item before `Done()`. | `provider-runtime/pkg/controller/queue_wait.go` | `histogram_quantile(0.95, sum by (le) (rate(provider_runtime_reconcile_queue_work_duration_seconds_bucket[5m])))` |
 | `provider_runtime.reconcile.queue.requeues` | Counter | count | Total queue requeues grouped by reason. | `provider-runtime/pkg/telemetry/metrics.go` | `sum(increase(provider_runtime_reconcile_queue_requeues_total[1h]))` |
-| `core_provider.webhook.request.duration_seconds` | Histogram | seconds | Duration of mutating and conversion webhook requests. | `internal/telemetry/webhooks/metrics.go` | `histogram_quantile(0.95, sum by (le, operation) (rate(core_provider_webhook_request_duration_seconds_bucket{webhook="mutating"}[5m])))` |
+| `core_provider.webhook.request.duration_seconds` | Histogram | seconds | Duration of mutating and conversion webhook requests. | `internal/telemetry/webhooks/metrics.go` | `sum(rate(core_provider_webhook_request_duration_seconds_sum{webhook="mutating"}[5m])) / sum(rate(core_provider_webhook_request_duration_seconds_count{webhook="mutating"}[5m]))` |
 | `core_provider.webhook.request.total` | Counter | count | Total webhook requests grouped by webhook, operation, and outcome. | `internal/telemetry/webhooks/metrics.go` | `sum(increase(core_provider_webhook_request_total{webhook="conversion"}[1h]))` |
-| `provider_runtime.external.connect.duration_seconds` | Histogram | seconds | Time spent reading external references. | `provider-runtime/pkg/telemetry/metrics.go` | `histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_connect_duration_seconds_bucket[5m])))` |
-| `provider_runtime.external.observe.duration_seconds` | Histogram | seconds | Time spent observing external resources. | `provider-runtime/pkg/telemetry/metrics.go` | `histogram_quantile(0.95, sum by (le) (rate(provider_runtime_external_observe_duration_seconds_bucket[5m])))` |
+| `provider_runtime.external.connect.duration_seconds` | Histogram | seconds | Time spent reading external references. | `provider-runtime/pkg/telemetry/metrics.go` | `sum(rate(provider_runtime_external_connect_duration_seconds_sum[5m])) / sum(rate(provider_runtime_external_connect_duration_seconds_count[5m]))` |
+| `provider_runtime.external.observe.duration_seconds` | Histogram | seconds | Time spent observing external resources. | `provider-runtime/pkg/telemetry/metrics.go` | `sum(rate(provider_runtime_external_observe_duration_seconds_sum[5m])) / sum(rate(provider_runtime_external_observe_duration_seconds_count[5m]))` |
 | `provider_runtime.finalizer.add.duration_seconds` | Histogram | seconds | Time spent adding finalizers. | `provider-runtime/pkg/telemetry/metrics.go` | `histogram_quantile(0.95, sum by (le) (rate(provider_runtime_finalizer_add_duration_seconds_bucket[5m])))` |
 | `provider_runtime.reconcile.requeue.after` | Counter | count | Reconcile returned `RequeueAfter`. | `provider-runtime/pkg/telemetry/metrics.go` | `sum(increase(provider_runtime_reconcile_requeue_after_total[1h]))` |
 | `provider_runtime.reconcile.requeue.immediate` | Counter | count | Reconcile returned immediate `Requeue`. | `provider-runtime/pkg/telemetry/metrics.go` | `sum(increase(provider_runtime_reconcile_requeue_immediate_total[1h]))` |
