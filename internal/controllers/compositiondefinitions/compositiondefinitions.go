@@ -90,6 +90,14 @@ func Setup(mgr ctrl.Manager, o Options) error {
 	cli := mgr.GetClient()
 	apiReader := mgr.GetAPIReader()
 
+	// Cleanup: Remove obsolete label for backward compatibility on startup
+	// This handles CompositionDefinitions created before the removal of the still-exist-compositions-finalizer
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cleanupCancel()
+	if err := cleanupObsoleteFinalizerLabels(cleanupCtx, cli, l); err != nil {
+		l.Debug("Failed to cleanup obsolete finalizer labels on startup", "error", err)
+	}
+
 	compositionConversionWebhook := conversion.NewWebhookHandler(runtime.NewScheme(), o.WebhookMetrics)
 	mgr.GetWebhookServer().Register("/mutate", mutation.NewWebhookHandler(apiReader, o.WebhookMetrics))
 	mgr.GetWebhookServer().Register("/convert", compositionConversionWebhook)
@@ -138,6 +146,43 @@ func Setup(mgr ctrl.Manager, o Options) error {
 		WithOptions(o.ControllerOptions.ForControllerRuntime()).
 		For(&compositiondefinitionsv1alpha1.CompositionDefinition{}).
 		Complete(ratelimiter.New(name, r, o.ControllerOptions.GlobalRateLimiter))
+}
+
+// cleanupObsoleteFinalizerLabels removes the obsolete "composition.krateo.io/still-exist-compositions-finalizer" label
+// from all CompositionDefinitions for backward compatibility. This handles resources created before the label was removed.
+func cleanupObsoleteFinalizerLabels(ctx context.Context, kube client.Client, log logging.Logger) error {
+	const obsoleteLabel = "composition.krateo.io/still-exist-compositions-finalizer"
+
+	list := &compositiondefinitionsv1alpha1.CompositionDefinitionList{}
+	if err := kube.List(ctx, list); err != nil {
+		return fmt.Errorf("error listing CompositionDefinitions: %w", err)
+	}
+
+	if len(list.Items) == 0 {
+		log.Debug("No CompositionDefinitions found for cleanup")
+		return nil
+	}
+
+	cleaned := 0
+	for i := range list.Items {
+		cr := &list.Items[i]
+		if cr.Labels != nil {
+			if _, exists := cr.Labels[obsoleteLabel]; exists {
+				delete(cr.Labels, obsoleteLabel)
+				if err := kube.Update(ctx, cr); err != nil {
+					log.Debug("Failed to remove obsolete finalizer label", "name", cr.Name, "namespace", cr.Namespace, "error", err)
+					continue
+				}
+				cleaned++
+				log.Debug("Removed obsolete finalizer label", "name", cr.Name, "namespace", cr.Namespace)
+			}
+		}
+	}
+
+	if cleaned > 0 {
+		log.Info("Cleanup completed", "removed_labels", cleaned)
+	}
+	return nil
 }
 
 type connector struct {
