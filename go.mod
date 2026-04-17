@@ -8,7 +8,7 @@ require (
 	github.com/gobuffalo/flect v1.0.3
 	github.com/google/go-cmp v0.7.0
 	github.com/krateoplatformops/plumbing v1.7.2
-	github.com/krateoplatformops/provider-runtime v1.2.0
+	github.com/krateoplatformops/provider-runtime v1.2.1
 	github.com/stoewer/go-strcase v1.3.1
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
