@@ -2,10 +2,20 @@
 
 The **Krateo Core Provider** is the foundation of Krateo Composable Operations (KCO). It enables the management of Helm charts as Kubernetes-native resources by automating versioned CRD generation, strict JSON schema validation, and fine-grained RBAC isolation.
 
+## Key Features
+
+- **Dynamic CRD Generation**: Automatically creates and manages versioned CRDs from Helm chart schemas.
+- **Schema-Driven Validation**: Enforces strict input validation at the API level.
+- **Orchestration**: Manages the lifecycle of Composition Dynamic Controllers (CDCs).
+
+## Security by Design
+
+- **RBAC Isolation**: Generates and manages fine-grained RBAC policies for each composition, ensuring least-privilege access.
+- **Validated Deployments**: Integrates with the Krateo Chart Inspector to perform dry-runs and validation before deployment.
+
 ## Quick Start
 
 ```sh
-
 helm repo add krateo https://charts.krateo.io
 helm repo update
 helm install krateo-core-provider krateo/core-provider --namespace krateo-system --create-namespace
