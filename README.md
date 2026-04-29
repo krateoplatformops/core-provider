@@ -10,7 +10,7 @@ The **Krateo Core Provider** is the foundation of Krateo Composable Operations (
 
 ## Security by Design
 
-- **RBAC Isolation**: Generates and manages fine-grained RBAC policies for each composition, ensuring least-privilege access.
+- **Least-Privilege Access**: Supports the generation of fine-grained RBAC policies for managed compositions.
 - **Validated Deployments**: Integrates with the Krateo Chart Inspector to perform dry-runs and validation before deployment.
 
 ## Quick Start
