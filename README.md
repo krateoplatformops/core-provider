@@ -25,4 +25,4 @@ helm install krateo-core-provider krateo/core-provider --namespace krateo-system
 
 For detailed guides, architecture diagrams, and full reference, visit the official documentation:
 
-👉 **[https://docs.krateo.io](https://docs.krateo.io/key-concepts/kco/core-provider/)**
+👉 **[https://docs.krateo.io](https://docs.krateo.io/key-concepts/kco/core-provider/overview)**
