@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -15,10 +16,10 @@ import (
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions"
 	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
 	"github.com/krateoplatformops/core-provider/internal/tools/certs"
+	"github.com/krateoplatformops/core-provider/internal/tools/loghandler"
 	"github.com/krateoplatformops/core-provider/internal/tools/pluralizer"
 	"github.com/krateoplatformops/plumbing/env"
 	"github.com/krateoplatformops/plumbing/ptr"
-	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/config"
@@ -66,45 +67,31 @@ func main() {
 
 	log.Default().SetOutput(os.Stderr)
 
-	if *tlsCertificateDuration < time.Minute*10 {
-		log.Fatalf("The TLS certificate duration must be at least 10 minutes.")
-		return
-	}
-	if *tlsCertificateDuration < time.Duration(3)*(*pollInterval) {
-		log.Fatalf("The TLS certificate duration must be at least 3 times the poll interval.")
-		return
-	}
-	if *tlsCertificateLeaseExpirationMargin > *tlsCertificateDuration {
-		log.Fatalf("The TLS certificate lease expiration margin must be less than the TLS certificate duration.")
-		return
-	}
-
 	logLevel := slog.LevelInfo
 	if *debug {
 		logLevel = slog.LevelDebug
 	}
 
-	lh := prettylog.New(&slog.HandlerOptions{
-		Level:     logLevel,
-		AddSource: false,
-	},
-		prettylog.WithDestinationWriter(os.Stderr),
-		prettylog.WithColor(),
-		prettylog.WithOutputEmptyAttrs(),
-	)
+	// Emit logs as one JSON object per line (RFC3339Nano UTC `timestamp` plus a
+	// `service` attribute) so they can be ingested by logs-ingester. See
+	// docs/log-ingester-compatibility.md.
+	log := logging.NewLogrLogger(logr.FromSlogHandler(loghandler.NewJSONHandler(logLevel, os.Stderr)))
 
-	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
-	log := logging.NewLogrLogger(logrlog)
+	// Set the logger for controller-runtime. This only has to log in INFO level as all debug logs are handled by our logger above.
+	ctrl.SetLogger(logr.FromSlogHandler(loghandler.NewJSONHandler(slog.LevelInfo, os.Stderr)))
 
-	// Set the logger for controller-runtime. This only have to log in INFO level as all debug logs are handled by our logger above.
-	ctrl.SetLogger(logr.FromSlogHandler(slog.New(prettylog.New(&slog.HandlerOptions{
-		Level:     slog.LevelInfo,
-		AddSource: false,
-	},
-		prettylog.WithDestinationWriter(os.Stderr),
-		prettylog.WithColor(),
-		prettylog.WithOutputEmptyAttrs(),
-	)).Handler()))
+	if *tlsCertificateDuration < time.Minute*10 {
+		log.Error(errors.New("invalid TLS certificate configuration"), "The TLS certificate duration must be at least 10 minutes.")
+		os.Exit(1)
+	}
+	if *tlsCertificateDuration < time.Duration(3)*(*pollInterval) {
+		log.Error(errors.New("invalid TLS certificate configuration"), "The TLS certificate duration must be at least 3 times the poll interval.")
+		os.Exit(1)
+	}
+	if *tlsCertificateLeaseExpirationMargin > *tlsCertificateDuration {
+		log.Error(errors.New("invalid TLS certificate configuration"), "The TLS certificate lease expiration margin must be less than the TLS certificate duration.")
+		os.Exit(1)
+	}
 
 	log.Debug("Starting",
 		"sync-period", syncPeriod.String(),
