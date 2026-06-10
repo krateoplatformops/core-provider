@@ -11,7 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/krateoplatformops/core-provider/internal/controllers/compositiondefinitions/webhooks/utils/convertible"
 	webhooktelemetry "github.com/krateoplatformops/core-provider/internal/telemetry/webhooks"
-	prettylog "github.com/krateoplatformops/plumbing/slogs/pretty"
+	"github.com/krateoplatformops/core-provider/internal/tools/loghandler"
 	"github.com/krateoplatformops/provider-runtime/pkg/logging"
 
 	apix "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -26,17 +26,9 @@ func NewWebhookHandler(scheme *runtime.Scheme, metrics ...*webhooktelemetry.Metr
 		recorder = metrics[0]
 	}
 
-	lh := prettylog.New(&slog.HandlerOptions{
-		Level:     slog.LevelError,
-		AddSource: false,
-	},
-		prettylog.WithDestinationWriter(os.Stderr),
-		prettylog.WithColor(),
-		prettylog.WithOutputEmptyAttrs(),
-	)
-
-	logrlog := logr.FromSlogHandler(slog.New(lh).Handler())
-	log := logging.NewLogrLogger(logrlog)
+	// JSON logs, one object per line, for logs-ingester compatibility.
+	// See docs/log-ingester-compatibility.md.
+	log := logging.NewLogrLogger(logr.FromSlogHandler(loghandler.NewJSONHandler(slog.LevelError, os.Stderr)))
 
 	return &webhook{scheme: scheme, log: log.WithName("core-provider-conversion-webhook"), metrics: recorder}
 }
