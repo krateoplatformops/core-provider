@@ -36,11 +36,35 @@ Whichever operation runs, the same building blocks are involved, in this order:
 
 ### Update
 
-`Update` re-applies the CRD and the bundle. If the chart's kind or version changed, it also tears down the bundle for the *old* version and relabels existing `Composition` instances so they are picked up by the controller for the new version. (That relabel is a live-data mutation.)
+`Update` re-applies the CRD and the bundle. If the chart's **version** changed — with the kind and group staying the same — it also tears down the bundle for the *old* version and relabels existing `Composition` instances so they are picked up by the controller for the new version. (That relabel is a live-data mutation.)
 
 ### Delete
 
 `Delete` marks the definition as deleting and tears down what it owns. If this is the only definition for that resource, it first removes the `Composition` instances and waits for them to be gone, then removes the bundle. It is careful **not** to delete the CRD if other versions of it are still in use.
+
+## Creating a definition for a resource that already exists (adoption)
+
+A common question: *what happens if I apply a `CompositionDefinition` whose generated CRD already exists in the cluster?* — because another definition already created it, or it predates this one. core-provider does **not** error and does **not** overwrite it: it **adopts** the existing CRD and **appends a new version** to it (the version derived from the chart version). Several definitions that resolve to the same kind/group therefore coexist as several *served* versions of one CRD, sharing the single hidden storage version (`vacuum`; see [`03`](./03-crd-webhook-cert-lifecycle.md)). `Observe` reports the resource as existing once the CRD is present and current, so a second definition for an already-generated kind converges to "add my version", not "create from scratch".
+
+This is about the **CRD** — the generated API *type*. Adopting *instances* that already exist (a `Composition`, or the workload a chart would install) is the CDC's concern; see the CDC guide's reconcile-lifecycle document.
+
+> The mirror image is on delete: `Delete` only removes the CRD when no other definition still needs one of its versions — the same multi-version invariant, read the other way.
+
+## Disabling specific operations (management & deletion policies)
+
+The reconciler is built on provider-runtime, which honors two annotations on the `CompositionDefinition` that switch off individual operations. They are useful for read-only registration, for pausing writes without deleting the definition, and for decommissioning a definition while leaving what it provisioned in place. Here the "external resource" provider-runtime manages **is the generated CRD plus the CDC bundle**, so the policy gates whether core-provider may create/update/delete *those*.
+
+| Annotation | Value | What core-provider may do |
+| --- | --- | --- |
+| `krateo.io/management-policy` | `default` (when unset) | Full management: create, update, **and** delete the CRD + bundle. |
+| | `observe-create-update` | Create and update, but **never delete** — on removal the CRD/bundle are left in place. |
+| | `observe-delete` | **No create/update**; only delete is allowed. |
+| | `observe` | **Observe only** — never create, update, or delete. The definition is tracked and its status refreshed, but nothing is provisioned or changed. |
+| `krateo.io/deletion-policy` | `delete` (when unset) / `orphan` | With `orphan`, deleting the definition removes the finalizer **without** tearing down the CRD/bundle. |
+
+Mechanically these map onto provider-runtime's `ShouldCreate` / `ShouldUpdate` / `ShouldDelete` checks around the `Create`/`Update`/`Delete` operations; provider-runtime's guide is the canonical description of that gating. **The same annotations exist on `Composition` instances and are honored by the CDC** — so you can disable a verb at the definition level (core-provider) and/or at the instance level (the CDC); see the CDC guide for that side.
+
+User-facing usage and YAML examples are not duplicated here — see the **Lifecycle Policies** how-to on [docs.krateo.io](https://docs.krateo.io).
 
 ## The CDC bundle
 

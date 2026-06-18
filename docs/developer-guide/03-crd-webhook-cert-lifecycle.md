@@ -9,7 +9,7 @@ A generated CRD's **spec schema is the chart's values schema**; its **status sch
 When a chart's version changes, the operator **adds a new version to the existing CRD** rather than replacing it. To let several versions coexist:
 
 - each real version is marked *served*, and
-- a single hidden *storage* version with a permissive schema holds storage.
+- a single hidden *storage* version (named `vacuum` in the code) with a permissive schema holds storage.
 
 When deciding whether an existing CRD needs updating, the operator compares the **status** part of the schema. The generated spec can differ harmlessly between regenerations, so comparing the whole thing would cause needless churn.
 

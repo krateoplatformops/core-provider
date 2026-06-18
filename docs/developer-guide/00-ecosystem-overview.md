@@ -106,7 +106,7 @@ Summary mapping (full version in each runtime's `04-equivalence.md`):
 | Finalizer | a configurable finalizer | a fixed finalizer name |
 | Conditions | standard conditions on the typed status | the same conditions on the untyped object's status |
 | Standard conditions | `Ready` / `Synced`, with the same reasons | the same |
-| Pause / policies | paused + management/deletion policy annotations | the same annotation contract |
+| Pause / management & deletion policies | honored by the loop: pause, plus `krateo.io/management-policy` gating create/update/delete and `krateo.io/deletion-policy` (orphan) | the same |
 | Type resolution | scheme / RESTMapper (compile-time) | runtime pluralization |
 
 > **If you change one runtime's lifecycle semantics, change the other to match.** The two are meant to behave identically from a resource-lifecycle standpoint; divergence is a bug, not a feature.

@@ -39,4 +39,4 @@ flowchart LR
 - **Logging** — core-provider emits structured JSON logs for the Krateo logs-ingester; the contract is documented in `docs/log-ingester-compatibility.md`.
 - **Telemetry / metrics** — OTel setup and the metric catalog live under `telemetry/`.
 - **Sibling repos** — **provider-runtime**, **composition-dynamic-controller**, **unstructured-runtime**, and **chart-inspector** each have their own developer guides; the [ecosystem overview](./00-ecosystem-overview.md) links them.
-- **Architecture diagrams (source)** — the PlantUML diagrams under `_diagrams/` show the components and the reconcile state machine.
+- **Architecture diagrams (source)** — the PlantUML diagrams under [`../../_diagrams/`](../../_diagrams/) (at the repository root) show the components and the reconcile state machine.

@@ -37,7 +37,7 @@ flowchart TB
     CDC -.->|asks which resources the chart touches| CI["chart-inspector"]
 ```
 
-The PlantUML sources under `_diagrams/` carry the same picture plus the reconcile state machine.
+The PlantUML sources under [`../../_diagrams/`](../../_diagrams/) (at the repository root) carry the same picture plus the reconcile state machine.
 
 ## Two API groups
 
