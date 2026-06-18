@@ -42,6 +42,13 @@ Whichever operation runs, the same building blocks are involved, in this order:
 
 `Delete` marks the definition as deleting and tears down what it owns. If this is the only definition for that resource, it first removes the `Composition` instances and waits for them to be gone, then removes the bundle. It is careful **not** to delete the CRD if other versions of it are still in use.
 
+### Drift
+
+If the deployed bundle is changed out of band — someone edits the CDC `Deployment`, the RBAC, a `ConfigMap`, or the `Service` — `Observe` notices: it reads the live objects back and compares their combined digest against the one recorded at deploy time. A mismatch makes it report "not up to date", and the next `Update` re-applies the bundle, restoring the intended state. So core-provider **self-heals** drift on what it owns. Two things to keep in mind:
+
+- Detection is **digest-based over the whole bundle**, not field-by-field — any change to a tracked object trips it; adding a new object to the bundle without also handling it on read-back makes the digest inconsistent (see [`04-extending.md`](./04-extending.md)).
+- For the generated **CRD**, "current" is judged by comparing the *status* schema, not the whole CRD (see [`03`](./03-crd-webhook-cert-lifecycle.md)).
+
 ## Creating a definition for a resource that already exists (adoption)
 
 A common question: *what happens if I apply a `CompositionDefinition` whose generated CRD already exists in the cluster?* — because another definition already created it, or it predates this one. core-provider does **not** error and does **not** overwrite it: it **adopts** the existing CRD and **appends a new version** to it (the version derived from the chart version). Several definitions that resolve to the same kind/group therefore coexist as several *served* versions of one CRD, sharing the single hidden storage version (`vacuum`; see [`03`](./03-crd-webhook-cert-lifecycle.md)). `Observe` reports the resource as existing once the CRD is present and current, so a second definition for an already-generated kind converges to "add my version", not "create from scratch".
